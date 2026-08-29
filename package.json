@@ -1,0 +1,9 @@
+{
+  "dependencies": {
+    "mysql2": "^3.22.6"
+  },
+  "scripts": {
+	"dev": "vite --host",
+    "preview": "vite preview --host"
+  }
+}

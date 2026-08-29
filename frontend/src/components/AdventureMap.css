@@ -1,0 +1,49 @@
+/* Overridden in favor of Tailwind CSS classes */
+
+.text-3xs {
+  font-size: 0.65rem;
+}
+
+.story-card-collapsible {
+  transition: transform 0.22s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.22s ease, border-color 0.2s ease;
+  will-change: transform, box-shadow;
+}
+
+.story-card-collapsible:hover {
+  transform: translateY(-3px);
+}
+
+.story-group-tab-pill {
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Staggered cascade entrance for map stage levels */
+@keyframes stage-stagger-in {
+  0% {
+    opacity: 0;
+    transform: translate3d(0, 8px, 0) scale(0.98);
+  }
+  100% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+.stage-stagger-1 { animation: stage-stagger-in 0.24s cubic-bezier(0.16, 1, 0.3, 1) 0ms both; }
+.stage-stagger-2 { animation: stage-stagger-in 0.24s cubic-bezier(0.16, 1, 0.3, 1) 40ms both; }
+.stage-stagger-3 { animation: stage-stagger-in 0.24s cubic-bezier(0.16, 1, 0.3, 1) 80ms both; }
+.stage-stagger-4 { animation: stage-stagger-in 0.24s cubic-bezier(0.16, 1, 0.3, 1) 120ms both; }
+
+@media (prefers-reduced-motion: reduce) {
+  .story-card-collapsible,
+  .story-card-collapsible:hover {
+    transform: none !important;
+  }
+  .stage-stagger-1,
+  .stage-stagger-2,
+  .stage-stagger-3,
+  .stage-stagger-4 {
+    animation: none !important;
+  }
+}
+

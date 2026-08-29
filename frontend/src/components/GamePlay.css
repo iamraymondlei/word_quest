@@ -1,0 +1,431 @@
+/* Styles overrode by inline Tailwind utility rules. */
+.translation-sentence-nav {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(245, 158, 11, 0.65) rgba(15, 23, 42, 0.65);
+  -webkit-overflow-scrolling: touch;
+}
+
+.translation-sentence-nav::-webkit-scrollbar {
+  height: 5px;
+}
+
+.translation-sentence-nav::-webkit-scrollbar-track {
+  background: rgba(15, 23, 42, 0.65);
+  border-radius: 999px;
+}
+
+.translation-sentence-nav::-webkit-scrollbar-thumb {
+  background: rgba(245, 158, 11, 0.65);
+  border-radius: 999px;
+}
+
+/* Typing Game Input & Anti-Dictation Styles */
+input.typing-input,
+#space-battle-console-input,
+.theme-card input[type="text"],
+input[type="text"] {
+  -webkit-user-select: text;
+  user-select: text;
+  -webkit-touch-callout: none;
+}
+
+/* Hide speech dictation and search buttons in webkit browsers */
+input::-webkit-speech-button,
+input::-webkit-speech-results,
+input::-webkit-speech-results-button {
+  display: none !important;
+  -webkit-appearance: none;
+}
+
+/* === Story Chase UI Animations & Physics-based Motion === */
+@keyframes physical-impact-shake {
+  0% { transform: translate3d(0, 0, 0) scale(1); }
+  15% { transform: translate3d(-7px, 3px, 0) rotate(-1.5deg) scale(1.02); }
+  30% { transform: translate3d(6px, -3px, 0) rotate(1.5deg) scale(1.01); }
+  45% { transform: translate3d(-4px, 2px, 0) rotate(-1deg); }
+  60% { transform: translate3d(3px, -1px, 0) rotate(0.5deg); }
+  75% { transform: translate3d(-1px, 1px, 0); }
+  100% { transform: translate3d(0, 0, 0) scale(1); }
+}
+
+.shake-effect {
+  animation: physical-impact-shake 0.4s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
+}
+
+/* GPU-accelerated smooth runner positioning */
+.runner-track-smooth {
+  transition: transform 180ms cubic-bezier(0.34, 1.56, 0.64, 1);
+  will-change: transform;
+}
+
+@keyframes track-laser-pulse {
+  0%, 100% { opacity: 0.35; }
+  50% { opacity: 0.85; }
+}
+
+.chase-track-laser {
+  animation: track-laser-pulse 2s ease-in-out infinite;
+}
+
+@keyframes victory-beam-rotate {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.victory-beam {
+  animation: victory-beam-rotate 24s linear infinite;
+}
+
+/* Chest eruption & dopamine celebration animation */
+@keyframes chest-open-burst {
+  0% { transform: scale(0.6) translateY(24px); opacity: 0; }
+  55% { transform: scale(1.18) translateY(-10px); opacity: 1; }
+  75% { transform: scale(0.96) translateY(2px); }
+  100% { transform: scale(1) translateY(0); }
+}
+
+.victory-chest-burst {
+  animation: chest-open-burst 0.65s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+/* Reduced motion accessibility compliance */
+@media (prefers-reduced-motion: reduce) {
+  .shake-effect,
+  .chase-track-laser,
+  .victory-beam,
+  .victory-chest-burst,
+  .anim-body-sprint,
+  .anim-leg-front,
+  .anim-leg-back,
+  .anim-arm-front,
+  .anim-arm-back,
+  .anim-tail,
+  .anim-monster-body,
+  .anim-monster-wing,
+  .anim-monster-jaw,
+  .torch-flame {
+    animation: none !important;
+  }
+  .runner-track-smooth,
+  .character-smooth-pos {
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* === Castle Masonry Textures, Stone Runways & Torchlight FX === */
+.bg-castle-wall {
+  background-color: #0b0f19;
+  background-image: 
+    radial-gradient(circle at 50% 0%, rgba(30, 58, 138, 0.35) 0%, rgba(15, 23, 42, 0.65) 60%, rgba(3, 7, 18, 0.9) 100%),
+    linear-gradient(rgba(11, 15, 25, 0.6), rgba(11, 15, 25, 0.78)),
+    url('/assets/story-chase/castle/stone-brick-dark.jpg');
+  background-repeat: repeat;
+  background-size: auto, auto, 280px 280px;
+}
+
+.castle-stone-runway {
+  background-color: #2b1111;
+  background-image:
+    linear-gradient(180deg, rgba(90, 25, 25, 0.55) 0%, rgba(35, 12, 12, 0.85) 100%),
+    url('/assets/story-chase/castle/floor-brick-medieval.jpg');
+  background-size: auto, 160px 160px;
+  border-top: 2px solid #b91c1c;
+  border-bottom: 3px solid #020617;
+  box-shadow: 
+    inset 0 2px 4px rgba(254, 202, 202, 0.15),
+    inset 0 -3px 6px rgba(0,0,0,0.8),
+    0 4px 12px rgba(185, 28, 28, 0.3);
+  position: relative;
+}
+
+.castle-pillar-left {
+  background-color: #1e293b;
+  background-image: 
+    linear-gradient(90deg, rgba(9, 13, 22, 0.75) 0%, rgba(30, 41, 59, 0.55) 70%, rgba(51, 65, 85, 0.45) 100%),
+    url('/assets/story-chase/castle/stone-brick-dark.jpg');
+  background-size: auto, 180px 180px;
+  border-right: 2px solid #475569;
+  box-shadow: 4px 0 15px rgba(0,0,0,0.7);
+}
+
+.castle-pillar-right {
+  background-color: #1e293b;
+  background-image: 
+    linear-gradient(270deg, rgba(9, 13, 22, 0.75) 0%, rgba(30, 41, 59, 0.55) 70%, rgba(51, 65, 85, 0.45) 100%),
+    url('/assets/story-chase/castle/stone-brick-dark.jpg');
+  background-size: auto, 180px 180px;
+  border-left: 2px solid #475569;
+  box-shadow: -4px 0 15px rgba(0,0,0,0.7);
+}
+
+.castle-battlement {
+  background: #1e293b;
+  border-top: 3px solid #64748b;
+  border-left: 2px solid #475569;
+  border-right: 2px solid #0f172a;
+  box-shadow: 0 4px 8px rgba(0,0,0,0.6);
+}
+
+.stained-glass-window {
+  background: radial-gradient(circle at 50% 30%, rgba(6, 182, 212, 0.35) 0%, rgba(168, 85, 247, 0.25) 50%, rgba(15, 23, 42, 0.8) 100%);
+  border: 2px solid #38bdf8;
+  box-shadow: 0 0 20px rgba(56, 189, 248, 0.3), inset 0 0 15px rgba(168, 85, 247, 0.3);
+}
+
+.castle-stairs {
+  background: repeating-linear-gradient(180deg, #78350f, #78350f 4px, #451a03 4px, #451a03 8px);
+  border: 2px solid #b45309;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.8);
+}
+
+/* === Multi-Style Runway Floor Textures === */
+.floor-texture-brick-medieval {
+  background-color: #2b1111 !important;
+  background-image: 
+    linear-gradient(180deg, rgba(90, 25, 25, 0.55) 0%, rgba(35, 12, 12, 0.85) 100%),
+    url('/assets/story-chase/castle/floor-brick-medieval.jpg') !important;
+  background-size: auto, 160px 160px !important;
+  border-top: 2px solid #b91c1c !important;
+  box-shadow: inset 0 2px 4px rgba(254, 202, 202, 0.15), inset 0 -3px 6px rgba(0,0,0,0.8), 0 4px 12px rgba(185, 28, 28, 0.3) !important;
+}
+
+.floor-texture-paving-3d {
+  background-color: #1e293b !important;
+  background-image: 
+    linear-gradient(180deg, rgba(30, 41, 59, 0.65) 0%, rgba(15, 23, 42, 0.75) 60%, rgba(9, 13, 22, 0.9) 100%),
+    url('/assets/story-chase/castle/stone-floor-paving.png') !important;
+  background-size: auto, 140px 140px !important;
+  border-top: 2px solid #64748b !important;
+  box-shadow: inset 0 2px 4px rgba(255,255,255,0.15), inset 0 -3px 6px rgba(0,0,0,0.8), 0 4px 12px rgba(0,0,0,0.6) !important;
+}
+
+.floor-texture-checker-palace {
+  background-color: #1e293b !important;
+  background-image: 
+    linear-gradient(180deg, rgba(15, 23, 42, 0.5) 0%, rgba(3, 7, 18, 0.85) 100%),
+    url('/assets/story-chase/castle/floor-checker-palace.jpg') !important;
+  background-size: auto, 90px 90px !important;
+  border-top: 2px solid #94a3b8 !important;
+  box-shadow: inset 0 2px 4px rgba(255,255,255,0.2), inset 0 -3px 6px rgba(0,0,0,0.8), 0 4px 12px rgba(0,0,0,0.6) !important;
+}
+
+.floor-texture-obsidian-magma {
+  background-color: #450a0a !important;
+  background-image: 
+    radial-gradient(ellipse at 50% 50%, rgba(249, 115, 22, 0.35) 0%, transparent 80%),
+    linear-gradient(180deg, rgba(40, 5, 5, 0.7) 0%, rgba(10, 2, 2, 0.95) 100%),
+    url('/assets/story-chase/castle/rock-dark.jpg') !important;
+  background-size: auto, auto, 180px 180px !important;
+  border-top: 2px solid #f97316 !important;
+  box-shadow: inset 0 0 12px rgba(249, 115, 22, 0.6), 0 0 18px rgba(239, 68, 68, 0.4) !important;
+}
+
+.floor-texture-rune-magic {
+  background-color: #031c2e !important;
+  background-image: 
+    radial-gradient(circle at 50% 50%, rgba(6, 182, 212, 0.3) 0%, transparent 70%),
+    linear-gradient(90deg, rgba(6, 182, 212, 0.18) 1px, transparent 1px),
+    linear-gradient(180deg, rgba(8, 51, 68, 0.7) 0%, rgba(3, 15, 29, 0.95) 100%),
+    url('/assets/story-chase/castle/stone-brick-dark.jpg') !important;
+  background-size: 100% 100%, 36px 36px, auto, 200px 200px !important;
+  border-top: 2px solid #06b6d4 !important;
+  box-shadow: inset 0 0 12px rgba(6, 182, 212, 0.4), 0 0 16px rgba(6, 182, 212, 0.35) !important;
+}
+
+.floor-texture-gold-marble {
+  background-color: #0b0f19 !important;
+  background-image: 
+    linear-gradient(180deg, rgba(245, 158, 11, 0.25) 0%, rgba(15, 23, 42, 0.85) 100%),
+    repeating-linear-gradient(45deg, transparent, transparent 16px, rgba(245, 158, 11, 0.3) 16px, rgba(245, 158, 11, 0.3) 18px),
+    url('/assets/story-chase/castle/stone-floor-paving.png') !important;
+  background-size: auto, auto, 140px 140px !important;
+  border-top: 2px solid #fbbf24 !important;
+  box-shadow: inset 0 0 10px rgba(245, 158, 11, 0.4), 0 0 15px rgba(245, 158, 11, 0.25) !important;
+}
+
+.floor-texture-cobblestone-round {
+  background-color: #0f172a !important;
+  background-image: 
+    linear-gradient(180deg, rgba(30, 41, 59, 0.55) 0%, rgba(15, 23, 42, 0.85) 100%),
+    url('/assets/story-chase/castle/castle-cobblestone.jpg') !important;
+  background-size: auto, 100px 100px !important;
+  border-top: 2px solid #475569 !important;
+  box-shadow: inset 0 2px 4px rgba(255,255,255,0.15), inset 0 -3px 6px rgba(0,0,0,0.8), 0 4px 12px rgba(0,0,0,0.6) !important;
+}
+
+.char-slot {
+  display: inline-block;
+  text-align: center;
+  min-width: 0.76rem;
+  padding: 0 1px;
+  line-height: 1.6;
+}
+
+@keyframes torch-flicker {
+  0%, 100% { transform: scale(1) rotate(-1deg); filter: drop-shadow(0 0 10px rgba(245, 158, 11, 0.9)); }
+  25% { transform: scale(1.1, 0.94) rotate(2deg); filter: drop-shadow(0 0 16px rgba(239, 68, 68, 0.95)); }
+  50% { transform: scale(0.95, 1.06) rotate(-2deg); filter: drop-shadow(0 0 12px rgba(245, 158, 11, 0.85)); }
+  75% { transform: scale(1.05, 1.02) rotate(1deg); filter: drop-shadow(0 0 18px rgba(251, 191, 36, 1)); }
+}
+
+.torch-flame {
+  animation: torch-flicker 0.35s infinite alternate ease-in-out;
+}
+
+/* === Articulated Stride & Leg Cycling Animations === */
+@keyframes runner-body-sprint {
+  0%, 100% { transform: translate3d(0, 0, 0) rotate(14deg); }
+  50% { transform: translate3d(0, 1.5px, 0) rotate(16deg); }
+}
+
+@keyframes leg-stride-front {
+  0% { transform: rotate(-38deg); }
+  50% { transform: rotate(38deg); }
+  100% { transform: rotate(-38deg); }
+}
+
+@keyframes leg-stride-back {
+  0% { transform: rotate(38deg); }
+  50% { transform: rotate(-38deg); }
+  100% { transform: rotate(38deg); }
+}
+
+@keyframes arm-swing-front {
+  0% { transform: rotate(30deg); }
+  50% { transform: rotate(-30deg); }
+  100% { transform: rotate(30deg); }
+}
+
+@keyframes arm-swing-back {
+  0% { transform: rotate(-30deg); }
+  50% { transform: rotate(30deg); }
+  100% { transform: rotate(-30deg); }
+}
+
+@keyframes tail-swish {
+  0%, 100% { transform: rotate(-8deg); }
+  50% { transform: rotate(8deg); }
+}
+
+@keyframes monster-body-lunge {
+  0%, 100% { transform: translate3d(0, 0, 0) rotate(12deg); }
+  50% { transform: translate3d(0, 2px, 0) rotate(15deg); }
+}
+
+@keyframes monster-wing-flap {
+  0%, 100% { transform: rotate(-15deg) scaleY(1); }
+  50% { transform: rotate(25deg) scaleY(0.7); }
+}
+
+@keyframes monster-jaw-bite {
+  0%, 100% { transform: rotate(0deg); }
+  50% { transform: rotate(18deg); }
+}
+
+@keyframes ribbon-fly {
+  0%, 100% { transform: scaleX(1) rotate(-6deg); }
+  50% { transform: scaleX(0.85) rotate(8deg); }
+}
+
+@keyframes ear-flop {
+  0%, 100% { transform: rotate(5deg); }
+  50% { transform: rotate(-8deg); }
+}
+
+@keyframes dust-puff {
+  0% { opacity: 0.9; transform: translate3d(0, 0, 0) scale(0.6); }
+  50% { opacity: 0.6; transform: translate3d(-8px, -3px, 0) scale(1.1); }
+  100% { opacity: 0; transform: translate3d(-14px, -6px, 0) scale(1.3); }
+}
+
+.anim-body-sprint { animation: runner-body-sprint 0.28s infinite ease-in-out; }
+.anim-leg-front { animation: leg-stride-front 0.28s infinite ease-in-out; transform-origin: 46px 44px; }
+.anim-leg-back { animation: leg-stride-back 0.28s infinite ease-in-out; transform-origin: 42px 46px; }
+.anim-arm-front { animation: arm-swing-front 0.28s infinite ease-in-out; transform-origin: 46px 40px; }
+.anim-arm-back { animation: arm-swing-back 0.28s infinite ease-in-out; transform-origin: 52px 38px; }
+.anim-tail { animation: tail-swish 0.28s infinite ease-in-out; transform-origin: 28px 44px; }
+.anim-ribbon { animation: ribbon-fly 0.22s infinite ease-in-out; transform-origin: 30px 22px; }
+.anim-ear { animation: ear-flop 0.28s infinite ease-in-out; transform-origin: 34px 18px; }
+
+/* Dynamic Multi-Monster Running Animations */
+.anim-monster-body { animation: monster-body-lunge 0.28s infinite ease-in-out; transform-origin: center bottom; }
+.anim-wing, .anim-monster-wing { animation: monster-wing-flap 0.22s infinite ease-in-out; transform-origin: 48px 24px; }
+.anim-jaw, .anim-monster-jaw { animation: monster-jaw-bite 0.35s infinite ease-in-out; transform-origin: 46px 34px; }
+
+@keyframes monster-dragon-gallop {
+  0%, 100% { transform: translate3d(0, 0, 0) rotate(8deg); }
+  50% { transform: translate3d(0, -3px, 0) rotate(14deg); }
+}
+.anim-monster-dragon-run { animation: monster-dragon-gallop 0.22s infinite ease-in-out; }
+
+@keyframes monster-ogre-stomp {
+  0%, 100% { transform: translate3d(0, 0, 0) rotate(10deg) scale(1); }
+  50% { transform: translate3d(0, -4px, 0) rotate(15deg) scale(1.08, 0.94); }
+}
+.anim-monster-ogre-run { animation: monster-ogre-stomp 0.2s infinite ease-in-out; }
+
+@keyframes monster-goblin-scamper {
+  0%, 100% { transform: translate3d(0, 1px, 0) rotate(14deg); }
+  50% { transform: translate3d(0, -2px, 0) rotate(20deg); }
+}
+.anim-monster-goblin-run { animation: monster-goblin-scamper 0.15s infinite ease-in-out; }
+
+@keyframes monster-alien-hover-lunge {
+  0%, 100% { transform: translate3d(0, -2px, 0) rotate(6deg) scale(1); }
+  50% { transform: translate3d(2px, -6px, 0) rotate(12deg) scale(1.06, 0.95); }
+}
+.anim-monster-alien-run { animation: monster-alien-hover-lunge 0.24s infinite ease-in-out; }
+
+@keyframes monster-ghost-swoop {
+  0%, 100% { transform: translate3d(0, -2px, 0) rotate(8deg); }
+  50% { transform: translate3d(0, -7px, 0) rotate(14deg); }
+}
+.anim-monster-ghost-run { animation: monster-ghost-swoop 0.3s infinite ease-in-out; }
+
+@keyframes monster-robot-charge {
+  0%, 100% { transform: translate3d(0, 0, 0) rotate(10deg); }
+  50% { transform: translate3d(0, -3px, 0) rotate(16deg) scale(1.04, 0.96); }
+}
+.anim-monster-robot-run { animation: monster-robot-charge 0.18s infinite ease-in-out; }
+
+.dust-particle { animation: dust-puff 0.3s infinite linear; }
+
+.character-smooth-pos {
+  transition: left 0.18s cubic-bezier(0.34, 1.56, 0.64, 1);
+  will-change: left;
+}
+
+/* === Castle Bottom Lava Sea Moat & Ember Particles === */
+.bg-castle-lava-sea {
+  background-color: #450a0a;
+  background-image: 
+    radial-gradient(ellipse at 50% 100%, rgba(239, 68, 68, 0.8) 0%, rgba(185, 28, 28, 0.6) 40%, rgba(69, 10, 10, 0.95) 100%),
+    url('/assets/story-chase/castle/rock-dark.jpg');
+  background-size: cover, 240px 120px;
+  border-top: 3px solid #f97316;
+  box-shadow: 
+    inset 0 4px 15px rgba(251, 146, 60, 0.6),
+    0 0 35px rgba(239, 68, 68, 0.5);
+  position: relative;
+  overflow: hidden;
+}
+
+@keyframes lava-glow-pulse {
+  0%, 100% { filter: brightness(1) drop-shadow(0 0 10px rgba(249, 115, 22, 0.7)); }
+  50% { filter: brightness(1.3) drop-shadow(0 0 20px rgba(239, 68, 68, 0.95)); }
+}
+.anim-lava-pulse {
+  animation: lava-glow-pulse 2s infinite ease-in-out;
+}
+
+@keyframes ember-rise-anim {
+  0% { transform: translate3d(0, 0, 0) scale(0.6); opacity: 0; }
+  20% { opacity: 1; }
+  100% { transform: translate3d(-15px, -35px, 0) scale(1.2); opacity: 0; }
+}
+.anim-ember {
+  animation: ember-rise-anim 1.5s infinite linear;
+}
+
+
+

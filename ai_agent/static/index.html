@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="AI 英文绘本解析与翻译助手 - 基于 Google Antigravity Agent, 专门为小学生提供绘本英文内容提取、中英对照翻译、生词表生成及阅读理解提问。">
+    <title>AI 英文绘本解析助手 — Verification Panel</title>
+    <!-- Google Fonts: Plus Jakarta Sans for modern, premium typography -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&family=Noto+Sans+SC:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="glow-bg"></div>
+    <header>
+        <div class="header-container">
+            <h1 id="app-title">📖 英文绘本解析助手</h1>
+            <p class="subtitle">基于 Google Antigravity Agent 自动提取原文、中文翻译、词汇积累与互动提问</p>
+        </div>
+    </header>
+
+    <main class="main-container">
+        <!-- Left Column: Input Settings & File Upload -->
+        <section class="config-panel card" aria-labelledby="upload-heading">
+            <h2 id="upload-heading" class="section-title">📤 绘本上传与配置</h2>
+            
+            <form id="parse-form" onsubmit="return false;">
+                <div class="form-group">
+                    <label for="question-count">提问数量: <span id="question-count-val">5</span></label>
+                    <input type="range" id="question-count" name="question_count" min="1" max="10" value="5" class="slider">
+                    <div class="slider-labels">
+                        <span>1</span>
+                        <span>5</span>
+                        <span>10</span>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="cli-select">Agent CLI 引擎:</label>
+                    <select id="cli-select" name="cli" class="model-select">
+                        <option value="agy" selected>Google Antigravity (agy)</option>
+                        <option value="codex">OpenAI Codex (codex)</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label for="model-select">AI 模型选择:</label>
+                    <select id="model-select" name="model" class="model-select">
+                        <option value="gemini-3.7-flash-high" selected>Gemini 3.7 Flash (High) — 默认推荐</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                        <label for="prompt-input" style="margin-bottom: 0;">AI 解析提示词 (可选自定义):</label>
+                        <button type="button" id="reset-prompt-btn" class="btn btn-secondary btn-sm" style="padding: 2px 8px; font-size: 0.75rem;">清空/重置</button>
+                    </div>
+                    <textarea id="prompt-input" name="prompt" rows="3" class="model-select" style="font-family: inherit; font-size: 0.8rem; resize: vertical; width: 100%;" placeholder="留空使用系统预设提示词模版..."></textarea>
+                </div>
+
+                <div class="form-group">
+                    <label>绘本页面图片 (支持 1-10 张, JPG/PNG/WEBP)</label>
+                    <div id="drop-zone" class="drop-zone">
+                        <div class="drop-zone-prompt">
+                            <span class="upload-icon">📸</span>
+                            <p class="upload-text">点击或将多张图片拖拽到此处</p>
+                            <span class="upload-subtext">按图片顺序依次选择或拖入</span>
+                        </div>
+                        <input type="file" id="file-input" name="images" multiple accept="image/jpeg,image/png,image/webp" class="file-input">
+                    </div>
+                </div>
+
+                <!-- Preview Grid -->
+                <div id="preview-container" class="preview-container hidden">
+                    <div class="preview-header">
+                        <h3>已选页面预览 (拖拽图片以重新排序)</h3>
+                        <button type="button" id="clear-btn" class="btn btn-secondary btn-sm">清空所有</button>
+                    </div>
+                    <div id="preview-grid" class="preview-grid"></div>
+                </div>
+
+                <button type="button" id="submit-btn" class="btn btn-primary btn-block" disabled>
+                    <span class="btn-text">开始解析绘本</span>
+                    <span class="spinner hidden"></span>
+                </button>
+            </form>
+        </section>
+
+        <!-- Right Column: Result Panel -->
+        <section class="result-panel card" aria-labelledby="result-heading">
+            <h2 id="result-heading" class="section-title">📊 解析结果</h2>
+            
+            <!-- Empty State -->
+            <div id="empty-state" class="empty-state">
+                <div class="empty-icon">💡</div>
+                <h3>等待解析</h3>
+                <p>在左侧上传绘本图片并点击“开始解析”，AI Agent 将自动为您提取故事细节。</p>
+            </div>
+
+            <!-- Loading State -->
+            <div id="loading-state" class="loading-state hidden">
+                <div class="loading-animation">
+                    <div class="pulse-ring"></div>
+                    <div class="loading-icon">✨</div>
+                </div>
+                <h3>AI Agent 正在全力解析中...</h3>
+                <p>提取英文文本、高精度翻译、智能选取 RAZ Level E 生词并生成提问... 可能需要 15-30 秒。</p>
+            </div>
+
+            <!-- Content Container -->
+            <div id="result-content" class="result-content hidden">
+                <!-- Book Title & Theme -->
+                <div class="book-info">
+                    <h3 id="result-title" class="book-title">绘本标题</h3>
+                    <div class="theme-box">
+                        <strong>🎯 故事主题:</strong>
+                        <p id="result-theme">这里是故事的主题概述，帮助孩子们快速理解绘本寓意。</p>
+                    </div>
+                </div>
+
+                <!-- Tabs Navigation -->
+                <div class="tabs" role="tablist">
+                    <button class="tab-btn active" data-tab="tab-pages" role="tab" aria-selected="true">📖 逐页对照</button>
+                    <button class="tab-btn" data-tab="tab-vocab" role="tab" aria-selected="false">📝 重点生词</button>
+                    <button class="tab-btn" data-tab="tab-questions" role="tab" aria-selected="false">❓ 互动提问</button>
+                </div>
+
+                <!-- Tab: Pages Content -->
+                <div id="tab-pages" class="tab-pane active" role="tabpanel">
+                    <div id="pages-list" class="pages-list"></div>
+                </div>
+
+                <!-- Tab: Vocabulary -->
+                <div id="tab-vocab" class="tab-pane" role="tabpanel">
+                    <div id="vocab-grid" class="vocab-grid"></div>
+                </div>
+
+                <!-- Tab: Questions -->
+                <div id="tab-questions" class="tab-pane" role="tabpanel">
+                    <div id="questions-list" class="questions-list"></div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <footer>
+        <p>© 2026 英文绘本解析助手. Designed with Google Antigravity SDK.</p>
+    </footer>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>

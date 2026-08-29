@@ -1,0 +1,22 @@
+node_modules/
+dist/
+__pycache__/
+*.log
+.DS_Store
+*.py[cod]
+*$py.class
+GEMINI.md
+AGENTS.md
+
+# 数据库导出与本地配置
+*.sql.gz
+db/dump-*.sql
+daemon_docker.json
+
+# 本地 agent 与工具链状态
+.codex/
+.superpowers/
+
+.env*
+!.env.example
+!**/.env.example

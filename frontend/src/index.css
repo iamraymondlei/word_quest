@@ -1,0 +1,228 @@
+@import "tailwindcss";
+
+:root {
+  --font-scale: 1.30;
+  --bg-main: #fdf2f8;
+  --bg-card: #ffffff;
+  --border-card: #fbcfe8;
+  --text-main: #831843;
+  --text-muted: #9d174d;
+  --accent: #ec4899;
+  --accent-hover: #db2777;
+  --accent-text: #ffffff;
+}
+
+[data-font-scale="100"] { --font-scale: 1; }
+[data-font-scale="115"] { --font-scale: 1.15; }
+[data-font-scale="130"] { --font-scale: 1.30; }
+
+body {
+  font-size: calc(1rem * var(--font-scale));
+  background-color: var(--bg-main);
+  color: var(--text-main);
+}
+
+/* Cyber / Dark Mode (Default) */
+[data-theme="cyber"], [data-theme="dark"], [data-theme="pink"], [data-theme="sunshine"], [data-theme="ocean"] {
+  --bg-main: #0B0F19;
+  --bg-card: #131B2E;
+  --border-card: #1F2D4A;
+  --text-main: #f4f4f5;
+  --text-muted: #94a3b8;
+  --accent: #00F0FF;
+  --accent-hover: #0891b2;
+  --accent-text: #09090b;
+}
+
+/* Bright Mode (Light) - High Contrast & Legibility */
+[data-theme="bright"], [data-theme="light"] {
+  --bg-main: #f1f5f9;
+  --bg-card: #ffffff;
+  --border-card: #cbd5e1;
+  --text-main: #0f172a;
+  --text-muted: #334155;
+  --accent: #0284c7;
+  --accent-hover: #0369a1;
+  --accent-text: #ffffff;
+}
+
+/* Bright Mode High-Contrast Component Overrides */
+[data-theme="bright"] body {
+  background-color: #f1f5f9;
+  color: #0f172a;
+}
+
+/* Wildcard & Strict Elimination of ALL Dark & Black Backgrounds in Bright Mode */
+[data-theme="bright"] [class*="bg-slate-"],
+[data-theme="bright"] [class*="bg-cyan-950"],
+[data-theme="bright"] [class*="bg-amber-950"],
+[data-theme="bright"] [class*="bg-yellow-950"],
+[data-theme="bright"] [class*="bg-emerald-950"],
+[data-theme="bright"] [class*="bg-rose-950"],
+[data-theme="bright"] [class*="bg-red-950"],
+[data-theme="bright"] [class*="bg-zinc-"],
+[data-theme="bright"] [class*="bg-black"],
+[data-theme="bright"] .bg-\[\#0B0F19\],
+[data-theme="bright"] .bg-\[\#131B2E\],
+[data-theme="bright"] .bg-\[\#0D1322\],
+[data-theme="bright"] .bg-\[\#0F172A\],
+[data-theme="bright"] .bg-\[\#090D16\],
+[data-theme="bright"] .bg-\[\#0f172a\],
+[data-theme="bright"] .bg-[#0B0F19],
+[data-theme="bright"] .bg-[#131B2E],
+[data-theme="bright"] .bg-[#0D1322],
+[data-theme="bright"] .bg-[#0F172A],
+[data-theme="bright"] .bg-[#090D16] {
+  background-color: #ffffff !important;
+  color: #0f172a !important;
+  border-color: #cbd5e1 !important;
+}
+
+[data-theme="bright"] [class*="hover:bg-slate-"]:hover,
+[data-theme="bright"] [class*="hover:bg-black"]:hover,
+[data-theme="bright"] [class*="hover:bg-cyan-950"]:hover {
+  background-color: #e2e8f0 !important;
+  color: #0f172a !important;
+}
+
+[data-theme="bright"] .bg-slate-800\/80,
+[data-theme="bright"] .bg-slate-800\/50,
+[data-theme="bright"] .bg-slate-700\/60,
+[data-theme="bright"] .bg-black\/10,
+[data-theme="bright"] .bg-black\/20 {
+  background-color: #f1f5f9 !important;
+  border-color: #cbd5e1 !important;
+}
+
+[data-theme="bright"] .text-slate-100,
+[data-theme="bright"] .text-slate-200,
+[data-theme="bright"] .text-slate-300,
+[data-theme="bright"] .text-slate-400,
+[data-theme="bright"] .text-cyan-300,
+[data-theme="bright"] .text-cyan-400 {
+  color: #0f172a !important;
+}
+
+[data-theme="bright"] .text-slate-500,
+[data-theme="bright"] .text-slate-600,
+[data-theme="bright"] .text-cyan-500\/70 {
+  color: #334155 !important;
+}
+
+[data-theme="bright"] .text-amber-400,
+[data-theme="bright"] .text-amber-300,
+[data-theme="bright"] .text-amber-500\/80 {
+  color: #d97706 !important;
+}
+
+[data-theme="bright"] .border-slate-800,
+[data-theme="bright"] .border-slate-700,
+[data-theme="bright"] .border-slate-600,
+[data-theme="bright"] .border-[#1F2D4A],
+[data-theme="bright"] .border-cyan-500\/20,
+[data-theme="bright"] .border-cyan-500\/30,
+[data-theme="bright"] .border-cyan-500\/40,
+[data-theme="bright"] .border-cyan-500\/50 {
+  border-color: #cbd5e1 !important;
+}
+
+[data-theme="bright"] .glass-card,
+[data-theme="bright"] .glass-panel {
+  background-color: #ffffff !important;
+  border-color: #cbd5e1 !important;
+  color: #0f172a !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05) !important;
+}
+
+[data-theme="bright"] .bg-cyan-500\/10,
+[data-theme="bright"] .bg-cyan-500\/20 {
+  background-color: #e0f2fe !important;
+  color: #0369a1 !important;
+  border-color: #7dd3fc !important;
+}
+
+[data-theme="bright"] .bg-emerald-500\/10,
+[data-theme="bright"] .bg-emerald-500\/20 {
+  background-color: #dcfce7 !important;
+  color: #15803d !important;
+  border-color: #86efac !important;
+}
+
+[data-theme="bright"] .bg-amber-500\/10,
+[data-theme="bright"] .bg-amber-500\/20 {
+  background-color: #fef3c7 !important;
+  color: #b45309 !important;
+  border-color: #fde68a !important;
+}
+
+/* Helper Theme Utility Classes */
+.theme-bg {
+  background-color: var(--bg-main);
+}
+
+.theme-card {
+  background-color: var(--bg-card);
+  border-color: var(--border-card);
+}
+
+.theme-text {
+  color: var(--text-main);
+}
+
+.theme-text-muted {
+  color: var(--text-muted);
+}
+
+.theme-border {
+  border-color: var(--border-card);
+}
+
+.theme-accent-btn {
+  background-color: var(--accent);
+  color: var(--accent-text);
+  transition: all 0.2s ease-in-out;
+}
+.theme-accent-btn:hover {
+  background-color: var(--accent-hover);
+}
+
+.theme-cleared-btn {
+  background-color: color-mix(in srgb, var(--accent) 15%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 40%, transparent);
+  color: var(--accent);
+}
+
+.theme-accent-card {
+  background-color: var(--bg-card);
+  border-color: var(--accent);
+}
+
+.theme-accent-border {
+  border-color: var(--accent);
+}
+
+.theme-stage-btn {
+  background-color: var(--accent);
+  color: var(--accent-text);
+  border-color: var(--border-card);
+}
+
+@layer base {
+  body {
+    @apply font-mono antialiased selection:bg-cyan-500/30 selection:text-cyan-400;
+  }
+}
+
+/* Custom glassmorphism utilities */
+.glass-panel {
+  @apply bg-zinc-900/60 backdrop-blur-md border border-zinc-800/80 shadow-lg;
+}
+
+.glow-cyan {
+  @apply shadow-[0_0_15px_rgba(34,211,238,0.2)];
+}
+
+.glow-violet {
+  @apply shadow-[0_0_15px_rgba(139,92,246,0.2)];
+}
+

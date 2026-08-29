@@ -1,0 +1,32 @@
+{
+  "agy": {
+    "default_model": "gemini-3.7-flash-high",
+    "models": [
+      {
+        "id": "gemini-3.7-flash-low",
+        "name": "Gemini 3.7 Flash (Low)",
+        "description": "Fastest low reasoning"
+      },
+      {
+        "id": "gemini-3.6-flash-low",
+        "name": "Gemini 3.6 Flash (Low)",
+        "description": "Lightweight multimodal"
+      }
+    ]
+  },
+  "codex": {
+    "default_model": "gpt-5.6-sol",
+    "models": [
+      {
+        "id": "gpt-5.6-sol",
+        "name": "GPT-5.6 Sol",
+        "description": "Codex Flagship multimodal model (Default)"
+      },
+      {
+        "id": "gpt-4o",
+        "name": "GPT-4o",
+        "description": "OpenAI Flagship multimodal model"
+      }
+    ]
+  }
+}

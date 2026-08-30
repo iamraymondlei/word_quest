@@ -20,7 +20,8 @@ daemon_docker.json
 .env*
 !.env.example
 !**/.env.example
-docs/
+docs/archive/
+docs/runbooks/
 scripts/
 docker-compose.yml
 ai_agent/Dockerfile

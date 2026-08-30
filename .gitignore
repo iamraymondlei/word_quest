@@ -3,10 +3,12 @@ dist/
 __pycache__/
 *.log
 .DS_Store
+*:Zone.Identifier
 *.py[cod]
 *$py.class
 GEMINI.md
 AGENTS.md
+ENVIRONMENT.md
 
 # 数据库导出与本地配置
 *.sql.gz

@@ -84,9 +84,6 @@ export const UserSelect: React.FC<UserSelectProps> = ({ onLogin, onAdminClick })
             </p>
           </div>
           <div className="login-datetime-container" data-testid="login-datetime">
-            <div className="login-datetime-date">
-              📅 {currentTime.toLocaleDateString()}
-            </div>
             <div className="login-datetime-time font-bold text-cyan-400">
               ⏰ {currentTime.toLocaleTimeString()}
             </div>

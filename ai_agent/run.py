@@ -13,7 +13,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 if __name__ == "__main__":
-    port = int(os.getenv("AI_AGENT_PORT", "8020"))
+    port = int(os.getenv("PYTHON_PORT", os.getenv("AI_AGENT_PORT", "8020")))
     uvicorn.run(
         "app.main:app",
         host="0.0.0.0",

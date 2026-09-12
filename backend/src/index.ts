@@ -15,9 +15,10 @@ import settingRoutes from './routes/settingRoutes';
 import { DEFAULT_GAME_SETTINGS } from './controllers/settingController';
 
 const app = express();
-const PORT = process.env.PORT || 8000;
+const PORT = process.env.BACKEND_PORT || process.env.PORT || 8010;
 
 console.log('Environment variables:');
+console.log('PORT (Backend):', PORT);
 console.log('DB_HOST:', dbConfig.host);
 console.log('DB_PORT:', dbConfig.port);
 console.log('DB_USER:', dbConfig.user);

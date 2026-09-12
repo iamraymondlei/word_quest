@@ -677,10 +677,19 @@ export const uploadStoryCSV = async (req: Request, res: Response) => {
   }
 };
 
+export const getAiAgentUrl = (): string => {
+  const target = process.env.PYTHON_PORT || process.env.AI_AGENT_PORT || process.env.AI_AGENT_URL || '8020';
+  const trimmed = target.trim();
+  if (/^\d+$/.test(trimmed)) {
+    return `http://127.0.0.1:${trimmed}`;
+  }
+  return trimmed;
+};
+
 export const getAIModels = async (req: Request, res: Response) => {
   const cli = (req.query.cli as string) || 'agy';
   try {
-    const aiAgentUrl = process.env.AI_AGENT_URL || 'http://localhost:8000';
+    const aiAgentUrl = getAiAgentUrl();
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 10000);
 
@@ -747,7 +756,7 @@ export const importAIStory = async (req: Request, res: Response) => {
   }
 
   try {
-    const aiAgentUrl = process.env.AI_AGENT_URL || 'http://localhost:8000';
+    const aiAgentUrl = getAiAgentUrl();
     const formData = new FormData();
     formData.append('question_count', String(questionCount));
     formData.append('cli', cli);

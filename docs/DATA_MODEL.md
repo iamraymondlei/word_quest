@@ -92,6 +92,14 @@
 
 保存唯一版本号、发布日期及功能 JSON。当前只作为版本展示数据，不替代 Git 历史或 migration 版本。
 
+### `project_roadmap_tasks`
+
+保存项目路线图条目，包括任务 ID、标题、类别、状态、版本、日期、摘要、步骤、影响文件、技术说明、验证方式、优先级及放弃/替代方案。后端在表为空时写入代码内置种子；该表不是 migration 历史。
+
+### 故事插图
+
+插图文件保存在外部 MinIO 的 `wordquest-stories` bucket 中，数据库不保存二进制。`story_passage_json` 的句子元素可包含 `illustration_url`，通常指向 `/api/illustrations/<filename>`；AI 解析结果还可临时包含页面级 `illustration_box`。
+
 ## 3. 关系
 
 ```text
@@ -102,12 +110,12 @@ users ──< user_island_access >── islands ──< words
   └──< user_word_progress >──────── words
 
 story_groups.name ──(逻辑关联)── islands.group_name
-game_settings、version_history 为全局表
+game_settings、version_history、project_roadmap_tasks 为全局表
 ```
 
 ## 4. JSON 合同
 
-- `story_passage_json`：数组元素至少应包含段落号、句子号、英文正文与中文翻译；前后端需容忍旧数据字段缺失。
+- `story_passage_json`：数组元素至少应包含段落号、句子号、英文正文与中文翻译，并可包含 `illustration_url`；前后端需容忍旧数据字段缺失。
 - `story_questions`：问题数组，每项包含问题、提示和答案。
 - `translation_stats_json`：按 Word Matching 当前前端格式保存的对象；变更结构时必须兼容旧值或提供 migration。
 - `game_settings.setting_value`：每个设置单独 JSON 编码；读取失败时后端会回退原始字符串。
@@ -122,4 +130,3 @@ game_settings、version_history 为全局表
 3. Schema、测试初始化和本文件必须在同一次变更同步。
 4. 应用启动不得静默吞掉 migration 错误。
 5. 迁移前备份，禁止 drop、truncate 或覆盖恢复，除非用户明确授权并确认目标库。
-

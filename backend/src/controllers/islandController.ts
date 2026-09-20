@@ -787,7 +787,7 @@ export const importAIStory = async (req: Request, res: Response) => {
     } catch (err: any) {
       clearTimeout(timeoutId);
       if (err.name === 'AbortError') {
-        throw new Error(`AI 解析服务处理超时（已等待 ${Math.round(dynamicTimeoutMs / 60000)} 分钟）。对于页数较多（如 5-10 页）的绘本，建议分批导入或稍后重试`);
+        throw new Error('AI 解析服务请求超时，请稍后重试');
       }
       throw err;
     }
@@ -874,4 +874,3 @@ export const deleteIsland = async (req: Request, res: Response) => {
     if (connection) connection.release();
   }
 };
-

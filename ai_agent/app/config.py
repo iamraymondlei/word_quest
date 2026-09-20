@@ -23,6 +23,10 @@ class Settings:
     # App limits
     MAX_IMAGES: int = int(os.getenv("MAX_IMAGES", "10"))
     DEFAULT_QUESTION_COUNT: int = int(os.getenv("DEFAULT_QUESTION_COUNT", "5"))
+    MAX_IMAGE_BYTES: int = int(os.getenv("MAX_IMAGE_BYTES", str(5 * 1024 * 1024)))
+    MAX_TOTAL_IMAGE_BYTES: int = int(os.getenv("MAX_TOTAL_IMAGE_BYTES", str(50 * 1024 * 1024)))
+    MAX_IMAGE_PIXELS: int = int(os.getenv("MAX_IMAGE_PIXELS", "40000000"))
+    MAX_CLI_OUTPUT_BYTES: int = int(os.getenv("MAX_CLI_OUTPUT_BYTES", str(5 * 1024 * 1024)))
 
     # Allowed image MIME types
     ALLOWED_IMAGE_TYPES: list[str] = [

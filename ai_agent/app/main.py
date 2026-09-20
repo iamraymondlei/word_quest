@@ -5,12 +5,14 @@ Provides the /parse endpoint for picture book image analysis.
 """
 
 import logging
+import io
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+from PIL import Image, UnidentifiedImageError
 
 from app.config import settings
 from app.schemas import APIResponse
@@ -95,10 +97,13 @@ async def list_models(cli: str = "agy"):
     Get available models for the specified CLI tool (agy or codex).
     Reads configuration from models_config.json.
     """
-    cfg = get_cli_config(cli=cli)
+    normalized_cli = cli.lower().strip()
+    if normalized_cli not in {"agy", "codex"}:
+        raise HTTPException(status_code=400, detail="cli must be 'agy' or 'codex'.")
+    cfg = get_cli_config(cli=normalized_cli)
     return {
         "success": True,
-        "cli": cli,
+        "cli": normalized_cli,
         "models": cfg.get("models", []),
         "default_model": cfg.get("default_model", "gemini-3.7-flash-high" if cli == "agy" else "gpt-5.6-sol"),
     }
@@ -154,8 +159,13 @@ async def parse_story(
             detail=f"最多支持 {settings.MAX_IMAGES} 张图片，当前上传了 {len(images)} 张。",
         )
 
+    normalized_cli = cli.lower().strip()
+    if normalized_cli not in {"agy", "codex"}:
+        raise HTTPException(status_code=400, detail="cli must be 'agy' or 'codex'.")
+
     # Validate MIME types & read bytes
     images_to_parse: list[tuple[bytes, str]] = []
+    total_image_bytes = 0
     for idx, img_file in enumerate(images):
         content_type = img_file.content_type or ""
         if content_type not in settings.ALLOWED_IMAGE_TYPES:
@@ -172,6 +182,29 @@ async def parse_story(
                 status_code=400,
                 detail=f"第 {idx + 1} 张图片为空文件。",
             )
+        if len(data) > settings.MAX_IMAGE_BYTES:
+            raise HTTPException(status_code=413, detail=f"第 {idx + 1} 张图片超过单文件大小限制。")
+        total_image_bytes += len(data)
+        if total_image_bytes > settings.MAX_TOTAL_IMAGE_BYTES:
+            raise HTTPException(status_code=413, detail="上传图片总大小超过限制。")
+        try:
+            with Image.open(io.BytesIO(data)) as image:
+                image.verify()
+            with Image.open(io.BytesIO(data)) as image:
+                if image.width * image.height > settings.MAX_IMAGE_PIXELS:
+                    raise HTTPException(status_code=413, detail=f"第 {idx + 1} 张图片像素尺寸超过限制。")
+                detected_format = (image.format or "").upper()
+                expected_formats = {
+                    "image/jpeg": {"JPEG"},
+                    "image/png": {"PNG"},
+                    "image/webp": {"WEBP"},
+                }[content_type]
+                if detected_format not in expected_formats:
+                    raise HTTPException(status_code=400, detail=f"第 {idx + 1} 张图片内容与 MIME 类型不一致。")
+        except HTTPException:
+            raise
+        except (UnidentifiedImageError, OSError, ValueError):
+            raise HTTPException(status_code=400, detail=f"第 {idx + 1} 张文件不是有效图片。")
         images_to_parse.append((data, content_type))
 
     cp = custom_prompt.strip() if isinstance(custom_prompt, str) else ""
@@ -188,7 +221,7 @@ async def parse_story(
             images=images_to_parse,
             question_count=question_count,
             model=model,
-            cli=cli,
+            cli=normalized_cli,
             custom_prompt=effective_prompt,
         )
     except ValueError as e:
@@ -199,4 +232,3 @@ async def parse_story(
         return APIResponse(success=False, error=f"解析失败: {e}")
 
     return APIResponse(success=True, data=result)
-

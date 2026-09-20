@@ -26,6 +26,13 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
 });
 
 describe('Island and Words API Tests', () => {
+  it('should not expose the removed legacy /api/words/upload endpoint', async () => {
+    const response = await request(app)
+      .post('/api/words/upload')
+      .attach('file', Buffer.from('word,translation\ncat,猫'), 'words.csv');
+    expect(response.status).toBe(404);
+  });
+
   beforeEach(async () => {
     // Clear all tables to ensure clean slate, including progress tables referencing foreign keys
     await pool.query('DELETE FROM user_word_progress');
@@ -971,4 +978,3 @@ describe('Island and Words API Tests', () => {
     });
   });
 });
-

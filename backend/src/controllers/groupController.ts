@@ -2,7 +2,8 @@ import { Request, Response } from 'express';
 import pool from '../config/db';
 
 export const isReservedGroupName = (name: string): boolean => {
-  return name.trim().toUpperCase() === 'ALL';
+  const normalized = name.trim().toUpperCase();
+  return normalized === 'ALL' || normalized === '__ALL__';
 };
 
 export const getGroups = async (req: Request, res: Response) => {

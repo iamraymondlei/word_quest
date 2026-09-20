@@ -68,6 +68,22 @@ export const DEFAULT_GAME_SETTINGS: GameSettingsMap = {
   ai_prompt_template: DEFAULT_AI_PROMPT_TEMPLATE
 };
 
+const ALLOWED_MONSTER_IDS = new Set(DEFAULT_GAME_SETTINGS.monster_emojis);
+const NUMERIC_SETTING_RULES: Record<string, { min: number; max: number; integer?: boolean }> = {
+  monster_speed_slow: { min: 0.1, max: 20 },
+  monster_speed_medium: { min: 0.1, max: 20 },
+  monster_speed_fast: { min: 0.1, max: 20 },
+  monster_retreat_distance: { min: 0, max: 100 },
+  monster_wait_seconds: { min: 0, max: 120 },
+  consecutive_error_limit: { min: 1, max: 100, integer: true },
+  max_lines_per_page: { min: 1, max: 20, integer: true },
+  initial_hearts: { min: 1, max: 20, integer: true },
+  coins_completion: { min: 0, max: 100000, integer: true },
+  coins_speed_bonus: { min: 0, max: 100000, integer: true },
+  coins_full_hearts_bonus: { min: 0, max: 100000, integer: true },
+};
+const MAX_AI_PROMPT_LENGTH = 20000;
+
 /**
  * GET /api/game-settings
  * Retrieve all global game settings with fallback defaults.
@@ -119,16 +135,26 @@ export const updateGameSettings = async (req: Request, res: Response) => {
       if (cleanEmojis.length === 0) {
         return res.status(400).json({ error: 'monster_emojis must contain at least one valid emoji' });
       }
+      const invalidIds = cleanEmojis.filter(id => !ALLOWED_MONSTER_IDS.has(id));
+      if (invalidIds.length > 0) {
+        return res.status(400).json({ error: `monster_emojis contains unsupported identifiers: ${invalidIds.join(', ')}` });
+      }
       validatedUpdates[key] = cleanEmojis;
     } else if (key === 'ai_prompt_template') {
       if (typeof value !== 'string' || !value.trim()) {
         return res.status(400).json({ error: 'ai_prompt_template must be a non-empty string' });
       }
+      if (value.trim().length > MAX_AI_PROMPT_LENGTH) {
+        return res.status(400).json({ error: `ai_prompt_template must be ${MAX_AI_PROMPT_LENGTH} characters or less` });
+      }
       validatedUpdates[key] = value.trim();
     } else {
       const numVal = Number(value);
-      if (isNaN(numVal) || numVal < 0) {
-        return res.status(400).json({ error: `${key} must be a positive number` });
+      const rule = NUMERIC_SETTING_RULES[key];
+      if (!Number.isFinite(numVal) || !rule || numVal < rule.min || numVal > rule.max || (rule.integer && !Number.isInteger(numVal))) {
+        return res.status(400).json({
+          error: `${key} must be ${rule?.integer ? 'an integer' : 'a number'} between ${rule?.min} and ${rule?.max}`
+        });
       }
       validatedUpdates[key] = numVal;
     }

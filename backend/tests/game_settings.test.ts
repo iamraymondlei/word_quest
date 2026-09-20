@@ -39,7 +39,7 @@ describe('Global Game Settings CRUD (/api/game-settings)', () => {
         monster_speed_slow: 1.8,
         monster_wait_seconds: 6,
         coins_completion: 200,
-        monster_emojis: ['👾', '🐉', '🤖'],
+        monster_emojis: ['dragon', 'ghost', 'mech'],
         ai_prompt_template: 'Custom prompt instructions for test.'
       };
 
@@ -49,7 +49,7 @@ describe('Global Game Settings CRUD (/api/game-settings)', () => {
       expect(res.body.settings.monster_speed_slow).toBe(1.8);
       expect(res.body.settings.monster_wait_seconds).toBe(6);
       expect(res.body.settings.coins_completion).toBe(200);
-      expect(res.body.settings.monster_emojis).toEqual(['👾', '🐉', '🤖']);
+      expect(res.body.settings.monster_emojis).toEqual(['dragon', 'ghost', 'mech']);
       expect(res.body.settings.ai_prompt_template).toBe('Custom prompt instructions for test.');
 
       // Verify persistence via GET
@@ -58,7 +58,7 @@ describe('Global Game Settings CRUD (/api/game-settings)', () => {
       expect(getRes.body.monster_speed_slow).toBe(1.8);
       expect(getRes.body.monster_wait_seconds).toBe(6);
       expect(getRes.body.coins_completion).toBe(200);
-      expect(getRes.body.monster_emojis).toEqual(['👾', '🐉', '🤖']);
+      expect(getRes.body.monster_emojis).toEqual(['dragon', 'ghost', 'mech']);
       expect(getRes.body.ai_prompt_template).toBe('Custom prompt instructions for test.');
     });
 
@@ -83,7 +83,17 @@ describe('Global Game Settings CRUD (/api/game-settings)', () => {
     it('should reject negative numerical values', async () => {
       const res = await request(app).put('/api/game-settings').send({ monster_speed_slow: -2 });
       expect(res.status).toBe(400);
-      expect(res.body.error).toMatch(/positive number/i);
+      expect(res.body.error).toMatch(/between/i);
+    });
+
+    it('should reject out-of-range and non-integer numerical values', async () => {
+      expect((await request(app).put('/api/game-settings').send({ monster_speed_fast: 100 })).status).toBe(400);
+      expect((await request(app).put('/api/game-settings').send({ initial_hearts: 2.5 })).status).toBe(400);
+    });
+
+    it('should reject unsupported monster identifiers and oversized prompts', async () => {
+      expect((await request(app).put('/api/game-settings').send({ monster_emojis: ['unknown-monster'] })).status).toBe(400);
+      expect((await request(app).put('/api/game-settings').send({ ai_prompt_template: 'x'.repeat(20001) })).status).toBe(400);
     });
   });
 });

@@ -13,7 +13,7 @@
 
 | 场景 | Frontend | Backend | AI service | MySQL |
 |---|---:|---:|---:|---|
-| 源码开发缺省 | 5174 | 由 `PORT` 决定，代码缺省 8000；Vite 代理缺省指向 8010 | 通常 8020/自定义 | 由环境变量决定 |
+| 源码开发缺省 | 5174 | 由 `BACKEND_PORT`/`PORT` 决定，代码缺省 8010；Vite 代理缺省指向 8010 | 8020/自定义 | 由环境变量决定 |
 | 当前 Compose 主机 | 5173 | 8000 | 8080 | 外部服务，不映射于本 Compose |
 | 容器内部 | 5174 | 8000 | 8000 | `mysql-prod:3306` |
 
@@ -48,6 +48,9 @@
 | `GEMINI_MODEL` | agy 缺省模型名（历史名称，实际工具可配置） |
 | `MODELS_CONFIG_PATH` | CLI/模型配置文件路径 |
 | `MAX_IMAGES` | 单次最多图片数，代码缺省 10 |
+| `MAX_IMAGE_BYTES`, `MAX_TOTAL_IMAGE_BYTES` | 单张图片及一次请求的总字节上限 |
+| `MAX_IMAGE_PIXELS` | 单张图片最大像素数 |
+| `MAX_CLI_OUTPUT_BYTES` | CLI 标准输出与错误输出的合计大小上限 |
 | `DEFAULT_QUESTION_COUNT` | 缺省阅读题数 |
 | `HTTP_PROXY`, `HTTPS_PROXY`, `NO_PROXY` | 必要时的标准代理配置 |
 
@@ -66,7 +69,7 @@ npm run dev
 ```bash
 cd frontend
 npm install
-BACKEND_URL=http://localhost:8000 npm run dev
+BACKEND_URL=http://localhost:8010 npm run dev
 ```
 
 ```bash
@@ -76,7 +79,7 @@ python -m venv .venv
 .venv/bin/python run.py
 ```
 
-若后端使用 8010，则相应修改 `PORT` 和 `BACKEND_URL`。不要把真实环境值写回文档。
+若改用其他后端端口，则同时修改 `BACKEND_PORT`（或 `PORT`）和 `BACKEND_URL`。不要把真实环境值写回文档。
 
 ## 5. Compose 启动
 
@@ -99,7 +102,7 @@ docker compose down
 ## 6. 健康检查
 
 ```bash
-curl http://127.0.0.1:8000/api/health
+curl http://127.0.0.1:8010/api/health
 curl http://127.0.0.1:8080/health
 ```
 
@@ -120,4 +123,3 @@ curl http://127.0.0.1:8080/health
 - 不在 Git、文档或 Agent 日志中保存含真实个人数据或密码的 dump。
 
 局域网/iPad 接入细节见 [runbooks/wsl2-lan-access.md](runbooks/wsl2-lan-access.md)。
-

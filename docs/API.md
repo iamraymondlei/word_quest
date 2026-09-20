@@ -33,12 +33,12 @@
 |---|---|---|---|
 | GET | `/api/islands` | `user_id?`, `group?`/`group_name?` | 返回故事、词汇、分配和相关进度 |
 | POST | `/api/islands` | 故事字段、`words?`, `user_ids?` | 按唯一 `name` 新建或更新故事；关联更新使用事务 |
+| DELETE | `/api/islands/:id` | 路径 ID | 删除故事及其词汇、分配和学习进度 |
 | PUT | `/api/islands/:id/access` | 学员 ID 数组 | 替换故事的学员分配 |
 | POST | `/api/islands/upload-words` | CSV 文件及故事标识 | 为指定故事批量导入词汇 |
 | POST | `/api/islands/upload-story-csv` | CSV 文件 | 批量导入故事数据 |
 | GET | `/api/islands/export-errors` | 查询条件 | 导出错词 CSV |
 | GET | `/api/words` | 查询参数 | 查询词汇 |
-| POST | `/api/words/upload` | 单个 CSV 文件 | 旧版通用词汇导入入口 |
 
 保留分组名 `ALL` 和 `__ALL__` 不能保存为故事分组。故事写入接受的 JSON 结构见 [DATA_MODEL.md](DATA_MODEL.md)。
 
@@ -82,6 +82,16 @@
 | GET | `/api/game-settings` | 返回数据库值与代码默认值合并后的设置 |
 | PUT | `/api/game-settings` | 只更新 `DEFAULT_GAME_SETTINGS` 白名单内的键 |
 
+数值设置按各键的业务范围校验；整数设置不接受小数。怪兽池只接受内置稳定标识且不得为空，AI 提示词不得为空且最长 20,000 字符。
+
+### 插图与项目路线图
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| GET | `/api/illustrations/:filename` | 从 MinIO 代理故事插图，并返回长期缓存响应头 |
+| GET | `/api/roadmap` | 返回项目路线图任务；空表时写入并返回代码内置种子 |
+| PUT | `/api/roadmap/:id` | 更新路线图任务状态、优先级、说明等可编辑字段 |
+
 ## 3. AI service API
 
 | 方法 | 路径 | 说明 |
@@ -93,7 +103,7 @@
 
 `/parse` 表单字段：
 
-- `images`：1–10 个 JPEG、PNG 或 WebP 文件。
+- `images`：1–10 个 JPEG、PNG 或 WebP 文件；服务同时校验 MIME、实际图片格式、单文件/总字节数和像素上限。
 - `question_count`：1–20，缺省值由环境变量控制。
 - `cli`：`agy` 或 `codex`。
 - `model`：可选模型名，必须受工具配置约束。
@@ -107,4 +117,3 @@
 - 新增管理写接口前必须先定义认证与授权边界。
 - 文件接口必须同时限制文件数、单文件大小、媒体类型和解析后的内容规模。
 - 不得新增返回密码、CLI 登录资料、代理值、主机路径或原始异常堆栈的接口。
-

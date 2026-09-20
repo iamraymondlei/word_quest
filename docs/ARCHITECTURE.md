@@ -11,7 +11,7 @@ Browser
 React + Vite frontend :5174 (Compose host :5173)
   │ HTTP JSON / multipart
   ▼
-Express backend :8000
+Express backend :8010 (Compose container :8000)
   ├── mysql2 ──► external MySQL 8
   └── HTTP ────► FastAPI ai_agent :8000 (Compose host :8080)
                     └── local process ──► agy or codex CLI
@@ -71,8 +71,8 @@ Compose 将三个应用服务加入默认网络，后端同时加入外部 `shar
 ## 4. 技术约束
 
 - Node.js 后端和前端使用各自的 `package.json`；根目录没有统一构建/测试编排。
-- 后端默认端口 8000；Vite 源码配置端口 5174；AI 容器端口 8000。
-- 本地开发代理的后端缺省目标是 `http://localhost:8010`，与 Compose 主机端口 8000 不同。
+- 后端源码开发默认端口 8010；Vite 源码配置端口 5174；AI 源码开发默认端口 8020。
+- Compose 中后端容器与 AI 容器均监听 8000，主机分别映射为 8000 和 8080；前端代理在源码开发时默认指向 `http://localhost:8010`。
 - Web Speech API 在 iPad Safari 上需要 HTTPS；Vite 使用 basic SSL 插件提供开发安全上下文。
 - Story Chase 和 Space Defender 依赖电脑实体键盘，前端同时在入口和游戏根组件检查设备。
 - 系统目前没有统一身份认证、授权中间件或 CSRF 防护，只适合受控本地网络。
@@ -87,5 +87,6 @@ Compose 将三个应用服务加入默认网络，后端同时加入外部 `shar
 | 测试 Schema | `backend/tests/globalSetup.ts` |
 | 前端入口和模式映射 | `frontend/src/App.tsx`、`frontend/src/components/AdventureMap.tsx` |
 | AI 工具调用 | `ai_agent/app/main.py`、`ai_agent/app/services/gemini_parser.py` |
+| 插图裁切、存储和代理 | `ai_agent/app/services/image_cropper.py`、`ai_agent/app/services/storage.py`、`backend/src/routes/illustrationRoutes.ts` |
+| 项目路线图 | `backend/src/controllers/roadmapController.ts`、`frontend/src/components/ProjectRoadmap.tsx` |
 | 容器拓扑 | `docker-compose.yml` |
-

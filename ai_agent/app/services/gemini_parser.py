@@ -260,6 +260,8 @@ class GeminiParser:
         Supports optional custom_prompt parameter, falling back to DEFAULT_SYSTEM_PROMPT.
         """
         cli_type = (cli or "agy").lower().strip()
+        if cli_type not in {"agy", "codex"}:
+            raise ValueError("cli must be 'agy' or 'codex'.")
         if cli_type == "agy":
             effective_model = normalize_agy_model(model or settings.GEMINI_MODEL)
         else:
@@ -330,7 +332,16 @@ class GeminiParser:
                         stdout=asyncio.subprocess.PIPE,
                         stderr=asyncio.subprocess.PIPE
                     )
-                    stdout, stderr = await proc.communicate(input=prompt.encode("utf-8"))
+                    cli_timeout = max(360, len(images) * 65)
+                    try:
+                        stdout, stderr = await asyncio.wait_for(
+                            proc.communicate(input=prompt.encode("utf-8")),
+                            timeout=cli_timeout,
+                        )
+                    except asyncio.TimeoutError:
+                        proc.kill()
+                        await proc.wait()
+                        raise ValueError(f"{cli_type} 解析处理超时（已耗时超过 {cli_timeout // 60} 分钟）。")
                 else:
                     agy_path = shutil.which("agy")
                     if not agy_path:
@@ -361,6 +372,9 @@ class GeminiParser:
                         except Exception:
                             pass
                         raise ValueError(f"{cli_type} 解析处理超时（已耗时超过 {cli_timeout // 60} 分钟）。建议分批上传（每次 3-5 页）以加快速度。")
+
+                if len(stdout) + len(stderr) > settings.MAX_CLI_OUTPUT_BYTES:
+                    raise ValueError("CLI 输出超过允许大小。")
 
                 if proc.returncode == 0:
                     break
@@ -414,6 +428,5 @@ class GeminiParser:
             raise ValueError(f"绘本解析失败: {e}")
         finally:
             shutil.rmtree(temp_dir, ignore_errors=True)
-
 
 

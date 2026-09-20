@@ -1,5 +1,6 @@
 import io
 import unittest
+from unittest.mock import MagicMock, patch
 from PIL import Image
 
 from app.services.image_cropper import crop_and_compress_illustration
@@ -54,14 +55,13 @@ class TestImageCropper(unittest.TestCase):
         self.assertIsNone(crop_and_compress_illustration(raw_bytes, None))
 
     def test_minio_client_singleton_and_upload(self):
-        client1 = get_minio_client()
-        client2 = get_minio_client()
-        self.assertIs(client1, client2)
+        fake_client = MagicMock()
+        with patch("app.services.storage.get_minio_client", return_value=fake_client):
+            raw_bytes = create_test_image(200, 200)
+            url = upload_illustration_bytes(raw_bytes, "test_unit_run.webp", "image/webp")
 
-        # Test upload to MinIO
-        raw_bytes = create_test_image(200, 200)
-        url = upload_illustration_bytes(raw_bytes, "test_unit_run.webp", "image/webp")
         self.assertEqual(url, "/api/illustrations/test_unit_run.webp")
+        fake_client.put_object.assert_called_once()
 
 
 if __name__ == "__main__":

@@ -67,6 +67,18 @@ describe('Story Group Management CRUD (/api/groups)', () => {
       expect(res.body.error).toMatch(/reserved/i);
     });
 
+    it('should reject reserved group name __ALL__ case-insensitively', async () => {
+      const createRes = await request(app).post('/api/groups').send({ name: '__all__' });
+      expect(createRes.status).toBe(400);
+      expect(createRes.body.error).toMatch(/reserved/i);
+
+      const groupRes = await request(app).post('/api/groups').send({ name: `Reserved Rename ${Date.now()}` });
+      expect(groupRes.status).toBe(201);
+      const renameRes = await request(app).put(`/api/groups/${groupRes.body.id}`).send({ name: '__ALL__' });
+      expect(renameRes.status).toBe(400);
+      expect(renameRes.body.error).toMatch(/reserved/i);
+    });
+
     it('should reject duplicate group names', async () => {
       const groupName = `${PREFIX}Duplicate`;
       await request(app).post('/api/groups').send({ name: groupName });

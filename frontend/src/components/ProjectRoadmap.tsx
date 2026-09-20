@@ -31,8 +31,8 @@ export interface RoadmapItem {
   technicalNotes: string;
   verification: string;
   priority?: 'HIGH' | 'MEDIUM' | 'NORMAL';
-  discardReason?: string;       // 暂不考虑的核心理由阐述
-  alternativeSolution?: string; // 替代方案
+  discardReason?: string | null;       // 暂不考虑的核心理由阐述
+  alternativeSolution?: string | null; // 替代方案
 }
 
 export const ROADMAP_ITEMS: RoadmapItem[] = [
@@ -677,16 +677,143 @@ export const ROADMAP_ITEMS: RoadmapItem[] = [
 ];
 
 export const ProjectRoadmap: React.FC = () => {
+  // Database-backed items state
+  const [items, setItems] = useState<RoadmapItem[]>(() => {
+    try {
+      const cached = localStorage.getItem('wordquest_roadmap_items');
+      return cached ? JSON.parse(cached) : ROADMAP_ITEMS;
+    } catch {
+      return ROADMAP_ITEMS;
+    }
+  });
+
+  const [isLoadingFromDb, setIsLoadingFromDb] = useState(false);
+  const [dbConnected, setDbConnected] = useState(false);
+
   // Filter states
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'COMPLETED' | 'CONFIRMED' | 'EVALUATING' | 'DISCARDED'>('ALL');
   const [categoryFilter, setCategoryFilter] = useState<TaskCategory>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set([
-    'TASK-7.1',
     'FEAT-CONFIRM-01',
     'FEAT-DISCARD-01'
   ]));
   const [copiedNotification, setCopiedNotification] = useState(false);
+
+  // Inline editing states for admin modification
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editStatus, setEditStatus] = useState<TaskStatus>('CONFIRMED');
+  const [editDiscardReason, setEditDiscardReason] = useState<string>('');
+  const [editAltSolution, setEditAltSolution] = useState<string>('');
+  const [editVersion, setEditVersion] = useState<string>('');
+  const [savingId, setSavingId] = useState<string | null>(null);
+  const [saveFeedback, setSaveFeedback] = useState<{ id: string; success: boolean; text: string } | null>(null);
+
+  // Fetch roadmap items from MySQL database on mount
+  React.useEffect(() => {
+    const fetchFromDb = async () => {
+      setIsLoadingFromDb(true);
+      try {
+        const res = await fetch('/api/roadmap');
+        if (res.ok) {
+          const data = await res.json();
+          if (Array.isArray(data) && data.length > 0) {
+            setItems(data);
+            setDbConnected(true);
+            try {
+              localStorage.setItem('wordquest_roadmap_items', JSON.stringify(data));
+            } catch {}
+          }
+        }
+      } catch (err) {
+        console.warn('Roadmap database fetch error, using local fallback:', err);
+      } finally {
+        setIsLoadingFromDb(false);
+      }
+    };
+    fetchFromDb();
+  }, []);
+
+  // Open edit drawer
+  const startEditing = (item: RoadmapItem) => {
+    setEditingId(item.id);
+    setEditStatus(item.status);
+    setEditDiscardReason(item.discardReason || '');
+    setEditAltSolution(item.alternativeSolution || '');
+    setEditVersion(item.version || '');
+    // Ensure item is expanded when editing
+    setExpandedIds(prev => new Set(prev).add(item.id));
+  };
+
+  // Cancel edit
+  const cancelEditing = () => {
+    setEditingId(null);
+  };
+
+  // Save changes to MySQL DB
+  const saveItemChanges = async (id: string) => {
+    setSavingId(id);
+    setSaveFeedback(null);
+
+    try {
+      const res = await fetch(`/api/roadmap/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          status: editStatus,
+          discard_reason: editStatus === 'DISCARDED' ? editDiscardReason : null,
+          alternative_solution: editStatus === 'DISCARDED' ? editAltSolution : null,
+          version: editVersion
+        })
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        const updatedItem = data.item;
+
+        setItems(prev => {
+          const next = prev.map(item => item.id === id ? { ...item, ...updatedItem } : item);
+          try {
+            localStorage.setItem('wordquest_roadmap_items', JSON.stringify(next));
+          } catch {}
+          return next;
+        });
+
+        setEditingId(null);
+        setSaveFeedback({ id, success: true, text: '✅ 已成功更新并保存至 MySQL 数据库！' });
+        setTimeout(() => setSaveFeedback(null), 3500);
+      } else {
+        const errData = await res.json();
+        setSaveFeedback({ id, success: false, text: `⚠️ 保存失败: ${errData.error || '数据库异常'}` });
+        setTimeout(() => setSaveFeedback(null), 3500);
+      }
+    } catch (err: any) {
+      // Offline fallback: update locally in state and localStorage
+      setItems(prev => {
+        const next = prev.map(item => {
+          if (item.id === id) {
+            return {
+              ...item,
+              status: editStatus,
+              discardReason: editStatus === 'DISCARDED' ? editDiscardReason : null,
+              alternativeSolution: editStatus === 'DISCARDED' ? editAltSolution : null,
+              version: editVersion
+            };
+          }
+          return item;
+        });
+        try {
+          localStorage.setItem('wordquest_roadmap_items', JSON.stringify(next));
+        } catch {}
+        return next;
+      });
+      setEditingId(null);
+      setSaveFeedback({ id, success: true, text: '⚡ 离线模式：已保存在浏览器本地缓存！' });
+      setTimeout(() => setSaveFeedback(null), 3500);
+    } finally {
+      setSavingId(null);
+    }
+  };
 
   // Toggle item accordion
   const toggleItem = (id: string) => {
@@ -703,7 +830,7 @@ export const ProjectRoadmap: React.FC = () => {
 
   // Expand all / collapse all
   const handleExpandAll = () => {
-    setExpandedIds(new Set(ROADMAP_ITEMS.map(i => i.id)));
+    setExpandedIds(new Set(items.map(i => i.id)));
   };
 
   const handleCollapseAll = () => {
@@ -712,7 +839,7 @@ export const ProjectRoadmap: React.FC = () => {
 
   // Filter items
   const filteredItems = useMemo(() => {
-    return ROADMAP_ITEMS.filter(item => {
+    return items.filter(item => {
       // Status filter
       if (statusFilter === 'COMPLETED' && item.status !== 'COMPLETED') return false;
       if (statusFilter === 'CONFIRMED' && item.status !== 'CONFIRMED') return false;
@@ -728,9 +855,9 @@ export const ProjectRoadmap: React.FC = () => {
         const matchTitle = item.title.toLowerCase().includes(q);
         const matchId = item.id.toLowerCase().includes(q);
         const matchSummary = item.summary.toLowerCase().includes(q);
-        const matchNotes = item.technicalNotes.toLowerCase().includes(q);
-        const matchFiles = item.affectedFiles.some(f => f.toLowerCase().includes(q));
-        const matchSteps = item.steps.some(s => s.toLowerCase().includes(q));
+        const matchNotes = item.technicalNotes ? item.technicalNotes.toLowerCase().includes(q) : false;
+        const matchFiles = item.affectedFiles ? item.affectedFiles.some(f => f.toLowerCase().includes(q)) : false;
+        const matchSteps = item.steps ? item.steps.some(s => s.toLowerCase().includes(q)) : false;
         const matchReason = item.discardReason ? item.discardReason.toLowerCase().includes(q) : false;
         const matchAlt = item.alternativeSolution ? item.alternativeSolution.toLowerCase().includes(q) : false;
         return matchTitle || matchId || matchSummary || matchNotes || matchFiles || matchSteps || matchReason || matchAlt;
@@ -738,15 +865,15 @@ export const ProjectRoadmap: React.FC = () => {
 
       return true;
     });
-  }, [statusFilter, categoryFilter, searchQuery]);
+  }, [items, statusFilter, categoryFilter, searchQuery]);
 
   // Statistics
-  const totalCount = ROADMAP_ITEMS.length;
-  const completedCount = ROADMAP_ITEMS.filter(i => i.status === 'COMPLETED').length;
-  const confirmedCount = ROADMAP_ITEMS.filter(i => i.status === 'CONFIRMED').length;
-  const evaluatingCount = ROADMAP_ITEMS.filter(i => i.status === 'EVALUATING').length;
-  const discardedCount = ROADMAP_ITEMS.filter(i => i.status === 'DISCARDED').length;
-  const progressPercent = Math.round((completedCount / (completedCount + confirmedCount + evaluatingCount)) * 100);
+  const totalCount = items.length;
+  const completedCount = items.filter(i => i.status === 'COMPLETED').length;
+  const confirmedCount = items.filter(i => i.status === 'CONFIRMED').length;
+  const evaluatingCount = items.filter(i => i.status === 'EVALUATING').length;
+  const discardedCount = items.filter(i => i.status === 'DISCARDED').length;
+  const progressPercent = Math.round((completedCount / Math.max(1, (completedCount + confirmedCount + evaluatingCount))) * 100);
 
   // Copy Markdown
   const copyMarkdown = () => {
@@ -755,33 +882,33 @@ export const ProjectRoadmap: React.FC = () => {
     md += `*总体开发进度: ${progressPercent}% (${completedCount}/${completedCount + confirmedCount + evaluatingCount})*  \n\n`;
 
     md += `## 🚀 一、已上线改动历史 (${completedCount} 项)\n\n`;
-    ROADMAP_ITEMS.filter(i => i.status === 'COMPLETED').forEach(i => {
+    items.filter(i => i.status === 'COMPLETED').forEach(i => {
       md += `### [${i.id}] ${i.title} (${i.version} - ${i.date})\n`;
       md += `> **概述**: ${i.summary}\n\n`;
       md += `**详细修改步骤**:\n`;
-      i.steps.forEach((s, idx) => {
+      (i.steps || []).forEach((s, idx) => {
         md += `${idx + 1}. ${s}\n`;
       });
-      md += `\n**修改涉及文件**: \`${i.affectedFiles.join('`, `')}\`\n\n`;
+      md += `\n**修改涉及文件**: \`${(i.affectedFiles || []).join('`, `')}\`\n\n`;
       md += `**技术方案要点**: ${i.technicalNotes}\n\n`;
       md += `**验收与验证记录**: ${i.verification}\n\n---\n\n`;
     });
 
     md += `## 🎯 二、确定会加入的功能 (${confirmedCount} 项)\n\n`;
-    ROADMAP_ITEMS.filter(i => i.status === 'CONFIRMED').forEach(i => {
+    items.filter(i => i.status === 'CONFIRMED').forEach(i => {
       md += `### [${i.id}] ${i.title} (${i.version})\n`;
       md += `> **规划概述**: ${i.summary}\n\n`;
       md += `**计划实施步骤**:\n`;
-      i.steps.forEach((s, idx) => {
+      (i.steps || []).forEach((s, idx) => {
         md += `${idx + 1}. ${s}\n`;
       });
-      md += `\n**预估影响模块**: \`${i.affectedFiles.join('`, `')}\`\n\n`;
+      md += `\n**预估影响模块**: \`${(i.affectedFiles || []).join('`, `')}\`\n\n`;
       md += `**技术考量**: ${i.technicalNotes}\n\n`;
       md += `**验收标准**: ${i.verification}\n\n---\n\n`;
     });
 
     md += `## 🔬 三、调研评估中的功能 (${evaluatingCount} 项)\n\n`;
-    ROADMAP_ITEMS.filter(i => i.status === 'EVALUATING').forEach(i => {
+    items.filter(i => i.status === 'EVALUATING').forEach(i => {
       md += `### [${i.id}] ${i.title} (${i.version})\n`;
       md += `> **评估概述**: ${i.summary}\n\n`;
       md += `**调研要点**: ${i.technicalNotes}\n\n`;
@@ -789,10 +916,10 @@ export const ProjectRoadmap: React.FC = () => {
     });
 
     md += `## 🚫 四、经评估不予考虑的功能 (${discardedCount} 项)\n\n`;
-    ROADMAP_ITEMS.filter(i => i.status === 'DISCARDED').forEach(i => {
+    items.filter(i => i.status === 'DISCARDED').forEach(i => {
       md += `### [${i.id}] ${i.title} [已否决]\n`;
       md += `> **功能说明**: ${i.summary}\n\n`;
-      md += `**🛑 为什么不考虑 / 舍弃理由**:\n${i.discardReason}\n\n`;
+      md += `**🛑 为什么不考虑 / 舍弃理由**:\n${i.discardReason || '无'}\n\n`;
       if (i.alternativeSolution) {
         md += `**💡 替代推荐方案**: ${i.alternativeSolution}\n\n`;
       }
@@ -811,8 +938,20 @@ export const ProjectRoadmap: React.FC = () => {
       <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 border border-slate-800 p-6 md:p-8 shadow-2xl">
         <div className="absolute top-0 right-0 -mt-12 -mr-12 w-96 h-96 bg-cyan-500/10 rounded-full blur-3xl pointer-events-none" />
         <div className="relative z-10">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 text-xs font-mono font-bold uppercase tracking-wider mb-3">
-            <span>📋 ARCHITECTURE ROADMAP & CHANGELOG</span>
+          <div className="flex items-center gap-2 flex-wrap mb-3">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 text-xs font-mono font-bold uppercase tracking-wider">
+              <span>📋 ARCHITECTURE ROADMAP & CHANGELOG</span>
+            </div>
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-indigo-500/10 border border-indigo-500/30 text-indigo-300 text-xs font-mono font-bold">
+              <span>🗄️ 存储方式：MySQL 数据库 (project_roadmap_tasks 表)</span>
+              {isLoadingFromDb ? (
+                <span className="text-amber-400 animate-pulse">● 连接读取中</span>
+              ) : dbConnected ? (
+                <span className="text-emerald-400">● 实时在线</span>
+              ) : (
+                <span className="text-slate-400">● 本地缓存</span>
+              )}
+            </div>
           </div>
           <h2 className="text-2xl md:text-3xl font-black text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 via-sky-200 to-purple-400 font-display">
             任务、改动历史与待开发规划看板
@@ -821,11 +960,20 @@ export const ProjectRoadmap: React.FC = () => {
             全面追踪系统各阶段演化。待开发规划已清晰细分为
             <strong className="text-emerald-400">「🎯 确定加入」</strong>、
             <strong className="text-amber-400">「🔬 调研评估中」</strong> 及
-            <strong className="text-rose-400">「🚫 暂不考虑/已舍弃」</strong>，并详细阐明每一项的
-            <strong className="text-cyan-300"> 实施步骤</strong>、
-            <strong className="text-purple-300">代码影响</strong> 与
-            <strong className="text-rose-300"> 舍弃理由</strong>。
+            <strong className="text-rose-400">「🚫 暂不考虑/已舍弃」</strong>。
+            可在后台直接点击任意项目 <strong className="text-cyan-300">⚙️ 调整状态</strong>，修改结果将直接持久化保存至 MySQL 数据库。
           </p>
+
+          {/* Feedback banner */}
+          {saveFeedback && (
+            <div className={`mt-3 p-3 rounded-xl border text-xs font-mono font-bold flex items-center gap-2 animate-bounce ${
+              saveFeedback.success
+                ? 'bg-emerald-950/80 border-emerald-500/50 text-emerald-300'
+                : 'bg-rose-950/80 border-rose-500/50 text-rose-300'
+            }`}>
+              <span>{saveFeedback.text}</span>
+            </div>
+          )}
 
           {/* Metric Stats Cards */}
           <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 md:gap-4 mt-6">
@@ -1094,8 +1242,30 @@ export const ProjectRoadmap: React.FC = () => {
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-3 shrink-0 self-end sm:self-center">
+                  <div className="flex items-center gap-2.5 shrink-0 self-end sm:self-center">
                     <span className="text-2xs font-mono text-slate-500">{item.date}</span>
+
+                    {/* Admin Status Edit Button */}
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (editingId === item.id) {
+                          cancelEditing();
+                        } else {
+                          startEditing(item);
+                        }
+                      }}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-mono font-bold transition-all flex items-center gap-1 cursor-pointer border ${
+                        editingId === item.id
+                          ? 'bg-cyan-500 text-slate-950 border-cyan-400'
+                          : 'bg-slate-800/80 hover:bg-slate-700 text-cyan-300 border-slate-700'
+                      }`}
+                      title="修改此项功能的状态决策 (确定加入/暂不考虑/评估调研)"
+                    >
+                      <span>{editingId === item.id ? '✕ 取消调整' : '⚙️ 调整状态'}</span>
+                    </button>
+
                     <button
                       type="button"
                       className={`px-2.5 py-1 rounded-lg text-xs font-mono transition-all flex items-center gap-1 cursor-pointer ${
@@ -1121,6 +1291,137 @@ export const ProjectRoadmap: React.FC = () => {
                 {/* Expanded Drawer */}
                 {isExpanded && (
                   <div className="border-t border-slate-800/80 bg-slate-950/80 p-5 space-y-5 animate-fadeIn">
+                    {/* Admin Status Decision Editor Panel */}
+                    {editingId === item.id && (
+                      <div className="p-4 sm:p-5 rounded-xl bg-slate-900/90 border border-cyan-500/60 space-y-4 shadow-xl shadow-cyan-950/40">
+                        <div className="flex items-center justify-between border-b border-slate-800 pb-2.5">
+                          <span className="text-xs font-mono font-bold text-cyan-300 uppercase tracking-wider flex items-center gap-2">
+                            <span>🛠️ 管理员状态与决策调整 (PERSIST TO MYSQL DB)</span>
+                          </span>
+                          <span className="text-2xs font-mono text-slate-400">
+                            正在修改: <strong className="text-slate-200">{item.id}</strong>
+                          </span>
+                        </div>
+
+                        {/* Status Selection Buttons */}
+                        <div>
+                          <label className="text-2xs font-mono text-slate-400 uppercase tracking-wider block mb-2">
+                            选择新状态 (Select Target Status):
+                          </label>
+                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                            <button
+                              type="button"
+                              onClick={() => setEditStatus('COMPLETED')}
+                              className={`px-3 py-2 rounded-lg text-xs font-mono font-bold border transition-all cursor-pointer ${
+                                editStatus === 'COMPLETED'
+                                  ? 'bg-emerald-500 text-slate-950 border-emerald-400 shadow-md'
+                                  : 'bg-slate-950 text-slate-400 border-slate-800 hover:text-slate-200'
+                              }`}
+                            >
+                              🟢 已上线
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setEditStatus('CONFIRMED')}
+                              className={`px-3 py-2 rounded-lg text-xs font-mono font-bold border transition-all cursor-pointer ${
+                                editStatus === 'CONFIRMED'
+                                  ? 'bg-cyan-500 text-slate-950 border-cyan-400 shadow-md'
+                                  : 'bg-slate-950 text-slate-400 border-slate-800 hover:text-slate-200'
+                              }`}
+                            >
+                              🎯 确定加入
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setEditStatus('EVALUATING')}
+                              className={`px-3 py-2 rounded-lg text-xs font-mono font-bold border transition-all cursor-pointer ${
+                                editStatus === 'EVALUATING'
+                                  ? 'bg-amber-500 text-slate-950 border-amber-400 shadow-md'
+                                  : 'bg-slate-950 text-slate-400 border-slate-800 hover:text-slate-200'
+                              }`}
+                            >
+                              🔬 评估调研中
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setEditStatus('DISCARDED')}
+                              className={`px-3 py-2 rounded-lg text-xs font-mono font-bold border transition-all cursor-pointer ${
+                                editStatus === 'DISCARDED'
+                                  ? 'bg-rose-500 text-slate-950 border-rose-400 shadow-md'
+                                  : 'bg-slate-950 text-slate-400 border-slate-800 hover:text-slate-200'
+                              }`}
+                            >
+                              🚫 暂不考虑
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Version input if Confirmed or Completed */}
+                        {(editStatus === 'CONFIRMED' || editStatus === 'COMPLETED') && (
+                          <div>
+                            <label className="text-2xs font-mono text-slate-400 uppercase tracking-wider block mb-1">
+                              规划/上线版本标识 (Version Tag):
+                            </label>
+                            <input
+                              type="text"
+                              value={editVersion}
+                              onChange={e => setEditVersion(e.target.value)}
+                              placeholder="例如: v2.5 (确定排期)"
+                              className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-200 font-mono focus:outline-none focus:border-cyan-400"
+                            />
+                          </div>
+                        )}
+
+                        {/* Discard Reason inputs if Discarded */}
+                        {editStatus === 'DISCARDED' && (
+                          <div className="space-y-3">
+                            <div>
+                              <label className="text-2xs font-mono text-rose-300 uppercase tracking-wider block mb-1">
+                                🛑 为什么不考虑 / 舍弃理由 (Discard Rationale):
+                              </label>
+                              <textarea
+                                value={editDiscardReason}
+                                onChange={e => setEditDiscardReason(e.target.value)}
+                                rows={3}
+                                placeholder="输入为什么不考虑该功能的核心原因，例如违背纯离线原则、体验不佳、成本过高等..."
+                                className="w-full bg-slate-950 border border-rose-500/40 rounded-lg p-2.5 text-xs text-rose-200 font-mono focus:outline-none focus:border-rose-400"
+                              />
+                            </div>
+                            <div>
+                              <label className="text-2xs font-mono text-emerald-300 uppercase tracking-wider block mb-1">
+                                💡 替代推荐方案 (Alternative Solution):
+                              </label>
+                              <textarea
+                                value={editAltSolution}
+                                onChange={e => setEditAltSolution(e.target.value)}
+                                rows={2}
+                                placeholder="推荐采用什么替代方案来实现相近教学效果..."
+                                className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2.5 text-xs text-slate-200 font-mono focus:outline-none focus:border-emerald-400"
+                              />
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Actions */}
+                        <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-slate-800">
+                          <button
+                            type="button"
+                            onClick={cancelEditing}
+                            className="px-3 py-1.5 rounded-lg text-xs font-mono text-slate-400 hover:text-slate-200 bg-slate-800 cursor-pointer"
+                          >
+                            取消
+                          </button>
+                          <button
+                            type="button"
+                            disabled={savingId === item.id}
+                            onClick={() => saveItemChanges(item.id)}
+                            className="px-4 py-1.5 rounded-lg text-xs font-mono font-bold bg-gradient-to-r from-cyan-500 to-indigo-600 text-slate-950 hover:from-cyan-400 hover:to-indigo-500 shadow-md shadow-cyan-500/20 disabled:opacity-50 flex items-center gap-1.5 cursor-pointer"
+                          >
+                            <span>{savingId === item.id ? '💾 正在保存中...' : '💾 保存决策至 MySQL 数据库'}</span>
+                          </button>
+                        </div>
+                      </div>
+                    )}
                     {/* Discarded Feature Warning Callout */}
                     {isDiscarded && item.discardReason && (
                       <div className="p-4 rounded-xl bg-rose-950/30 border border-rose-500/40 space-y-3">

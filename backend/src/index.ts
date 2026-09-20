@@ -13,6 +13,7 @@ import versionRoutes from './routes/versionRoutes';
 import groupRoutes from './routes/groupRoutes';
 import settingRoutes from './routes/settingRoutes';
 import illustrationRoutes from './routes/illustrationRoutes';
+import roadmapRoutes from './routes/roadmapRoutes';
 import { DEFAULT_GAME_SETTINGS } from './controllers/settingController';
 
 const app = express();
@@ -133,6 +134,29 @@ export async function initializeDatabaseSchema() {
     }
     console.log('Migration: Ensured game_settings table and default seeds');
 
+    // 10. Ensure project_roadmap_tasks table exists
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS project_roadmap_tasks (
+        id VARCHAR(50) PRIMARY KEY,
+        title VARCHAR(255) NOT NULL,
+        category VARCHAR(50) NOT NULL,
+        category_label VARCHAR(100) NOT NULL,
+        status VARCHAR(50) NOT NULL,
+        version VARCHAR(50) DEFAULT '',
+        date_str VARCHAR(50) DEFAULT '',
+        summary TEXT,
+        steps_json JSON,
+        affected_files_json JSON,
+        technical_notes TEXT,
+        verification TEXT,
+        priority VARCHAR(20) DEFAULT 'NORMAL',
+        discard_reason TEXT,
+        alternative_solution TEXT,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `);
+    console.log('Migration: Ensured project_roadmap_tasks table');
+
     // Recalculate historical stars based on completed subtasks
     const { recalculateAllUsersStars } = await import('./controllers/progressController');
     await recalculateAllUsersStars();
@@ -177,6 +201,7 @@ app.use('/api/groups', groupRoutes);
 app.use('/api/game-settings', settingRoutes);
 app.use('/api/versions', versionRoutes);
 app.use('/api/illustrations', illustrationRoutes);
+app.use('/api/roadmap', roadmapRoutes);
 
 import multer from 'multer';
 

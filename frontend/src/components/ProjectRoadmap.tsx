@@ -1,6 +1,11 @@
 import React, { useState, useMemo } from 'react';
 
-export type TaskStatus = 'COMPLETED' | 'IN_PROGRESS' | 'TESTING' | 'PENDING' | 'PLANNED';
+export type TaskStatus =
+  | 'COMPLETED'      // 已上线
+  | 'IN_PROGRESS'    // 开发/测试中
+  | 'CONFIRMED'      // 确定加入 (排期开发)
+  | 'EVALUATING'     // 调研评估中
+  | 'DISCARDED';     // 暂不考虑 / 舍弃
 
 export type TaskCategory =
   | 'all'
@@ -26,10 +31,14 @@ export interface RoadmapItem {
   technicalNotes: string;
   verification: string;
   priority?: 'HIGH' | 'MEDIUM' | 'NORMAL';
+  discardReason?: string;       // 暂不考虑的核心理由阐述
+  alternativeSolution?: string; // 替代方案
 }
 
 export const ROADMAP_ITEMS: RoadmapItem[] = [
+  // ==========================================
   // Phase 1: 对象存储基础设施与自动建桶
+  // ==========================================
   {
     id: 'TASK-1.1',
     title: 'MinIO 客户端接入与自动建桶 (Auto-Provisioning)',
@@ -86,7 +95,9 @@ export const ROADMAP_ITEMS: RoadmapItem[] = [
     verification: 'Chrome DevTools 检查图片响应头，Cache-Control 准确生效，刷新页面显示 200 (from disk cache)。'
   },
 
+  // ==========================================
   // Phase 2: AI Agent 视觉定位与自动图像裁切
+  // ==========================================
   {
     id: 'TASK-2.1',
     title: 'Gemini 多模态提示词与响应 Schema 扩展',
@@ -162,7 +173,9 @@ export const ROADMAP_ITEMS: RoadmapItem[] = [
     verification: 'AI 解析完成后回传给前端的 JSON 数据中，每一句均带有对应的插图地址。'
   },
 
+  // ==========================================
   // Phase 3: 数据库与关卡数据模型升级
+  // ==========================================
   {
     id: 'TASK-3.1',
     title: '关卡数据模型扩展与向后兼容设计',
@@ -218,7 +231,9 @@ export const ROADMAP_ITEMS: RoadmapItem[] = [
     verification: '创建并删除一个带有多张插图的测试关卡，MinIO 存储桶中对应文件被彻底回收。'
   },
 
+  // ==========================================
   // Phase 4: 管理后台（ParentDashboard）体验升级
+  // ==========================================
   {
     id: 'TASK-4.1',
     title: 'AI 绘本导入工作室展示插图实时切图卡片与中英对照',
@@ -257,7 +272,7 @@ export const ROADMAP_ITEMS: RoadmapItem[] = [
   },
   {
     id: 'TASK-4.3',
-    title: '故事列表卡片“🖼️ 图文绘本”专属微章与插画统计',
+    title: '故事列表卡片“🖼️ 图文绘本”专属徽章与插画统计',
     category: 'admin',
     categoryLabel: '管理后台与工作流',
     status: 'COMPLETED',
@@ -274,7 +289,9 @@ export const ROADMAP_ITEMS: RoadmapItem[] = [
     verification: '导入图文故事后返回故事库列表，新故事卡片清晰显式“🖼️ 图文绘本”徽章。'
   },
 
+  // ==========================================
   // Phase 5: 学员游戏端图文点读模式升级
+  // ==========================================
   {
     id: 'TASK-5.1',
     title: '故事阅读模式（Passage Decryption）绘本画框布局',
@@ -331,7 +348,9 @@ export const ROADMAP_ITEMS: RoadmapItem[] = [
     verification: '在真实 iPad Safari 上轻按插图，全屏画廊弹层瞬间呈现，手势缩放流畅。'
   },
 
+  // ==========================================
   // Phase 6: PWA 离线存储与无网秒级加载
+  // ==========================================
   {
     id: 'TASK-6.1',
     title: 'ServiceWorker Workbox 动态插图缓存规则 (CacheFirst 60天)',
@@ -390,7 +409,9 @@ export const ROADMAP_ITEMS: RoadmapItem[] = [
     verification: '拔掉网线或开启飞行模式，刷新进入绘本关卡，所有已下载绘本插图全部正常展示。'
   },
 
-  // Phase 7: 分批追加导入与 Word Matching 紧凑优化 (Recent Updates)
+  // ==========================================
+  // Phase 7: 分批追加导入与 Word Matching 紧凑优化
+  // ==========================================
   {
     id: 'TASK-7.1',
     title: 'AI 绘本导入支持分批追加模式 (Incremental Batch Import)',
@@ -447,36 +468,38 @@ export const ROADMAP_ITEMS: RoadmapItem[] = [
     verification: '在小屏笔记本与 iPad 屏幕上实测，10 组单词连线卡片全部一屏直达，体验极佳。'
   },
 
-  // Phase 8: 后续待开发项与技术规划 (Backlog & Future Roadmap)
+  // =========================================================================
+  // 待开发细分 1: 确定会加入的功能 (Confirmed for Upcoming Releases)
+  // =========================================================================
   {
-    id: 'BACKLOG-8.1',
+    id: 'FEAT-CONFIRM-01',
     title: '句子朗读语音录制与 AI 发音智能评测比对',
-    category: 'backlog',
-    categoryLabel: '待开发规划',
-    status: 'PLANNED',
-    version: 'v2.5 (规划中)',
-    date: '待排期',
-    summary: '在绘本阅读模式增加录音跟读按钮，结合端侧或后端模型提供发音评分与回放对比。',
+    category: 'gameplay',
+    categoryLabel: '学生端交互与游戏',
+    status: 'CONFIRMED',
+    version: 'v2.5 (确定排期)',
+    date: '2026-Q4',
+    summary: '【确定加入】在绘本阅读模式增加录音跟读按钮，结合端侧或后端模型提供发音评分与回放对比。',
     steps: [
       '在 GamePlay.tsx 故事阅读模式的每个句子右侧新增“🎙️ 录音跟读”功能按钮。',
       '利用 Web Audio API / MediaRecorder 捕获儿童麦克风音频，实时绘制拾音音量波形动画。',
-      '对接轻量 Whisper 或语音评测服务，将跟读录音与标准文本比对，给出 1-5 星流利度评分。',
+      '接入轻量 Whisper 或语音评测模块，将跟读录音与标准文本比对，给出 1-5 星流利度评分。',
       '支持学员自主回放自己的发音并与原生母语 TTS 朗读进行 A/B 耳机试听对比。'
     ],
     affectedFiles: ['frontend/src/components/GamePlay.tsx', 'backend/src/controllers/speechController.ts', 'docs/SPEECH_EVALUATION_RFC.md'],
-    technicalNotes: '结合端侧静音检测（VAD - Voice Activity Detection），录音完毕自动提交评测。',
-    verification: '规划验收标准：儿童录音后 1 秒内返回发音评分与纠音建议，支持本地无网离线回放。',
+    technicalNotes: '结合端侧静音检测（VAD - Voice Activity Detection），录音完毕自动提交评测；离线状态下自动保存在本地 IndexedDB 支持原音重放。',
+    verification: '儿童录音后 1 秒内返回发音评分与纠音建议，支持本地无网离线回放。',
     priority: 'HIGH'
   },
   {
-    id: 'BACKLOG-8.2',
+    id: 'FEAT-CONFIRM-02',
     title: '学员高频错题与薄弱词汇智能分析看板 (Mistake Book)',
-    category: 'backlog',
-    categoryLabel: '待开发规划',
-    status: 'PLANNED',
-    version: 'v2.5 (规划中)',
-    date: '待排期',
-    summary: '建立错题本数据库表，记录打字与选词错误，按艾宾浩斯曲线生成专项攻坚关卡。',
+    category: 'admin',
+    categoryLabel: '管理后台与工作流',
+    status: 'CONFIRMED',
+    version: 'v2.5 (确定排期)',
+    date: '2026-Q4',
+    summary: '【确定加入】建立错题本数据库表，记录打字与选词错误，按艾宾浩斯曲线生成专项攻坚关卡。',
     steps: [
       '在 MySQL 中新增 user_mistake_records 数据表，捕获错误单词、关卡 ID 与错误类型。',
       '在 ParentDashboard 中新增“📊 错题本与学习分析”数据大盘，直观展示错误率 Top 10 词汇。',
@@ -484,73 +507,185 @@ export const ROADMAP_ITEMS: RoadmapItem[] = [
     ],
     affectedFiles: ['backend/src/models/MistakeRecord.ts', 'frontend/src/components/ParentDashboard.tsx'],
     technicalNotes: '引入 SRS (Spaced Repetition System) 间隔重复算法，在学员即将遗忘的临界点精准提醒复习。',
-    verification: '规划验收标准：错题自动沉淀，管理员可一键派发专属订制错题复习岛屿。',
+    verification: '错题自动沉淀，管理员可在后台一键派发专属订制错题复习岛屿。',
     priority: 'HIGH'
   },
   {
-    id: 'BACKLOG-8.3',
+    id: 'FEAT-CONFIRM-03',
     title: '离线包容量预估与细粒度插图按需下载管理',
-    category: 'backlog',
-    categoryLabel: '待开发规划',
-    status: 'PLANNED',
-    version: 'v2.6 (规划中)',
-    date: '待排期',
-    summary: '支持按绘本关卡选择性下载离线包，实时预估设备存储空间，支持单个关卡缓存清理。',
+    category: 'offline',
+    categoryLabel: 'PWA离线引擎',
+    status: 'CONFIRMED',
+    version: 'v2.6 (确定排期)',
+    date: '2026-Q4',
+    summary: '【确定加入】支持按绘本关卡选择性下载离线包，实时预估设备存储空间，支持单个关卡缓存清理。',
     steps: [
       '调用 navigator.storage.estimate() 计算当前域名已占用存储与设备剩余可用配额。',
       '在 OfflineManager 中支持细粒度勾选：“仅离线本周指定关卡”或“离线全部绘本”。',
-      '支持单独清空已掌握绘本的离线插画缓存，释放平板宝贵存储。'
+      '支持单独清空已掌握绘本的离线插画缓存，释放平板宝贵存储空间。'
     ],
     affectedFiles: ['frontend/src/components/OfflineManager.tsx', 'frontend/src/utils/offlineStorage.ts'],
     technicalNotes: '针对低配 32GB iPad 设备特别优化，防止插画过多挤爆浏览器本地存储配额。',
-    verification: '规划验收标准：能够精确显示每个故事占用的 MB 数，并支持单故事离线下载与删除。',
+    verification: '能够精确显示每个故事占用的 MB 数，并支持单故事离线下载与彻底删除。',
     priority: 'MEDIUM'
   },
   {
-    id: 'BACKLOG-8.4',
-    title: '绘本插图 AI 自动背景擦除与主体聚焦增强',
-    category: 'backlog',
-    categoryLabel: '待开发规划',
-    status: 'PLANNED',
-    version: 'v2.6 (规划中)',
-    date: '待排期',
-    summary: '引入轻量抠图模型，自动识别插图主体物并去除混杂文字残影，生成高清贴纸元素。',
-    steps: [
-      '在 AI Agent 端探索接入轻量级 rembg / ONNX 抠图去噪模型。',
-      '在裁切后自动识别画作中的核心主角（动物、人物、交通工具）并移除杂乱背景。',
-      '生成带透明通道的独立贴纸素材，供游戏匹配与徽章奖励系统重复利用。'
-    ],
-    affectedFiles: ['ai_agent/image_processor.py'],
-    technicalNotes: '在 CPU 容器中运行轻量量化模型，保证在单核服务器上 300ms 内完成抠图。',
-    verification: '规划验收标准：裁切出来的插图主体边缘清晰，无原书扫描纸纹与文字残墨干扰。',
-    priority: 'NORMAL'
-  },
-  {
-    id: 'BACKLOG-8.5',
+    id: 'FEAT-CONFIRM-04',
     title: '绘本多角色情景配音与分角色对话朗读',
-    category: 'backlog',
-    categoryLabel: '待开发规划',
-    status: 'PLANNED',
-    version: 'v2.7 (规划中)',
-    date: '待排期',
-    summary: '利用大模型解析故事不同角色对白，分配童声/动物声/旁白等多样化 TTS 音色演绎。',
+    category: 'gameplay',
+    categoryLabel: '学生端交互与游戏',
+    status: 'CONFIRMED',
+    version: 'v2.6 (确定排期)',
+    date: '2026-Q4',
+    summary: '【确定加入】利用大模型解析故事不同角色对白，分配童声/动物声/旁白等多样化 TTS 音色演绎。',
     steps: [
-      '在 AI 解析提示词中增加角色对话识别，输出 speaker 属性（如 Narrator, Rabbit, Wolf）。',
+      '在 AI 解析提示词中增加角色对话识别，输出 speaker 属性（如 Narrator, Bear, Fox）。',
       '前端集成 Web Speech API 多音色动态调度，为不同 speaker 配置不同的 pitch、rate 与 voice。',
       '点读时分角色生动演绎，将绘本升华至“广播剧级”听觉盛宴。'
     ],
     affectedFiles: ['ai_agent/schemas.py', 'frontend/src/components/GamePlay.tsx'],
-    technicalNotes: '利用浏览器原生的不同语言音色库进行多音调变声合成，完全无需外部付费 API。',
-    verification: '规划验收标准：旁白沉稳叙述，小动物用清脆童声音调播放，角色特征鲜明。',
+    technicalNotes: '利用浏览器原生的不同语言音色库进行多音调变声合成，完全无需依赖外部付费 API，100% 兼容离线环境。',
+    verification: '旁白沉稳叙述，小动物用清脆童声音调播放，角色特征鲜明。',
     priority: 'MEDIUM'
+  },
+
+  // =========================================================================
+  // 待开发细分 2: 调研评估中的功能 (Under Evaluation / Feasibility Testing)
+  // =========================================================================
+  {
+    id: 'FEAT-EVAL-01',
+    title: '绘本插图 AI 自动背景擦除与主体贴纸聚焦',
+    category: 'ai',
+    categoryLabel: 'AI视觉与解析',
+    status: 'EVALUATING',
+    version: 'v2.7 (调研中)',
+    date: '技术评估',
+    summary: '【调研评估中】探索轻量抠图去噪模型，自动抠出主角生成透明贴纸，用于游戏互动。',
+    steps: [
+      '在 AI Agent 端测试接入轻量级 rembg / ONNX 离线抠图去噪模型。',
+      '评估在单核 CPU 容器内处理单张图片的推理耗时（目标 < 400ms）。',
+      '对比纯前端 WebAssembly 抠图与后端 Python 处理的内存消耗与毛边质量。'
+    ],
+    affectedFiles: ['ai_agent/image_processor.py'],
+    technicalNotes: '评估重点：部分复古纸质绘本背景带有肌理底纹，抠图模型容易误将毛边当成背景误伤主角轮廓，需评估边界容错率。',
+    verification: '在 100 张样本绘本上进行抠图盲测，合格率需达 90% 以上方可转入正式排期。',
+    priority: 'NORMAL'
+  },
+  {
+    id: 'FEAT-EVAL-02',
+    title: '手写触控笔拼写笔迹识别输入 (Stylus Handwriting)',
+    category: 'gameplay',
+    categoryLabel: '学生端交互与游戏',
+    status: 'EVALUATING',
+    version: 'v2.7 (调研中)',
+    date: '技术评估',
+    summary: '【调研评估中】在 iPad 上支持 Apple Pencil 直接手写字母拼写单词，替代纯虚拟键盘。',
+    steps: [
+      '在 GamePlay 输入区域探索叠加轻量 HTML5 Canvas 手写板组件。',
+      '调研端侧离线开源手写英文识别引擎（如基于 ONNX Web 的字符笔画识别）。',
+      '测试手写输入延时与识别容错率对打字追逐（Story Chase）节奏的影响。'
+    ],
+    affectedFiles: ['frontend/src/components/GamePlay.tsx'],
+    technicalNotes: '评估重点：儿童笔迹潦草度较高，若端侧识别误判率高容易严重打击学习信心；同时高速追逐游戏对手写时效要求极高。',
+    verification: '针对低年级儿童笔迹进行端侧识别实测，如识别延迟 > 300ms 或误判率 > 10% 则不予采纳。',
+    priority: 'NORMAL'
+  },
+
+  // =========================================================================
+  // 待开发细分 3: 经评估不予考虑的功能 (Won't Do / Discarded with Rationale)
+  // =========================================================================
+  {
+    id: 'FEAT-DISCARD-01',
+    title: '实时第三方云端大模型语音对话陪伴 (Real-time Cloud LLM Voice Agent)',
+    category: 'ai',
+    categoryLabel: 'AI视觉与解析',
+    status: 'DISCARDED',
+    version: '不考虑',
+    date: '已否决',
+    summary: '【暂不考虑】接入实时云端语音大模型与学生进行自由开放式英语聊天对话。',
+    steps: [
+      '架构评审：评估接入 OpenAI Realtime API / Gemini Live API 的可行性与运营成本。',
+      '经技术与教研团队全面评估，该功能存在破坏离线架构、费用失控与儿童安全合规三大不可调和风险，决定正式否决。'
+    ],
+    affectedFiles: ['backend/src/services/aiService.ts'],
+    technicalNotes: '架构硬伤：WordQuest 的立项基石是“无网/弱网/飞行模式下完全可用的儿童沉浸式英语自学平台”。云端实时音频流完全无法在离线环境下运作。',
+    verification: '正式列入“不考虑”清单，避免未来重复立项浪费研发资源。',
+    priority: 'NORMAL',
+    discardReason: '1. 违背纯离线核心原则：实时对话高度依赖持续双向网络流，断网即瘫痪，破坏 iPad 飞行模式离线体验；\n2. 持续高昂的 API 账单：儿童高频长时间唠嗑会导致每人每月 Token/流量成本超百元，违背轻量本地自托管初衷；\n3. 延时与儿童安全风险：云端往返延迟超 1.5 秒，且开放式生成存在儿童不良诱导与幻觉审查不可控合规风险。',
+    alternativeSolution: '采用结构化句子点读、原生 TTS 对话演绎及本地录音跟读打分，既实现标准语感启蒙，又做到 0 成本与 100% 纯离线安全。'
+  },
+  {
+    id: 'FEAT-DISCARD-02',
+    title: '复杂 3D WebGL 角色追逐物理重度引擎迁移 (Heavy 3D Engine Migration)',
+    category: 'gameplay',
+    categoryLabel: '学生端交互与游戏',
+    status: 'DISCARDED',
+    version: '不考虑',
+    date: '已否决',
+    summary: '【暂不考虑】将打字跑酷追逐重构成类似 Unity/Three.js 的全 3D 物理引擎画面。',
+    steps: [
+      '对 WebGL 3D 渲染在低端教育平板上的发热量、内存占用与帧率稳定性进行实测摸底。',
+      '测试表明 3D 模型与贴图加载大幅拉长首屏时间，低配 iPad Safari 频繁发生 OOM (内存溢出) 崩溃，决定不予采纳。'
+    ],
+    affectedFiles: ['frontend/src/components/StoryChaseAssets.tsx'],
+    technicalNotes: '移动端 WebKit 引擎对重度 3D Context 内存限制极为严格，后台多标签切换极易丢失 WebGL 上下文。',
+    verification: '正式列入“不考虑”清单。',
+    priority: 'NORMAL',
+    discardReason: '1. 低配平板发热与闪退崩溃：许多学生使用老款 iPad (如 iPad 6/7/8) 或入门级安卓板，3D 物理引擎会引起严重烫手、卡顿掉帧甚至白屏闪退；\n2. 偏离核心教学目标：打字与拼写练习的核心是键盘肌肉记忆与眼手脑极速同步。花哨的 3D 视角震荡会严重分散儿童对英文拼写的专注力；\n3. 资源体积过大：3D 网格与骨骼动画包体积往往数十 MB，严重破坏 PWA 极速安装与离线秒开体验。',
+    alternativeSolution: '继续深度优化现有 2D 像素与 Sprite 帧动画（RunnerSprite / CastleSidePillars），保持 60FPS 丝滑流畅与单屏零延迟直达。'
+  },
+  {
+    id: 'FEAT-DISCARD-03',
+    title: '强制公开全网社交排行榜与全球学员实时 PK 竞速 (Global PvP & Leaderboard)',
+    category: 'gameplay',
+    categoryLabel: '学生端交互与游戏',
+    status: 'DISCARDED',
+    version: '不考虑',
+    date: '已否决',
+    summary: '【暂不考虑】设立全网公开天梯排位赛与实时多人联机打字对战。',
+    steps: [
+      '调研儿童学习心理学与未成年人网络社交合规法规（COPPA / GDPR-K）。',
+      '结合教学反馈，全网公开竞技会强化两极分化，对初学者造成巨大挫败感，决定坚决不引入。'
+    ],
+    affectedFiles: ['backend/src/routes/api.ts'],
+    technicalNotes: '实时多人 WebSocket 联网与防作弊同步机制大幅提升服务端运维复杂度，与单机/局域网轻量架构相悖。',
+    verification: '正式列入“不考虑”清单。',
+    priority: 'NORMAL',
+    discardReason: '1. 产生严重的儿童挫败感与焦虑：初学或慢热型孩子在全网排行榜垫底时极易丧失自信心并产生厌学逃避情绪；\n2. 儿童隐私与 COPPA 严格合规壁垒：面向未成年人的公开排行榜与全网社交需要极其严苛的实名认证与家长授权许可，合规法律成本极高；\n3. 滋生不良攀比与代打作弊。',
+    alternativeSolution: '坚持以“自我超越”、“关卡三星收集”、“个人词汇城堡装扮”为主的正向内部动机闭环；仅在家长或老师管理的家庭/班级内部提供温和的小范围进度激励。'
+  },
+  {
+    id: 'FEAT-DISCARD-04',
+    title: '生成式 AI 绘本插画画风重绘与画面替换 (Generative Style Transfer)',
+    category: 'ai',
+    categoryLabel: 'AI视觉与解析',
+    status: 'DISCARDED',
+    version: '不考虑',
+    date: '已否决',
+    summary: '【暂不考虑】使用 Stable Diffusion / Midjourney 对经典原版绘本插图进行 AI 重绘或画风翻新。',
+    steps: [
+      '针对原版牛津树、RAZ 绘本进行 AI 画风重绘对比试验。',
+      '比对显示生成式 AI 极易歪曲原绘本的细节隐喻与角色面部一致性，甚至产生肢体畸形，决定坚决废弃。'
+    ],
+    affectedFiles: ['ai_agent/image_processor.py'],
+    technicalNotes: '原版经典绘本每一幅插画都承载着视觉阅读线索，文字提到的道具必须在画面中准确呈现，生成式 AI 无法保证 100% 事实一致性。',
+    verification: '正式列入“不考虑”清单。',
+    priority: 'NORMAL',
+    discardReason: '1. 破坏原著艺术神韵与文化经典性：原版绘本插画是国际插画大师心血结晶，AI 重绘会破坏原作笔触美感；\n2. 图文错位与幻觉风险：AI 重绘往往丢失故事关键细节（例如故事写 “red balloon”，AI 重绘成 “blue ball”），直接破坏儿童“看图识字”的认知建立；\n3. 方案 A 原图精准裁切已达最优：直接从原书无损裁切出的 WebP 既真实又零成本，无需画蛇添足。',
+    alternativeSolution: '坚持当前【方案 A】：通过 Gemini 0-1000 归一化坐标精准切取原版插图，原汁原味还原大师手笔。'
   }
 ];
 
 export const ProjectRoadmap: React.FC = () => {
-  const [statusFilter, setStatusFilter] = useState<'ALL' | 'COMPLETED' | 'PENDING' | 'IN_PROGRESS'>('ALL');
+  // Filter states
+  const [statusFilter, setStatusFilter] = useState<'ALL' | 'COMPLETED' | 'CONFIRMED' | 'EVALUATING' | 'DISCARDED'>('ALL');
   const [categoryFilter, setCategoryFilter] = useState<TaskCategory>('all');
   const [searchQuery, setSearchQuery] = useState('');
-  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set(['TASK-7.1', 'TASK-7.2', 'TASK-7.3', 'BACKLOG-8.1']));
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set([
+    'TASK-7.1',
+    'FEAT-CONFIRM-01',
+    'FEAT-DISCARD-01'
+  ]));
   const [copiedNotification, setCopiedNotification] = useState(false);
 
   // Toggle item accordion
@@ -580,8 +715,9 @@ export const ProjectRoadmap: React.FC = () => {
     return ROADMAP_ITEMS.filter(item => {
       // Status filter
       if (statusFilter === 'COMPLETED' && item.status !== 'COMPLETED') return false;
-      if (statusFilter === 'PENDING' && item.status !== 'PENDING' && item.status !== 'PLANNED') return false;
-      if (statusFilter === 'IN_PROGRESS' && item.status !== 'IN_PROGRESS' && item.status !== 'TESTING') return false;
+      if (statusFilter === 'CONFIRMED' && item.status !== 'CONFIRMED') return false;
+      if (statusFilter === 'EVALUATING' && item.status !== 'EVALUATING') return false;
+      if (statusFilter === 'DISCARDED' && item.status !== 'DISCARDED') return false;
 
       // Category filter
       if (categoryFilter !== 'all' && item.category !== categoryFilter) return false;
@@ -595,7 +731,9 @@ export const ProjectRoadmap: React.FC = () => {
         const matchNotes = item.technicalNotes.toLowerCase().includes(q);
         const matchFiles = item.affectedFiles.some(f => f.toLowerCase().includes(q));
         const matchSteps = item.steps.some(s => s.toLowerCase().includes(q));
-        return matchTitle || matchId || matchSummary || matchNotes || matchFiles || matchSteps;
+        const matchReason = item.discardReason ? item.discardReason.toLowerCase().includes(q) : false;
+        const matchAlt = item.alternativeSolution ? item.alternativeSolution.toLowerCase().includes(q) : false;
+        return matchTitle || matchId || matchSummary || matchNotes || matchFiles || matchSteps || matchReason || matchAlt;
       }
 
       return true;
@@ -605,17 +743,18 @@ export const ProjectRoadmap: React.FC = () => {
   // Statistics
   const totalCount = ROADMAP_ITEMS.length;
   const completedCount = ROADMAP_ITEMS.filter(i => i.status === 'COMPLETED').length;
-  const inProgressCount = ROADMAP_ITEMS.filter(i => i.status === 'IN_PROGRESS' || i.status === 'TESTING').length;
-  const backlogCount = ROADMAP_ITEMS.filter(i => i.status === 'PENDING' || i.status === 'PLANNED').length;
-  const progressPercent = Math.round((completedCount / totalCount) * 100);
+  const confirmedCount = ROADMAP_ITEMS.filter(i => i.status === 'CONFIRMED').length;
+  const evaluatingCount = ROADMAP_ITEMS.filter(i => i.status === 'EVALUATING').length;
+  const discardedCount = ROADMAP_ITEMS.filter(i => i.status === 'DISCARDED').length;
+  const progressPercent = Math.round((completedCount / (completedCount + confirmedCount + evaluatingCount)) * 100);
 
   // Copy Markdown
   const copyMarkdown = () => {
-    let md = `# WordQuest 项目改动历史与待开发规划简报\n\n`;
+    let md = `# WordQuest 项目任务、改动历史与细分规划简报\n\n`;
     md += `*生成时间: ${new Date().toLocaleString()}*  \n`;
-    md += `*总体完成进度: ${progressPercent}% (${completedCount}/${totalCount})*  \n\n`;
+    md += `*总体开发进度: ${progressPercent}% (${completedCount}/${completedCount + confirmedCount + evaluatingCount})*  \n\n`;
 
-    md += `## 🚀 已上线改动历史 (${completedCount} 项)\n\n`;
+    md += `## 🚀 一、已上线改动历史 (${completedCount} 项)\n\n`;
     ROADMAP_ITEMS.filter(i => i.status === 'COMPLETED').forEach(i => {
       md += `### [${i.id}] ${i.title} (${i.version} - ${i.date})\n`;
       md += `> **概述**: ${i.summary}\n\n`;
@@ -628,16 +767,36 @@ export const ProjectRoadmap: React.FC = () => {
       md += `**验收与验证记录**: ${i.verification}\n\n---\n\n`;
     });
 
-    md += `## 📋 待开发规划与 Backlog (${backlogCount} 项)\n\n`;
-    ROADMAP_ITEMS.filter(i => i.status === 'PENDING' || i.status === 'PLANNED').forEach(i => {
+    md += `## 🎯 二、确定会加入的功能 (${confirmedCount} 项)\n\n`;
+    ROADMAP_ITEMS.filter(i => i.status === 'CONFIRMED').forEach(i => {
       md += `### [${i.id}] ${i.title} (${i.version})\n`;
-      md += `> **规划说明**: ${i.summary}\n\n`;
+      md += `> **规划概述**: ${i.summary}\n\n`;
       md += `**计划实施步骤**:\n`;
       i.steps.forEach((s, idx) => {
         md += `${idx + 1}. ${s}\n`;
       });
       md += `\n**预估影响模块**: \`${i.affectedFiles.join('`, `')}\`\n\n`;
-      md += `**技术考量**: ${i.technicalNotes}\n\n---\n\n`;
+      md += `**技术考量**: ${i.technicalNotes}\n\n`;
+      md += `**验收标准**: ${i.verification}\n\n---\n\n`;
+    });
+
+    md += `## 🔬 三、调研评估中的功能 (${evaluatingCount} 项)\n\n`;
+    ROADMAP_ITEMS.filter(i => i.status === 'EVALUATING').forEach(i => {
+      md += `### [${i.id}] ${i.title} (${i.version})\n`;
+      md += `> **评估概述**: ${i.summary}\n\n`;
+      md += `**调研要点**: ${i.technicalNotes}\n\n`;
+      md += `**决策指标**: ${i.verification}\n\n---\n\n`;
+    });
+
+    md += `## 🚫 四、经评估不予考虑的功能 (${discardedCount} 项)\n\n`;
+    ROADMAP_ITEMS.filter(i => i.status === 'DISCARDED').forEach(i => {
+      md += `### [${i.id}] ${i.title} [已否决]\n`;
+      md += `> **功能说明**: ${i.summary}\n\n`;
+      md += `**🛑 为什么不考虑 / 舍弃理由**:\n${i.discardReason}\n\n`;
+      if (i.alternativeSolution) {
+        md += `**💡 替代推荐方案**: ${i.alternativeSolution}\n\n`;
+      }
+      md += `---\n\n`;
     });
 
     navigator.clipboard.writeText(md).then(() => {
@@ -656,47 +815,57 @@ export const ProjectRoadmap: React.FC = () => {
             <span>📋 ARCHITECTURE ROADMAP & CHANGELOG</span>
           </div>
           <h2 className="text-2xl md:text-3xl font-black text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 via-sky-200 to-purple-400 font-display">
-            任务、改动历史与待开发追踪看板
+            任务、改动历史与待开发规划看板
           </h2>
           <p className="text-sm text-slate-400 font-mono mt-2 max-w-3xl leading-relaxed">
-            全面追踪项目自 1.0 至 2.4+ 各阶段核心技术演进。每项功能均提供可溯源的
-            <strong className="text-cyan-300"> 详细修改步骤</strong>、
-            <strong className="text-purple-300">涉及文件路径</strong>、
-            <strong className="text-emerald-300">核心技术方案</strong> 及
-            <strong className="text-amber-300">验收测试记录</strong>。
+            全面追踪系统各阶段演化。待开发规划已清晰细分为
+            <strong className="text-emerald-400">「🎯 确定加入」</strong>、
+            <strong className="text-amber-400">「🔬 调研评估中」</strong> 及
+            <strong className="text-rose-400">「🚫 暂不考虑/已舍弃」</strong>，并详细阐明每一项的
+            <strong className="text-cyan-300"> 实施步骤</strong>、
+            <strong className="text-purple-300">代码影响</strong> 与
+            <strong className="text-rose-300"> 舍弃理由</strong>。
           </p>
 
           {/* Metric Stats Cards */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 md:gap-4 mt-6">
-            <div className="bg-slate-950/70 border border-slate-800/80 rounded-xl p-3.5 flex flex-col justify-between backdrop-blur-sm">
-              <span className="text-2xs font-mono uppercase tracking-wider text-slate-400">总体完成度</span>
-              <div className="flex items-baseline gap-2 mt-1">
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 md:gap-4 mt-6">
+            <div className="bg-slate-950/70 border border-slate-800/80 rounded-xl p-3 flex flex-col justify-between backdrop-blur-sm">
+              <span className="text-2xs font-mono uppercase tracking-wider text-slate-400">实际完成进度</span>
+              <div className="flex items-baseline gap-1.5 mt-1">
                 <span className="text-2xl font-black text-cyan-400 font-mono">{progressPercent}%</span>
-                <span className="text-2xs text-slate-500 font-mono">({completedCount}/{totalCount})</span>
+                <span className="text-2xs text-slate-500 font-mono">({completedCount}/{completedCount + confirmedCount + evaluatingCount})</span>
               </div>
             </div>
 
-            <div className="bg-slate-950/70 border border-slate-800/80 rounded-xl p-3.5 flex flex-col justify-between backdrop-blur-sm">
-              <span className="text-2xs font-mono uppercase tracking-wider text-slate-400">已上线改动</span>
-              <div className="flex items-baseline gap-2 mt-1">
+            <div className="bg-slate-950/70 border border-slate-800/80 rounded-xl p-3 flex flex-col justify-between backdrop-blur-sm">
+              <span className="text-2xs font-mono uppercase tracking-wider text-emerald-400/90">已上线改动</span>
+              <div className="flex items-baseline gap-1 mt-1">
                 <span className="text-2xl font-black text-emerald-400 font-mono">{completedCount}</span>
-                <span className="text-2xs text-emerald-500/80 font-mono">Completed</span>
+                <span className="text-2xs text-emerald-500/80 font-mono">Live</span>
               </div>
             </div>
 
-            <div className="bg-slate-950/70 border border-slate-800/80 rounded-xl p-3.5 flex flex-col justify-between backdrop-blur-sm">
-              <span className="text-2xs font-mono uppercase tracking-wider text-slate-400">待开发 / 规划中</span>
-              <div className="flex items-baseline gap-2 mt-1">
-                <span className="text-2xl font-black text-amber-400 font-mono">{backlogCount}</span>
-                <span className="text-2xs text-amber-500/80 font-mono">Planned</span>
+            <div className="bg-slate-950/70 border border-slate-800/80 rounded-xl p-3 flex flex-col justify-between backdrop-blur-sm">
+              <span className="text-2xs font-mono uppercase tracking-wider text-cyan-400/90">确定加入</span>
+              <div className="flex items-baseline gap-1 mt-1">
+                <span className="text-2xl font-black text-cyan-400 font-mono">{confirmedCount}</span>
+                <span className="text-2xs text-cyan-500/80 font-mono">Confirmed</span>
               </div>
             </div>
 
-            <div className="bg-slate-950/70 border border-slate-800/80 rounded-xl p-3.5 flex flex-col justify-between backdrop-blur-sm">
-              <span className="text-2xs font-mono uppercase tracking-wider text-slate-400">核心架构模块</span>
-              <div className="flex items-baseline gap-2 mt-1">
-                <span className="text-2xl font-black text-purple-400 font-mono">7</span>
-                <span className="text-2xs text-purple-400/80 font-mono">Modules</span>
+            <div className="bg-slate-950/70 border border-slate-800/80 rounded-xl p-3 flex flex-col justify-between backdrop-blur-sm">
+              <span className="text-2xs font-mono uppercase tracking-wider text-amber-400/90">调研评估中</span>
+              <div className="flex items-baseline gap-1 mt-1">
+                <span className="text-2xl font-black text-amber-400 font-mono">{evaluatingCount}</span>
+                <span className="text-2xs text-amber-500/80 font-mono">Evaluating</span>
+              </div>
+            </div>
+
+            <div className="bg-slate-950/70 border border-slate-800/80 rounded-xl p-3 flex flex-col justify-between backdrop-blur-sm">
+              <span className="text-2xs font-mono uppercase tracking-wider text-rose-400/90">暂不考虑</span>
+              <div className="flex items-baseline gap-1 mt-1">
+                <span className="text-2xl font-black text-rose-400 font-mono">{discardedCount}</span>
+                <span className="text-2xs text-rose-500/80 font-mono">Won't Do</span>
               </div>
             </div>
           </div>
@@ -720,49 +889,64 @@ export const ProjectRoadmap: React.FC = () => {
             onClick={() => setStatusFilter('ALL')}
             className={`px-3 py-1.5 rounded-lg text-xs font-bold font-mono transition-all cursor-pointer ${
               statusFilter === 'ALL'
-                ? 'bg-cyan-500 text-slate-950 shadow-md shadow-cyan-500/20'
+                ? 'bg-slate-200 text-slate-950 shadow-md'
                 : 'bg-slate-800/80 text-slate-400 hover:text-slate-200 border border-slate-700/60'
             }`}
           >
             全部 ({totalCount})
           </button>
+
           <button
             type="button"
             onClick={() => setStatusFilter('COMPLETED')}
             className={`px-3 py-1.5 rounded-lg text-xs font-bold font-mono transition-all cursor-pointer flex items-center gap-1.5 ${
               statusFilter === 'COMPLETED'
                 ? 'bg-emerald-500 text-slate-950 shadow-md shadow-emerald-500/20'
-                : 'bg-slate-800/80 text-emerald-400/80 hover:text-emerald-300 border border-slate-700/60'
+                : 'bg-slate-800/80 text-emerald-400/90 hover:text-emerald-300 border border-slate-700/60'
             }`}
           >
             <span>🟢 已上线改动</span>
             <span>({completedCount})</span>
           </button>
+
           <button
             type="button"
-            onClick={() => setStatusFilter('PENDING')}
+            onClick={() => setStatusFilter('CONFIRMED')}
             className={`px-3 py-1.5 rounded-lg text-xs font-bold font-mono transition-all cursor-pointer flex items-center gap-1.5 ${
-              statusFilter === 'PENDING'
-                ? 'bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20'
-                : 'bg-slate-800/80 text-amber-400/80 hover:text-amber-300 border border-slate-700/60'
+              statusFilter === 'CONFIRMED'
+                ? 'bg-cyan-500 text-slate-950 shadow-md shadow-cyan-500/20'
+                : 'bg-slate-800/80 text-cyan-400/90 hover:text-cyan-300 border border-slate-700/60'
             }`}
           >
-            <span>📋 待开发规划</span>
-            <span>({backlogCount})</span>
+            <span>🎯 确定加入</span>
+            <span>({confirmedCount})</span>
           </button>
-          {inProgressCount > 0 && (
-            <button
-              type="button"
-              onClick={() => setStatusFilter('IN_PROGRESS')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold font-mono transition-all cursor-pointer flex items-center gap-1.5 ${
-                statusFilter === 'IN_PROGRESS'
-                  ? 'bg-sky-500 text-slate-950 shadow-md shadow-sky-500/20'
-                  : 'bg-slate-800/80 text-sky-400/80 hover:text-sky-300 border border-slate-700/60'
-              }`}
-            >
-              <span>🔵 进行中 ({inProgressCount})</span>
-            </button>
-          )}
+
+          <button
+            type="button"
+            onClick={() => setStatusFilter('EVALUATING')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold font-mono transition-all cursor-pointer flex items-center gap-1.5 ${
+              statusFilter === 'EVALUATING'
+                ? 'bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20'
+                : 'bg-slate-800/80 text-amber-400/90 hover:text-amber-300 border border-slate-700/60'
+            }`}
+          >
+            <span>🔬 评估调研中</span>
+            <span>({evaluatingCount})</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setStatusFilter('DISCARDED')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold font-mono transition-all cursor-pointer flex items-center gap-1.5 ${
+              statusFilter === 'DISCARDED'
+                ? 'bg-rose-500 text-slate-950 shadow-md shadow-rose-500/20'
+                : 'bg-slate-800/80 text-rose-400/90 hover:text-rose-300 border border-slate-700/60'
+            }`}
+          >
+            <span>🚫 暂不考虑</span>
+            <span>({discardedCount})</span>
+          </button>
         </div>
 
         {/* Category & Search Box */}
@@ -779,16 +963,15 @@ export const ProjectRoadmap: React.FC = () => {
             <option value="admin">🖥️ 管理后台与工作流</option>
             <option value="gameplay">🎮 学生端交互与游戏</option>
             <option value="offline">⚡ PWA离线引擎</option>
-            <option value="backlog">📋 待开发规划 (Backlog)</option>
           </select>
 
           <div className="relative">
             <input
               type="text"
-              placeholder="搜索修改步骤、文件、功能..."
+              placeholder="搜索修改步骤、文件、理由..."
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
-              className="bg-slate-950 border border-slate-700 rounded-lg pl-8 pr-3 py-1.5 text-xs text-slate-200 placeholder-slate-500 font-mono w-48 sm:w-60 focus:outline-none focus:border-cyan-400"
+              className="bg-slate-950 border border-slate-700 rounded-lg pl-8 pr-3 py-1.5 text-xs text-slate-200 placeholder-slate-500 font-mono w-48 sm:w-56 focus:outline-none focus:border-cyan-400"
             />
             <span className="absolute left-2.5 top-1.5 text-xs text-slate-500 pointer-events-none">🔍</span>
           </div>
@@ -797,7 +980,7 @@ export const ProjectRoadmap: React.FC = () => {
             <button
               type="button"
               onClick={handleExpandAll}
-              className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-mono font-bold transition-all border border-slate-700"
+              className="px-2 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-mono font-bold transition-all border border-slate-700"
               title="全部展开"
             >
               展开全部
@@ -805,7 +988,7 @@ export const ProjectRoadmap: React.FC = () => {
             <button
               type="button"
               onClick={handleCollapseAll}
-              className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-mono font-bold transition-all border border-slate-700"
+              className="px-2 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-mono font-bold transition-all border border-slate-700"
               title="全部收起"
             >
               收起全部
@@ -834,14 +1017,24 @@ export const ProjectRoadmap: React.FC = () => {
           filteredItems.map(item => {
             const isExpanded = expandedIds.has(item.id);
             const isDone = item.status === 'COMPLETED';
-            const isPlanned = item.status === 'PLANNED' || item.status === 'PENDING';
+            const isConfirmed = item.status === 'CONFIRMED';
+            const isEvaluating = item.status === 'EVALUATING';
+            const isDiscarded = item.status === 'DISCARDED';
 
             return (
               <div
                 key={item.id}
                 className={`rounded-xl border transition-all duration-200 overflow-hidden ${
                   isExpanded
-                    ? 'bg-slate-900/90 border-cyan-500/50 shadow-lg shadow-cyan-950/30'
+                    ? isDiscarded
+                      ? 'bg-slate-900/90 border-rose-500/40 shadow-lg shadow-rose-950/20'
+                      : isConfirmed
+                      ? 'bg-slate-900/90 border-cyan-500/50 shadow-lg shadow-cyan-950/30'
+                      : isEvaluating
+                      ? 'bg-slate-900/90 border-amber-500/40 shadow-lg shadow-amber-950/20'
+                      : 'bg-slate-900/90 border-emerald-500/40 shadow-lg shadow-emerald-950/20'
+                    : isDiscarded
+                    ? 'bg-slate-900/30 border-rose-900/30 hover:border-rose-700/50 hover:bg-slate-900/50'
                     : 'bg-slate-900/40 border-slate-800 hover:border-slate-700 hover:bg-slate-900/60'
                 }`}
               >
@@ -856,25 +1049,42 @@ export const ProjectRoadmap: React.FC = () => {
                       className={`text-2xs font-mono font-black uppercase px-2.5 py-1 rounded-md shrink-0 border ${
                         isDone
                           ? 'bg-emerald-950/80 text-emerald-400 border-emerald-500/40'
-                          : isPlanned
+                          : isConfirmed
+                          ? 'bg-cyan-950/90 text-cyan-300 border-cyan-400 shadow-sm shadow-cyan-500/20'
+                          : isEvaluating
                           ? 'bg-amber-950/80 text-amber-300 border-amber-500/40'
-                          : 'bg-sky-950/80 text-sky-300 border-sky-500/40'
+                          : 'bg-rose-950/80 text-rose-300 border-rose-500/40 line-through decoration-rose-400/50'
                       }`}
                     >
-                      {isDone ? '✅ 已上线' : isPlanned ? '📋 待开发' : '🚧 进行中'}
+                      {isDone && '✅ 已上线'}
+                      {isConfirmed && '🎯 确定加入'}
+                      {isEvaluating && '🔬 评估调研中'}
+                      {isDiscarded && '🚫 暂不考虑'}
                     </span>
 
-                    <span className="font-mono text-xs font-bold text-cyan-400 shrink-0">
+                    <span className={`font-mono text-xs font-bold shrink-0 ${
+                      isDiscarded ? 'text-slate-500' : 'text-cyan-400'
+                    }`}>
                       {item.id}
                     </span>
 
                     <div className="min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <h3 className="text-sm font-bold text-slate-100 truncate">{item.title}</h3>
+                        <h3 className={`text-sm font-bold truncate ${
+                          isDiscarded ? 'text-slate-400 line-through decoration-slate-600' : 'text-slate-100'
+                        }`}>
+                          {item.title}
+                        </h3>
                         <span className="text-2xs font-mono px-2 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700/60">
                           {item.categoryLabel}
                         </span>
-                        <span className="text-2xs font-mono px-1.5 py-0.5 rounded bg-purple-950/60 text-purple-300 border border-purple-500/30">
+                        <span className={`text-2xs font-mono px-1.5 py-0.5 rounded border ${
+                          isDiscarded
+                            ? 'bg-rose-950/40 text-rose-400 border-rose-500/30'
+                            : isConfirmed
+                            ? 'bg-cyan-950/60 text-cyan-300 border-cyan-500/40'
+                            : 'bg-purple-950/60 text-purple-300 border-purple-500/30'
+                        }`}>
                           {item.version}
                         </span>
                       </div>
@@ -888,21 +1098,57 @@ export const ProjectRoadmap: React.FC = () => {
                     <span className="text-2xs font-mono text-slate-500">{item.date}</span>
                     <button
                       type="button"
-                      className="px-2.5 py-1 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-300 text-xs font-mono transition-all flex items-center gap-1 cursor-pointer"
+                      className={`px-2.5 py-1 rounded-lg text-xs font-mono transition-all flex items-center gap-1 cursor-pointer ${
+                        isDiscarded
+                          ? 'bg-rose-950/40 text-rose-300 border border-rose-800/50 hover:bg-rose-900/50'
+                          : 'bg-slate-800/80 text-slate-300 hover:bg-slate-700'
+                      }`}
                     >
-                      <span>{isExpanded ? '收起步骤' : '查看修改步骤'}</span>
+                      <span>
+                        {isExpanded
+                          ? '收起详情'
+                          : isDiscarded
+                          ? '查看舍弃理由'
+                          : isConfirmed
+                          ? '查看计划步骤'
+                          : '查看修改步骤'}
+                      </span>
                       <span className="text-xs">{isExpanded ? '▲' : '▼'}</span>
                     </button>
                   </div>
                 </div>
 
-                {/* Expanded Drawer: Detailed Implementation Steps & Specs */}
+                {/* Expanded Drawer */}
                 {isExpanded && (
                   <div className="border-t border-slate-800/80 bg-slate-950/80 p-5 space-y-5 animate-fadeIn">
-                    {/* Section 1: Detailed Modification Steps */}
+                    {/* Discarded Feature Warning Callout */}
+                    {isDiscarded && item.discardReason && (
+                      <div className="p-4 rounded-xl bg-rose-950/30 border border-rose-500/40 space-y-3">
+                        <div className="flex items-center gap-2 text-xs font-bold font-mono text-rose-300 uppercase tracking-wider">
+                          <span>🛑 为什么不考虑 / 舍弃理由 (Discard Rationale)</span>
+                        </div>
+                        <div className="text-xs font-mono text-rose-200/90 leading-relaxed whitespace-pre-line pl-1">
+                          {item.discardReason}
+                        </div>
+
+                        {item.alternativeSolution && (
+                          <div className="pt-2 border-t border-rose-500/20 text-xs font-mono text-slate-300">
+                            <span className="text-emerald-400 font-bold">💡 替代推荐方案：</span>
+                            <span className="text-slate-300">{item.alternativeSolution}</span>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Section 1: Detailed Modification / Planned Steps */}
                     <div>
                       <h4 className="text-xs font-bold font-mono text-cyan-400 uppercase tracking-wider flex items-center gap-2 mb-2.5">
-                        <span>📝 详细修改步骤 (Step-by-Step Implementation)</span>
+                        <span>
+                          {isDone && '📝 详细修改步骤 (Step-by-Step Implementation)'}
+                          {isConfirmed && '🎯 计划实施步骤 (Planned Implementation Steps)'}
+                          {isEvaluating && '🔬 调研验证步骤 (Evaluation Steps)'}
+                          {isDiscarded && '📋 曾评估过的技术构想 (Previously Assessed Concept)'}
+                        </span>
                         <span className="text-2xs px-2 py-0.5 rounded bg-cyan-950 text-cyan-400 border border-cyan-800">
                           {item.steps.length} 个操作步骤
                         </span>
@@ -910,7 +1156,11 @@ export const ProjectRoadmap: React.FC = () => {
                       <ol className="space-y-2 font-mono text-xs text-slate-300 pl-1">
                         {item.steps.map((step, idx) => (
                           <li key={idx} className="flex items-start gap-2.5">
-                            <span className="w-5 h-5 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 flex items-center justify-center font-mono font-bold text-2xs shrink-0 mt-0.5">
+                            <span className={`w-5 h-5 rounded-full flex items-center justify-center font-mono font-bold text-2xs shrink-0 mt-0.5 border ${
+                              isDiscarded
+                                ? 'bg-rose-500/10 text-rose-400 border-rose-500/30'
+                                : 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40'
+                            }`}>
                               {idx + 1}
                             </span>
                             <span className="leading-relaxed">{step}</span>
@@ -920,22 +1170,24 @@ export const ProjectRoadmap: React.FC = () => {
                     </div>
 
                     {/* Section 2: Affected Files */}
-                    <div>
-                      <h4 className="text-xs font-bold font-mono text-purple-400 uppercase tracking-wider flex items-center gap-2 mb-2">
-                        <span>📁 修改涉及文件路径 (Affected Files)</span>
-                      </h4>
-                      <div className="flex flex-wrap gap-2">
-                        {item.affectedFiles.map((file, idx) => (
-                          <span
-                            key={idx}
-                            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-purple-950/40 border border-purple-500/30 text-purple-300 font-mono text-2xs"
-                          >
-                            <span>📄</span>
-                            <span>{file}</span>
-                          </span>
-                        ))}
+                    {item.affectedFiles.length > 0 && (
+                      <div>
+                        <h4 className="text-xs font-bold font-mono text-purple-400 uppercase tracking-wider flex items-center gap-2 mb-2">
+                          <span>📁 {isDone ? '修改涉及文件路径' : '预估影响模块文件'} (Affected Files)</span>
+                        </h4>
+                        <div className="flex flex-wrap gap-2">
+                          {item.affectedFiles.map((file, idx) => (
+                            <span
+                              key={idx}
+                              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-purple-950/40 border border-purple-500/30 text-purple-300 font-mono text-2xs"
+                            >
+                              <span>📄</span>
+                              <span>{file}</span>
+                            </span>
+                          ))}
+                        </div>
                       </div>
-                    </div>
+                    )}
 
                     {/* Section 3: Technical Notes & Rationale */}
                     <div>
@@ -968,7 +1220,7 @@ export const ProjectRoadmap: React.FC = () => {
       {/* Footer Info */}
       <div className="text-center py-6 border-t border-slate-800/60">
         <p className="text-2xs text-slate-500 font-mono">
-          WORDQUEST SYSTEM ARCHITECTURE & CHANGELOG TRACKER • AUTOMATICALLY SYNCHRONIZED
+          WORDQUEST SYSTEM ARCHITECTURE & ROADMAP TRACKER • CONTINUOUSLY ITERATED
         </p>
       </div>
     </div>

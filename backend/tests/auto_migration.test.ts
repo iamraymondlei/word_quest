@@ -46,5 +46,11 @@ describe('Auto Database Migration', () => {
       "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'spent_stars'"
     );
     expect(spentStarCols.length).toBeGreaterThan(0);
+
+    // Verify project_roadmap_tasks table exists
+    const [roadmapTables]: any = await pool.query(
+      "SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'project_roadmap_tasks'"
+    );
+    expect(roadmapTables.length).toBeGreaterThan(0);
   });
 });

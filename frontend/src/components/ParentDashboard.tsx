@@ -11,6 +11,7 @@ import {
   normalizeMonsterKey
 } from './StoryChaseAssets';
 import { StoryIllustration } from './StoryIllustration';
+import { ProjectRoadmap } from './ProjectRoadmap';
 import './ParentDashboard.css';
 
 export interface WordItem {
@@ -199,7 +200,7 @@ export const ParentDashboard: React.FC<Props> = ({ onBack }) => {
   const [aiStatus, setAiStatus] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   // Tab & User & Group Management States
-  const [activeTab, setActiveTab] = useState<'users' | 'stories' | 'groups' | 'ai_import' | 'game_settings'>('stories');
+  const [activeTab, setActiveTab] = useState<'users' | 'stories' | 'groups' | 'ai_import' | 'game_settings' | 'roadmap'>('stories');
   const [isEditingStory, setIsEditingStory] = useState<boolean>(false);
   const [storySearchQuery, setStorySearchQuery] = useState<string>('');
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(() => {
@@ -1188,6 +1189,26 @@ export const ParentDashboard: React.FC<Props> = ({ onBack }) => {
                 </div>
               )}
             </button>
+
+            {/* Nav 6: 任务与改动追踪 */}
+            <button
+              type="button"
+              onClick={() => { setActiveTab('roadmap'); setIsEditingStory(false); }}
+              className={`admin-nav-item w-full p-2.5 rounded-xl border flex items-center gap-3 cursor-pointer text-left ${
+                activeTab === 'roadmap' && !isEditingStory
+                  ? 'active'
+                  : 'bg-slate-900/40 border-transparent text-slate-400 hover:text-slate-200'
+              }`}
+              title="任务与改动追踪 (ROADMAP & CHANGELOG)"
+            >
+              <span className="text-lg shrink-0">📋</span>
+              {!isSidebarCollapsed && (
+                <div className="min-w-0">
+                  <div className="text-xs font-bold font-mono tracking-wide truncate">任务与改动追踪</div>
+                  <div className="text-[10px] text-slate-500 font-mono truncate">Roadmap & Changelog</div>
+                </div>
+              )}
+            </button>
           </nav>
         </div>
 
@@ -1220,6 +1241,7 @@ export const ParentDashboard: React.FC<Props> = ({ onBack }) => {
                   {activeTab === 'groups' && '📁 故事分组管理 (STORY GROUPS DIRECTORY)'}
                   {activeTab === 'ai_import' && '🤖 AI 智能绘本导入工作室 (AI SYNTHESIS STUDIO)'}
                   {activeTab === 'game_settings' && '🎮 游戏玩法与难度参数配置 (GAME SETTINGS)'}
+                  {activeTab === 'roadmap' && '📋 任务与改动追踪看板 (PROJECT ROADMAP & CHANGELOG)'}
                 </h1>
                 <p className="text-2xs text-slate-400 font-mono mt-1">
                   {activeTab === 'users' && '创建与管理学生档案，分配阅读关卡与追踪单词进度'}
@@ -1227,29 +1249,32 @@ export const ParentDashboard: React.FC<Props> = ({ onBack }) => {
                   {activeTab === 'groups' && '管理故事所属分类与关卡分组，支持增删改查及故事自动归并'}
                   {activeTab === 'ai_import' && '通过 Agent CLI 与多模态大模型一键提取绘本中英文与问答'}
                   {activeTab === 'game_settings' && '调整 Story Chase 打字追逐游戏的怪兽移动速度、退后距离、等待冷却时间及可用怪兽 Emoji 池'}
+                  {activeTab === 'roadmap' && '追踪全站各版本技术演进、已上线改动步骤、涉及代码文件与待开发规划'}
                 </p>
               </div>
             </div>
 
-            {/* Dark Glass Metric Stats Cards */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <div className="theme-card border theme-border rounded-xl p-4 shadow-lg flex flex-col justify-between hover:border-cyan-500/40 transition-all">
-                <span className="text-xs font-mono uppercase tracking-wider theme-text-muted mb-1">Total Stories</span>
-                <span className="theme-text font-display text-2xl font-black">{islands.length}</span>
+            {/* Dark Glass Metric Stats Cards (only for non-roadmap tabs) */}
+            {activeTab !== 'roadmap' && (
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="theme-card border theme-border rounded-xl p-4 shadow-lg flex flex-col justify-between hover:border-cyan-500/40 transition-all">
+                  <span className="text-xs font-mono uppercase tracking-wider theme-text-muted mb-1">Total Stories</span>
+                  <span className="theme-text font-display text-2xl font-black">{islands.length}</span>
+                </div>
+                <div className="theme-card border theme-border rounded-xl p-4 shadow-lg flex flex-col justify-between hover:border-cyan-500/40 transition-all">
+                  <span className="text-xs font-mono uppercase tracking-wider theme-text-muted mb-1">Word Count</span>
+                  <span className="text-cyan-400 font-display text-2xl font-black">{totalWordCount}</span>
+                </div>
+                <div className="theme-card border theme-border rounded-xl p-4 shadow-lg flex flex-col justify-between hover:border-cyan-500/40 transition-all">
+                  <span className="text-xs font-mono uppercase tracking-wider theme-text-muted mb-1">Registered Students</span>
+                  <span className="text-emerald-400 font-display text-2xl font-black">{usersList.length}</span>
+                </div>
+                <div className="theme-card border theme-border rounded-xl p-4 shadow-lg flex flex-col justify-between hover:border-cyan-500/40 transition-all">
+                  <span className="text-xs font-mono uppercase tracking-wider theme-text-muted mb-1">Study Hours</span>
+                  <span className="text-purple-400 font-display text-2xl font-black">24.5h</span>
+                </div>
               </div>
-              <div className="theme-card border theme-border rounded-xl p-4 shadow-lg flex flex-col justify-between hover:border-cyan-500/40 transition-all">
-                <span className="text-xs font-mono uppercase tracking-wider theme-text-muted mb-1">Word Count</span>
-                <span className="text-cyan-400 font-display text-2xl font-black">{totalWordCount}</span>
-              </div>
-              <div className="theme-card border theme-border rounded-xl p-4 shadow-lg flex flex-col justify-between hover:border-cyan-500/40 transition-all">
-                <span className="text-xs font-mono uppercase tracking-wider theme-text-muted mb-1">Registered Students</span>
-                <span className="text-emerald-400 font-display text-2xl font-black">{usersList.length}</span>
-              </div>
-              <div className="theme-card border theme-border rounded-xl p-4 shadow-lg flex flex-col justify-between hover:border-cyan-500/40 transition-all">
-                <span className="text-xs font-mono uppercase tracking-wider theme-text-muted mb-1">Study Hours</span>
-                <span className="text-purple-400 font-display text-2xl font-black">24.5h</span>
-              </div>
-            </div>
+            )}
           </div>
         )}
 
@@ -3362,6 +3387,13 @@ export const ParentDashboard: React.FC<Props> = ({ onBack }) => {
               </form>
             </SuspenseState>
           </FormBoundary>
+        </div>
+      )}
+
+      {/* View 6: 📋 Project Roadmap & Changelog Tab */}
+      {activeTab === 'roadmap' && !isEditingStory && (
+        <div className="animate-fade-in">
+          <ProjectRoadmap />
         </div>
       )}
       </main>

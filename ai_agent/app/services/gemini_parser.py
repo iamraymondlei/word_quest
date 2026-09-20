@@ -298,62 +298,116 @@ class GeminiParser:
                 f'  "title": "Book Title",\n'
                 f'  "theme": "Short Chinese summary",\n'
                 f'  "vocabulary": [{{"word": "word", "phonetic": "/phonetic/", "meaning": "中文", "example_sentence": "sentence", "example_translation": "例句翻译"}}],\n'
-                f'  "pages": [{{"page": 1, "sentences": [{{"en": "English sentence", "zh": "中文翻译"}}]}}],\n'
+                f'  "pages": [{{"page": 1, "illustration_box": [100, 50, 600, 950], "sentences": [{{"en": "English sentence", "zh": "中文翻译"}}]}}],\n'
                 f'  "questions": [{{"question": "English Question", "hint": "Hint", "answer": "Answer"}}]\n'
                 f"}}\n\n"
                 f"{formatted_prompt}"
             )
 
-            if cli_type == "codex":
-                codex_path = shutil.which("codex")
-                if not codex_path:
-                    raise ValueError("系统未找到 codex 命令，请确认 codex CLI 已安装并正确挂载。")
-                cmd = [
-                    "codex", "exec",
-                    "--dangerously-bypass-approvals-and-sandbox",
-                    "--ephemeral",
-                ]
-                if effective_model and effective_model.lower() not in ("default", "none"):
-                    cmd.extend(["-m", effective_model])
-                for p in temp_paths:
-                    cmd.extend(["-i", p])
-                cmd.append("-")  # Signal codex to read prompt from stdin
+            max_retries = 2
+            stdout = b""
+            stderr = b""
 
-                proc = await asyncio.create_subprocess_exec(
-                    *cmd,
-                    stdin=asyncio.subprocess.PIPE,
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE
-                )
-                stdout, stderr = await proc.communicate(input=prompt.encode("utf-8"))
-            else:
-                agy_path = shutil.which("agy")
-                if not agy_path:
-                    raise ValueError("系统未找到 agy 命令，请确认 agy CLI 已安装并正确挂载。")
-                cmd = [
-                    "agy",
-                    "--dangerously-skip-permissions",
-                    "--disable-slash-commands",
-                ]
-                if effective_model:
-                    cmd.extend(["--model", effective_model])
-                cmd.extend(["--add-dir", temp_dir])
-                cmd.extend(["-p", prompt])
+            for attempt in range(max_retries + 1):
+                if cli_type == "codex":
+                    codex_path = shutil.which("codex")
+                    if not codex_path:
+                        raise ValueError("系统未找到 codex 命令，请确认 codex CLI 已安装并正确挂载。")
+                    cmd = [
+                        "codex", "exec",
+                        "--dangerously-bypass-approvals-and-sandbox",
+                        "--ephemeral",
+                    ]
+                    if effective_model and effective_model.lower() not in ("default", "none"):
+                        cmd.extend(["-m", effective_model])
+                    for p in temp_paths:
+                        cmd.extend(["-i", p])
+                    cmd.append("-")  # Signal codex to read prompt from stdin
 
-                proc = await asyncio.create_subprocess_exec(
-                    *cmd,
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE
-                )
-                stdout, stderr = await proc.communicate()
+                    proc = await asyncio.create_subprocess_exec(
+                        *cmd,
+                        stdin=asyncio.subprocess.PIPE,
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.PIPE
+                    )
+                    stdout, stderr = await proc.communicate(input=prompt.encode("utf-8"))
+                else:
+                    agy_path = shutil.which("agy")
+                    if not agy_path:
+                        raise ValueError("系统未找到 agy 命令，请确认 agy CLI 已安装并正确挂载。")
+                    cmd = [
+                        "agy",
+                        "--dangerously-skip-permissions",
+                        "--disable-slash-commands",
+                    ]
+                    if effective_model:
+                        cmd.extend(["--model", effective_model])
+                    cmd.extend(["--add-dir", temp_dir])
+                    cmd.extend(["-p", prompt])
 
-            if proc.returncode != 0:
+                    proc = await asyncio.create_subprocess_exec(
+                        *cmd,
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.PIPE
+                    )
+                    
+                    cli_timeout = max(360, len(images) * 65)  # allow up to 10+ minutes for multi-page books
+                    try:
+                        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=cli_timeout)
+                    except asyncio.TimeoutError:
+                        try:
+                            proc.kill()
+                            await proc.wait()
+                        except Exception:
+                            pass
+                        raise ValueError(f"{cli_type} 解析处理超时（已耗时超过 {cli_timeout // 60} 分钟）。建议分批上传（每次 3-5 页）以加快速度。")
+
+                if proc.returncode == 0:
+                    break
+
                 err_text = stderr.decode().strip()
-                logger.error("%s CLI execution error: %s", cli_type, err_text)
-                raise ValueError(f"{cli_type} CLI Error: {err_text}")
+                is_transient = any(kw in err_text.lower() for kw in ["503", "unavailable", "eligibility check failed", "temporarily", "context canceled", "rate limit"])
+                if attempt < max_retries and is_transient:
+                    logger.warning("%s CLI transient error on attempt %d: %s. Retrying in 5 seconds...", cli_type, attempt + 1, err_text)
+                    await asyncio.sleep(5)
+                    continue
+                else:
+                    logger.error("%s CLI execution error: %s", cli_type, err_text)
+                    raise ValueError(f"{cli_type} CLI Error: {err_text}")
 
             out_text = stdout.decode().strip()
             data = _clean_and_parse_json(out_text)
+
+            # Crop illustrations and upload to MinIO
+            import uuid
+            story_prefix = f"story_{int(time.time())}_{uuid.uuid4().hex[:6]}"
+
+            from app.services.image_cropper import crop_and_compress_illustration
+            from app.services.storage import upload_illustration_bytes
+
+            pages_data = data.get("pages", [])
+            for p_idx, page_item in enumerate(pages_data):
+                if p_idx < len(temp_paths):
+                    src_image_path = temp_paths[p_idx]
+                    box = page_item.get("illustration_box")
+                    try:
+                        cropped_webp = crop_and_compress_illustration(
+                            image_path_or_bytes=src_image_path,
+                            box=box,
+                        )
+                        page_num = page_item.get("page", p_idx + 1)
+                        filename = f"{story_prefix}_p{page_num}.webp"
+                        illustration_url = upload_illustration_bytes(
+                            image_bytes=cropped_webp,
+                            filename=filename,
+                            content_type="image/webp",
+                        )
+                        page_item["illustration_url"] = illustration_url
+                        logger.info("Page %d illustration saved: %s", page_num, illustration_url)
+                    except Exception as img_err:
+                        logger.warning("Failed processing illustration for page %d: %s", p_idx + 1, img_err)
+                        page_item["illustration_url"] = None
+
             return StoryParseResult(**data)
         except Exception as e:
             logger.error("Picture book parsing failed via %s CLI: %s", cli_type, e)

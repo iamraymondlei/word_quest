@@ -927,5 +927,48 @@ describe('Island and Words API Tests', () => {
       expect(res5.status).toBe(400);
       expect(res5.body.error).toContain('is reserved');
     });
+
+    it('should save and retrieve story_passage_json with illustration_url properly', async () => {
+      const islandWithIllustrations = {
+        name: 'Picture Book Island',
+        group_name: 'Picture Books',
+        story_title: 'Little Orca Adventure',
+        story_passage: 'Orcas live in the ocean. They swim together.',
+        story_passage_json: [
+          {
+            paragraph_num: 1,
+            sentence_num: 1,
+            sentence_text: 'Orcas live in the ocean.',
+            translation: '虎鲸生活在海洋里。',
+            illustration_url: '/api/illustrations/orca_page1.webp'
+          },
+          {
+            paragraph_num: 2,
+            sentence_num: 1,
+            sentence_text: 'They swim together.',
+            translation: '它们一起游泳。',
+            illustration_url: '/api/illustrations/orca_page2.webp'
+          }
+        ]
+      };
+
+      const res = await request(app)
+        .post('/api/islands')
+        .send(islandWithIllustrations);
+
+      expect(res.status).toBe(200);
+      expect(res.body.story_passage_json).toBeDefined();
+      expect(res.body.story_passage_json.length).toBe(2);
+      expect(res.body.story_passage_json[0].illustration_url).toBe('/api/illustrations/orca_page1.webp');
+      expect(res.body.story_passage_json[1].illustration_url).toBe('/api/illustrations/orca_page2.webp');
+
+      // Fetch via GET /api/islands
+      const listRes = await request(app).get('/api/islands');
+      expect(listRes.status).toBe(200);
+      const savedIsland = listRes.body.find((isl: any) => isl.id === res.body.id);
+      expect(savedIsland).toBeDefined();
+      expect(savedIsland.story_passage_json[0].illustration_url).toBe('/api/illustrations/orca_page1.webp');
+    });
   });
 });
+

@@ -135,4 +135,45 @@ describe('Sector Ownership & Admin Role API', () => {
     expect(rows.length).toBe(2);
     expect(rows.map((r: any) => r.user_id)).toEqual([user1.insertId, user2.insertId].sort((a, b) => a - b));
   });
+
+  it('should delete island and its associated words, progress, and access via DELETE /api/islands/:id', async () => {
+    const [i1]: any = await pool.query("INSERT INTO islands (name, group_name) VALUES ('Deletable Island', 'General')");
+    const islandId = i1.insertId;
+
+    const [user1]: any = await pool.query("INSERT INTO users (username) VALUES ('TestUserForDelete')");
+    const userId = user1.insertId;
+
+    await pool.query("INSERT INTO user_island_access (user_id, island_id) VALUES (?, ?)", [userId, islandId]);
+    await pool.query("INSERT INTO user_island_progress (user_id, island_id, unlocked_stage) VALUES (?, ?, 2)", [userId, islandId]);
+
+    const [w1]: any = await pool.query("INSERT INTO words (island_id, word, translation, sentence, sentence_translation) VALUES (?, 'apple', '苹果', 'I eat an apple', '我吃苹果')", [islandId]);
+    const wordId = w1.insertId;
+    await pool.query("INSERT INTO user_word_progress (user_id, word_id, error_count) VALUES (?, ?, 1)", [userId, wordId]);
+
+    // Perform deletion
+    const res = await request(app).delete(`/api/islands/${islandId}`);
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+
+    // Verify island is gone
+    const [islandCheck]: any = await pool.query("SELECT * FROM islands WHERE id = ?", [islandId]);
+    expect(islandCheck.length).toBe(0);
+
+    // Verify cascaded records are cleaned up
+    const [accessCheck]: any = await pool.query("SELECT * FROM user_island_access WHERE island_id = ?", [islandId]);
+    expect(accessCheck.length).toBe(0);
+
+    const [islandProgressCheck]: any = await pool.query("SELECT * FROM user_island_progress WHERE island_id = ?", [islandId]);
+    expect(islandProgressCheck.length).toBe(0);
+
+    const [wordsCheck]: any = await pool.query("SELECT * FROM words WHERE island_id = ?", [islandId]);
+    expect(wordsCheck.length).toBe(0);
+
+    const [wordProgressCheck]: any = await pool.query("SELECT * FROM user_word_progress WHERE word_id = ?", [wordId]);
+    expect(wordProgressCheck.length).toBe(0);
+
+    // Attempting to delete non-existent island returns 404
+    const notFoundRes = await request(app).delete(`/api/islands/${islandId}`);
+    expect(notFoundRes.status).toBe(404);
+  });
 });

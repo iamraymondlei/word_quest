@@ -772,8 +772,9 @@ export const importAIStory = async (req: Request, res: Response) => {
       formData.append('images', blob, file.originalname);
     }
 
+    const dynamicTimeoutMs = Math.max(360000, (files?.length || 1) * 70000); // 6 to 12 minutes
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 180000); // 3 minutes timeout
+    const timeoutId = setTimeout(() => controller.abort(), dynamicTimeoutMs);
 
     let response: any;
     try {
@@ -786,7 +787,7 @@ export const importAIStory = async (req: Request, res: Response) => {
     } catch (err: any) {
       clearTimeout(timeoutId);
       if (err.name === 'AbortError') {
-        throw new Error('AI 解析服务请求超时，请稍后重试');
+        throw new Error(`AI 解析服务处理超时（已等待 ${Math.round(dynamicTimeoutMs / 60000)} 分钟）。对于页数较多（如 5-10 页）的绘本，建议分批导入或稍后重试`);
       }
       throw err;
     }
@@ -828,3 +829,49 @@ export const importAIStory = async (req: Request, res: Response) => {
     return res.status(500).json({ error: `Failed to communicate with AI Agent: ${fetchErr.message}` });
   }
 };
+
+export const deleteIsland = async (req: Request, res: Response) => {
+  const { id } = req.params;
+  let connection;
+  try {
+    connection = await pool.getConnection();
+    await connection.beginTransaction();
+
+    const [islandRows]: any = await connection.query('SELECT id, name FROM islands WHERE id = ?', [id]);
+    if (islandRows.length === 0) {
+      await connection.rollback();
+      return res.status(404).json({ error: 'Story sector not found.' });
+    }
+
+    const islandName = islandRows[0].name;
+
+    // Clean up dependent records
+    await connection.query('DELETE FROM user_island_access WHERE island_id = ?', [id]);
+    await connection.query('DELETE FROM user_island_progress WHERE island_id = ?', [id]);
+
+    // Clean up word progress and words
+    const [wordRows]: any = await connection.query('SELECT id FROM words WHERE island_id = ?', [id]);
+    if (wordRows.length > 0) {
+      const wordIds = wordRows.map((w: any) => w.id);
+      await connection.query('DELETE FROM user_word_progress WHERE word_id IN (?)', [wordIds]);
+      await connection.query('DELETE FROM words WHERE island_id = ?', [id]);
+    }
+
+    // Delete island
+    await connection.query('DELETE FROM islands WHERE id = ?', [id]);
+
+    await connection.commit();
+
+    return res.json({
+      success: true,
+      message: `Story "${islandName}" deleted successfully.`
+    });
+  } catch (err: any) {
+    if (connection) await connection.rollback();
+    console.error('Error deleting island:', err);
+    return res.status(500).json({ error: err.message || 'Internal Server Error' });
+  } finally {
+    if (connection) connection.release();
+  }
+};
+

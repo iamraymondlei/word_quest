@@ -12,6 +12,7 @@ import islandRoutes from './routes/islandRoutes';
 import versionRoutes from './routes/versionRoutes';
 import groupRoutes from './routes/groupRoutes';
 import settingRoutes from './routes/settingRoutes';
+import illustrationRoutes from './routes/illustrationRoutes';
 import { DEFAULT_GAME_SETTINGS } from './controllers/settingController';
 
 const app = express();
@@ -175,6 +176,7 @@ app.use('/api/islands', islandRoutes);
 app.use('/api/groups', groupRoutes);
 app.use('/api/game-settings', settingRoutes);
 app.use('/api/versions', versionRoutes);
+app.use('/api/illustrations', illustrationRoutes);
 
 import multer from 'multer';
 

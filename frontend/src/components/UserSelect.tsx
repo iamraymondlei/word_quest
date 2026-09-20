@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { SuspenseState } from './SuspenseState';
 import { RunnerSprite, BUDDY_CHARACTERS, normalizeBuddyKey } from './StoryChaseAssets';
+import { apiService } from '../utils/apiService';
 import './UserSelect.css';
 
 interface User {
@@ -32,12 +33,15 @@ export const UserSelect: React.FC<UserSelectProps> = ({ onLogin, onAdminClick })
     setLoading(true);
     setError('');
     try {
-      const res = await fetch('/api/users');
-      if (res.ok) {
-        const data = await res.json();
+      const data = await apiService.getUsers();
+      if (data && data.length > 0) {
         setUsers(data.filter((u: User) => u.username.toLowerCase() !== 'admin'));
       } else {
-        setError('FAILED TO RETRIEVE ACTIVE PROFILES.');
+        if (typeof navigator !== 'undefined' && !navigator.onLine) {
+          setError('当前处于离线模式，本地暂无已缓存的玩家档案。请在连接 Wi-Fi 时打开本页面一次。');
+        } else {
+          setError('FAILED TO RETRIEVE ACTIVE PROFILES.');
+        }
       }
     } catch (err) {
       console.error('Failed to load agent profiles', err);

@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import './AdventureMap.css';
 import { isIPadOrTabletDevice } from '../utils/device';
+import { apiService } from '../utils/apiService';
 import {
   BuddySelectorModal,
   BUDDY_CHARACTERS,
@@ -24,6 +25,7 @@ export interface Island {
     sentence_num: number;
     sentence_text: string;
     translation: string;
+    illustration_url?: string | null;
   }>;
 }
 
@@ -61,17 +63,8 @@ export const AdventureMap: React.FC<AdventureMapProps> = ({
   const handleSelectBuddy = async (buddyKey: string) => {
     setSavingBuddy(true);
     try {
-      const res = await fetch('/api/users/update-avatar', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ user_id: currentUser.id, avatar: buddyKey })
-      });
-      if (res.ok) {
-        const data = await res.json();
-        if (data.user) {
-          onUpdateUser?.(data.user);
-        }
-      }
+      await apiService.updateAvatar(currentUser.id, buddyKey);
+      onUpdateUser?.({ ...currentUser, avatar: buddyKey });
     } catch (err) {
       console.error('Failed to update buddy:', err);
     } finally {

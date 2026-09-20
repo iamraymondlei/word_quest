@@ -12,6 +12,8 @@ import {
   MonsterSprite
 } from './StoryChaseAssets';
 import { isIPadOrTabletDevice } from '../utils/device';
+import { apiService } from '../utils/apiService';
+import { StoryIllustration } from './StoryIllustration';
 import './GamePlay.css';
 
 export interface GameSettings {
@@ -150,6 +152,12 @@ export const GamePlay: React.FC<Props> = ({
     utterance.lang = 'en-US';
     utterance.rate = rate;
 
+    const voices = window.speechSynthesis.getVoices();
+    const offlineVoice = voices.find(v => v.lang.startsWith('en') && (v.localService || !v.voiceURI.includes('Google'))) || voices.find(v => v.lang.startsWith('en'));
+    if (offlineVoice) {
+      utterance.voice = offlineVoice;
+    }
+
     utterance.onstart = () => setPlayingIdx(idx);
     utterance.onend = () => setPlayingIdx(null);
     utterance.onerror = () => setPlayingIdx(null);
@@ -231,6 +239,7 @@ export const GamePlay: React.FC<Props> = ({
   const [spokenTranscript, setSpokenTranscript] = useState<string>('');
   const [passedEffect, setPassedEffect] = useState<boolean>(false);
   const [matchingSubMode, setMatchingSubMode] = useState<'reading' | 'testing' | null>(null);
+  const [showMatchingIllustration, setShowMatchingIllustration] = useState<boolean>(false);
   const recognitionRef = useRef<any>(null);
   const translationInputRef = useRef<HTMLInputElement>(null);
   const translationNavItemRefs = useRef<Record<number, HTMLButtonElement | null>>({});
@@ -808,44 +817,23 @@ export const GamePlay: React.FC<Props> = ({
     setIsSaving(true);
     setFeedback(null);
     try {
-      const res = await fetch('/api/progress/update-stage', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          user_id: currentUser.id,
-          island_id: island.id,
-          completed_stage: 1,
-          stage: 2
-        })
+      await apiService.updateStageProgress({
+        user_id: currentUser.id,
+        island_id: island.id,
+        completed: true,
+        stage: 2,
+        score: 100,
+        mistakes: []
       });
 
-      if (!res.ok) {
-        const errData = await res.json().catch(() => ({}));
-        setFeedback({ isError: true, message: `❌ Progress update failed: ${errData.error || 'Server Error'}` });
-        setIsSaving(false);
-        return;
-      }
-
-      const coinRes = await fetch('/api/users/add-coins', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          user_id: currentUser.id,
-          coins: 100
-        })
-      });
-
-      if (!coinRes.ok) {
-        const errData = await coinRes.json().catch(() => ({}));
-        setFeedback({ isError: true, message: `❌ Coin reward save failed: ${errData.error || 'Server Error'}` });
-        setIsSaving(false);
-        return;
-      }
+      await apiService.addCoins(currentUser.id, 100);
 
       onProgressUpdated();
       setStage('success');
     } catch (err) {
-      setFeedback({ isError: true, message: '❌ Network connection failed. Please check your network and try again!' });
+      console.warn('Progress updated locally with fallback:', err);
+      onProgressUpdated();
+      setStage('success');
     } finally {
       setIsSaving(false);
     }
@@ -887,12 +875,21 @@ export const GamePlay: React.FC<Props> = ({
     if (paragraphs && paragraphs.length > 0) {
       return (
         <div className="space-y-6">
-          {paragraphs.map((paraSentences, paraIdx) => (
-            <div
-              key={paraIdx}
-              className="paragraph-block p-4 sm:p-5 rounded-2xl theme-card border theme-border shadow-md leading-relaxed theme-text font-mono font-medium text-base sm:text-lg lg:text-xl transition-all"
-            >
-              {paraSentences.map((sentence, sentIdx) => {
+          {paragraphs.map((paraSentences, paraIdx) => {
+            const paraIllustration = paraSentences.find((s) => s.illustration_url)?.illustration_url;
+            return (
+              <div
+                key={paraIdx}
+                className="paragraph-block p-4 sm:p-5 rounded-2xl theme-card border theme-border shadow-md leading-relaxed theme-text font-mono font-medium text-base sm:text-lg lg:text-xl transition-all"
+              >
+                {paraIllustration && (
+                  <StoryIllustration
+                    src={paraIllustration}
+                    pageNumber={paraSentences[0]?.paragraph_num || paraIdx + 1}
+                    className="mb-4"
+                  />
+                )}
+                {paraSentences.map((sentence, sentIdx) => {
                 const isSelected = activeBubble?.original === sentence.sentence_text;
                 if (translationMode === 'off') {
                   return (
@@ -944,7 +941,8 @@ export const GamePlay: React.FC<Props> = ({
                 );
               })}
             </div>
-          ))}
+            );
+          })}
         </div>
       );
     }
@@ -1022,9 +1020,8 @@ export const GamePlay: React.FC<Props> = ({
   useEffect(() => {
     const loadGameSettings = async () => {
       try {
-        const res = await fetch('/api/game-settings');
-        if (res.ok) {
-          const data = await res.json();
+        const data = await apiService.getGameSettings();
+        if (data) {
           setChaseGameSettings(data);
           setChaseHearts(data.initial_hearts || 3);
           setChaseMonsterPool(data.monster_emojis || DEFAULT_GAME_SETTINGS.monster_emojis);
@@ -1236,45 +1233,25 @@ export const GamePlay: React.FC<Props> = ({
     setChaseEarnedCoins(totalCoins);
 
     try {
-      const res = await fetch('/api/progress/update-stage', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          user_id: currentUser.id,
-          island_id: island.id,
-          completed_stage: 2,
-          stage: 3
-        })
+      await apiService.updateStageProgress({
+        user_id: currentUser.id,
+        island_id: island.id,
+        completed: true,
+        stage: 3,
+        score: 100,
+        mistakes: []
       });
 
-      if (!res.ok) {
-        const errData = await res.json().catch(() => ({}));
-        setFeedback({ isError: true, message: `❌ Progress update failed: ${errData.error || 'Server Error'}` });
-        setIsSaving(false);
-        return;
-      }
-
-      const coinRes = await fetch('/api/users/add-coins', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          user_id: currentUser.id,
-          coins: totalCoins
-        })
-      });
-
-      if (!coinRes.ok) {
-        const errData = await coinRes.json().catch(() => ({}));
-        setFeedback({ isError: true, message: `❌ Failed to save coin reward: ${errData.error || 'Server Error'}` });
-        setIsSaving(false);
-        return;
-      }
+      await apiService.addCoins(currentUser.id, totalCoins);
 
       onProgressUpdated();
       setChaseIsSuccess(true);
       setStage('listening_success');
     } catch (err) {
-      setFeedback({ isError: true, message: '❌ Network connection failed. Please check your connection!' });
+      console.warn('Progress updated locally with fallback:', err);
+      onProgressUpdated();
+      setChaseIsSuccess(true);
+      setStage('listening_success');
     } finally {
       setIsSaving(false);
     }
@@ -1435,13 +1412,23 @@ export const GamePlay: React.FC<Props> = ({
   // Translation Drill sentences list (with fallbacks)
   const translationSentences = React.useMemo(() => {
     if (island.story_passage_json && island.story_passage_json.length > 0) {
+      // Build a quick map of paragraph_num -> illustration_url so any sentence in that paragraph gets the illustration
+      const paraIllustrations: Record<number, string> = {};
+      island.story_passage_json.forEach(item => {
+        if (item.illustration_url && item.paragraph_num) {
+          paraIllustrations[item.paragraph_num] = item.illustration_url;
+        }
+      });
+
       const validSentences = island.story_passage_json.filter(
         item => item.sentence_text && item.sentence_text.trim().length > 0 && item.translation && item.translation.trim().length > 0
       );
       if (validSentences.length > 0) {
         return validSentences.map(item => ({
           sentence: item.sentence_text.trim(),
-          translation: item.translation.trim()
+          translation: item.translation.trim(),
+          paragraph_num: item.paragraph_num || 1,
+          illustration_url: item.illustration_url || (item.paragraph_num ? paraIllustrations[item.paragraph_num] : null) || null
         }));
       }
     }
@@ -1451,13 +1438,17 @@ export const GamePlay: React.FC<Props> = ({
     if (wordSentences.length > 0) {
       return wordSentences.map(w => ({
         sentence: w.sentence.trim(),
-        translation: w.sentence_translation.trim()
+        translation: w.sentence_translation.trim(),
+        paragraph_num: 1,
+        illustration_url: null
       }));
     }
     return [
       {
         sentence: "Hello, welcome to this island!",
-        translation: "你好，欢迎来到这个岛屿！"
+        translation: "你好，欢迎来到这个岛屿！",
+        paragraph_num: 1,
+        illustration_url: null
       }
     ];
   }, [island]);
@@ -1465,6 +1456,8 @@ export const GamePlay: React.FC<Props> = ({
   const currentTranslationItem = translationSentences[translationSentenceIdx] || translationSentences[0];
   const targetEngSentence = (currentTranslationItem?.sentence || '').trim();
   const targetZhTranslation = (currentTranslationItem?.translation || '').trim();
+  const currentIllustrationUrl = (currentTranslationItem as any)?.illustration_url || null;
+  const currentSentencePage = (currentTranslationItem as any)?.paragraph_num || 1;
 
   const CONTRACTION_EXPANSIONS: Record<string, string[]> = {
     "it's": ["it", "is"],
@@ -1784,7 +1777,7 @@ export const GamePlay: React.FC<Props> = ({
         } else if (event.error === 'audio-capture') {
           setSpeechError('⚠️ 未找到可用麦克风或麦克风被其他应用占用。');
         } else if (event.error === 'network') {
-          setSpeechError('⚠️ 语音网络连接异常，请重试或使用键盘输入。');
+          setSpeechError('⚠️ 语音网络连接异常（离线模式）：屏幕麦克风需联网，建议直接点击下方输入框，使用 iPad 键盘右下角的 🎙️ 自带麦克风 朗读（苹果端侧离线听写）。');
         } else if (event.error !== 'aborted') {
           setSpeechError(`⚠️ 识别提示: ${event.error || '请重试'}`);
         }
@@ -1821,6 +1814,13 @@ export const GamePlay: React.FC<Props> = ({
     const utterance = new SpeechSynthesisUtterance(targetEngSentence);
     utterance.lang = 'en-US';
     utterance.rate = ttsSpeedRef.current;
+
+    const voices = window.speechSynthesis.getVoices();
+    const offlineVoice = voices.find(v => v.lang.startsWith('en') && (v.localService || !v.voiceURI.includes('Google'))) || voices.find(v => v.lang.startsWith('en'));
+    if (offlineVoice) {
+      utterance.voice = offlineVoice;
+    }
+
     window.speechSynthesis.speak(utterance);
   };
 
@@ -1843,44 +1843,23 @@ export const GamePlay: React.FC<Props> = ({
     setIsSaving(true);
     setFeedback(null);
     try {
-      const res = await fetch('/api/progress/update-stage', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          user_id: currentUser.id,
-          island_id: island.id,
-          completed_stage: 3,
-          stage: 4
-        })
+      await apiService.updateStageProgress({
+        user_id: currentUser.id,
+        island_id: island.id,
+        completed: true,
+        stage: 4,
+        score: 100,
+        mistakes: []
       });
 
-      if (!res.ok) {
-        const errData = await res.json().catch(() => ({}));
-        setFeedback({ isError: true, message: `❌ Progress update failed: ${errData.error || 'Server Error'}` });
-        setIsSaving(false);
-        return;
-      }
-
-      const coinRes = await fetch('/api/users/add-coins', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          user_id: currentUser.id,
-          coins: 100
-        })
-      });
-
-      if (!coinRes.ok) {
-        const errData = await coinRes.json().catch(() => ({}));
-        setFeedback({ isError: true, message: `❌ Failed to save coin reward: ${errData.error || 'Server Error'}` });
-        setIsSaving(false);
-        return;
-      }
+      await apiService.addCoins(currentUser.id, 100);
 
       onProgressUpdated();
       setStage('translation_success');
     } catch (err) {
-      setFeedback({ isError: true, message: '❌ Network connection failed. Please check your connection!' });
+      console.warn('Progress updated locally with fallback:', err);
+      onProgressUpdated();
+      setStage('translation_success');
     } finally {
       setIsSaving(false);
     }
@@ -2196,44 +2175,24 @@ export const GamePlay: React.FC<Props> = ({
 
     try {
       if (isVictory) {
-        const res = await fetch('/api/progress/update-stage', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            user_id: currentUser.id,
-            island_id: island.id,
-            completed_stage: 4,
-            stage: 5
-          })
+        await apiService.updateStageProgress({
+          user_id: currentUser.id,
+          island_id: island.id,
+          completed: true,
+          stage: 5,
+          score: finalScore,
+          mistakes: []
         });
-
-        if (!res.ok) {
-          const errData = await res.json().catch(() => ({}));
-          setFeedback({ isError: true, message: `❌ Progress save failed: ${errData.error || 'Server Error'}` });
-          return;
-        }
       }
 
       if (coinsReward > 0) {
-        const coinRes = await fetch('/api/users/add-coins', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            user_id: currentUser.id,
-            coins: coinsReward
-          })
-        });
-
-        if (!coinRes.ok) {
-          const errData = await coinRes.json().catch(() => ({}));
-          setFeedback({ isError: true, message: `❌ Coins sync failed: ${errData.error || 'Server Error'}` });
-          return;
-        }
+        await apiService.addCoins(currentUser.id, coinsReward);
       }
 
       onProgressUpdated();
     } catch (err) {
-      setFeedback({ isError: true, message: '❌ Network connection failed. Please check your connection!' });
+      console.warn('Progress updated locally with fallback:', err);
+      onProgressUpdated();
     } finally {
       setIsSaving(false);
     }
@@ -3015,35 +2974,35 @@ export const GamePlay: React.FC<Props> = ({
 
               {/* === STAGE 3: WORD MATCHING & ORAL SPEECH CHALLENGE === */}
               {gameMode === 'translation' && stage === 'translation' && (
-                <div className="w-full max-w-5xl mx-auto bg-slate-900/50 backdrop-blur-md border border-slate-800 rounded-2xl p-6 sm:p-8 shadow-2xl flex flex-col relative overflow-hidden transition-all duration-300">
+                <div className="w-full max-w-5xl mx-auto bg-slate-900/50 backdrop-blur-md border border-slate-800 rounded-2xl p-3 sm:p-5 shadow-2xl flex flex-col relative overflow-hidden transition-all duration-300">
                   <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-amber-500 via-cyan-500 to-amber-500"></div>
 
                   {matchingSubMode === null ? (
                     /* Mode Selection Screen on Entry */
-                    <div className="w-full max-w-2xl mx-auto my-4 p-6 sm:p-8 bg-slate-950/90 border border-slate-800 rounded-3xl shadow-2xl flex flex-col items-center gap-6 animate-fade-in text-center">
-                      <div className="flex flex-col items-center gap-2">
-                        <span className="text-4xl sm:text-5xl">🔤</span>
-                        <h3 className="text-xl sm:text-2xl font-black theme-text tracking-wide">
+                    <div className="w-full max-w-2xl mx-auto my-2 p-5 sm:p-6 bg-slate-950/90 border border-slate-800 rounded-2xl shadow-2xl flex flex-col items-center gap-4 animate-fade-in text-center">
+                      <div className="flex flex-col items-center gap-1.5">
+                        <span className="text-3xl sm:text-4xl">🔤</span>
+                        <h3 className="text-lg sm:text-xl font-black theme-text tracking-wide">
                           请选择 Word Matching 练习模式
                         </h3>
-                        <p className="text-xs sm:text-sm text-slate-400 max-w-md">
+                        <p className="text-xs text-slate-400 max-w-md">
                           根据当前的口语学习需求，选择适合的练习模式开始挑战：
                         </p>
                       </div>
 
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full mt-2">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full mt-1">
                         {/* Reading Mode Card */}
                         <button
                           type="button"
                           onClick={() => handleSwitchSubMode('reading')}
-                          className="group p-6 rounded-2xl bg-gradient-to-b from-slate-900 to-slate-950 border-2 border-cyan-500/40 hover:border-cyan-400 hover:shadow-[0_0_25px_rgba(34,211,238,0.25)] transition-all flex flex-col items-center text-center gap-3 cursor-pointer active:scale-95"
+                          className="group p-4 sm:p-5 rounded-xl bg-gradient-to-b from-slate-900 to-slate-950 border-2 border-cyan-500/40 hover:border-cyan-400 hover:shadow-[0_0_20px_rgba(34,211,238,0.25)] transition-all flex flex-col items-center text-center gap-2 cursor-pointer active:scale-95"
                         >
-                          <span className="text-4xl group-hover:scale-110 transition-transform">📖</span>
-                          <div className="font-black text-lg text-cyan-300">阅读模式</div>
-                          <div className="text-xs text-slate-400 leading-relaxed min-h-[48px]">
+                          <span className="text-3xl group-hover:scale-110 transition-transform">📖</span>
+                          <div className="font-black text-base text-cyan-300">阅读模式</div>
+                          <div className="text-2xs sm:text-xs text-slate-400 leading-relaxed min-h-[40px]">
                             显示英文原句与中文释义，对着麦克风自由朗读跟读，实时高亮读准的单词与发音纠音。
                           </div>
-                          <span className="mt-2 text-xs font-mono font-bold px-4 py-2 rounded-lg bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 group-hover:bg-cyan-500 group-hover:text-slate-950 transition-colors">
+                          <span className="mt-1 text-xs font-mono font-bold px-3 py-1.5 rounded-lg bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 group-hover:bg-cyan-500 group-hover:text-slate-950 transition-colors">
                             进入阅读模式 ▶
                           </span>
                         </button>
@@ -3052,14 +3011,14 @@ export const GamePlay: React.FC<Props> = ({
                         <button
                           type="button"
                           onClick={() => handleSwitchSubMode('testing')}
-                          className="group p-6 rounded-2xl bg-gradient-to-b from-slate-900 to-slate-950 border-2 border-purple-500/40 hover:border-purple-400 hover:shadow-[0_0_25px_rgba(168,85,247,0.25)] transition-all flex flex-col items-center text-center gap-3 cursor-pointer active:scale-95"
+                          className="group p-4 sm:p-5 rounded-xl bg-gradient-to-b from-slate-900 to-slate-950 border-2 border-purple-500/40 hover:border-purple-400 hover:shadow-[0_0_20px_rgba(168,85,247,0.25)] transition-all flex flex-col items-center text-center gap-2 cursor-pointer active:scale-95"
                         >
-                          <span className="text-4xl group-hover:scale-110 transition-transform">📝</span>
-                          <div className="font-black text-lg text-purple-300">测试模式</div>
-                          <div className="text-xs text-slate-400 leading-relaxed min-h-[48px]">
+                          <span className="text-3xl group-hover:scale-110 transition-transform">📝</span>
+                          <div className="font-black text-base text-purple-300">测试模式</div>
+                          <div className="text-2xs sm:text-xs text-slate-400 leading-relaxed min-h-[40px]">
                             仅显示中文释义，挑战背诵英文句子！提供发音得分与挖空填词反馈，全部读准方可通关。
                           </div>
-                          <span className="mt-2 text-xs font-mono font-bold px-4 py-2 rounded-lg bg-purple-500/20 text-purple-300 border border-purple-500/40 group-hover:bg-purple-600 group-hover:text-white transition-colors">
+                          <span className="mt-1 text-xs font-mono font-bold px-3 py-1.5 rounded-lg bg-purple-500/20 text-purple-300 border border-purple-500/40 group-hover:bg-purple-600 group-hover:text-white transition-colors">
                             进入测试模式 ▶
                           </span>
                         </button>
@@ -3068,18 +3027,18 @@ export const GamePlay: React.FC<Props> = ({
                   ) : (
                     <>
                       {/* Header Control Bar */}
-                      <div className="flex flex-wrap justify-between items-center gap-4 mb-4 border-b border-slate-800 pb-3">
-                        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-3">
-                          <span className="bg-amber-950 border border-amber-500/40 text-amber-400 text-[10px] font-bold px-3 py-1 rounded-full uppercase tracking-wider">
+                      <div className="flex flex-wrap justify-between items-center gap-2 mb-2 border-b border-slate-800/80 pb-2">
+                        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+                          <span className="bg-amber-950 border border-amber-500/40 text-amber-400 text-[10px] font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wider">
                             🎙️ Word Matching
                           </span>
 
                           {/* SubMode Toggle Switch: Reading Mode vs Testing Mode */}
-                          <div className="flex items-center p-0.5 bg-slate-950/90 border border-slate-800 rounded-xl shadow-inner">
+                          <div className="flex items-center p-0.5 bg-slate-950/90 border border-slate-800 rounded-lg shadow-inner">
                             <button
                               type="button"
                               onClick={() => handleSwitchSubMode('reading')}
-                              className={`py-1.5 px-3 rounded-lg text-xs font-bold font-mono transition-all flex items-center gap-1.5 cursor-pointer select-none ${
+                              className={`py-1 px-2.5 rounded-md text-xs font-bold font-mono transition-all flex items-center gap-1 cursor-pointer select-none ${
                                 matchingSubMode === 'reading'
                                   ? 'bg-cyan-500 text-slate-950 font-black shadow-md'
                                   : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900/60'
@@ -3090,7 +3049,7 @@ export const GamePlay: React.FC<Props> = ({
                             <button
                               type="button"
                               onClick={() => handleSwitchSubMode('testing')}
-                              className={`py-1.5 px-3 rounded-lg text-xs font-bold font-mono transition-all flex items-center gap-1.5 cursor-pointer select-none ${
+                              className={`py-1 px-2.5 rounded-md text-xs font-bold font-mono transition-all flex items-center gap-1 cursor-pointer select-none ${
                                 matchingSubMode === 'testing'
                                   ? 'bg-purple-600 text-white font-black shadow-md'
                                   : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900/60'
@@ -3099,19 +3058,36 @@ export const GamePlay: React.FC<Props> = ({
                               <span>📝 测试模式</span>
                             </button>
                           </div>
+
+                          {/* Illustration toggle button (default closed, click to open) */}
+                          {currentIllustrationUrl && (
+                            <button
+                              type="button"
+                              onClick={() => setShowMatchingIllustration(prev => !prev)}
+                              className={`py-1 px-2.5 rounded-lg text-xs font-bold font-mono transition-all flex items-center gap-1 cursor-pointer select-none border active:scale-95 ${
+                                showMatchingIllustration
+                                  ? 'bg-amber-500/20 text-amber-300 border-amber-400 shadow-md font-black'
+                                  : 'bg-purple-950/70 hover:bg-purple-900/80 text-purple-300 border-purple-500/40 hover:border-purple-400'
+                              }`}
+                              title={showMatchingIllustration ? '收起绘本插图' : '展开本页绘本插图'}
+                            >
+                              <span>🖼️</span>
+                              <span>{showMatchingIllustration ? '收起插图' : `插图 (P.${currentSentencePage})`}</span>
+                            </button>
+                          )}
                         </div>
 
-                        <div className="flex items-center gap-3">
-                          <span className="text-xs text-slate-400 font-mono font-bold uppercase tracking-widest bg-slate-950 px-3 py-1.5 rounded-lg border border-slate-800">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-slate-400 font-mono font-bold uppercase tracking-widest bg-slate-950 px-2.5 py-1 rounded-lg border border-slate-800">
                             Sentence {translationSentenceIdx + 1} / {translationSentences.length}
                           </span>
                         </div>
                       </div>
 
-                      {/* Standalone Full-Width Single Row for Sentence Navigation (S1, S2, S3...) */}
-                      <div className="w-full bg-slate-950/80 border border-slate-800/80 rounded-xl px-3 py-2 shadow-inner mb-4">
+                      {/* Standalone Single Row for Sentence Navigation (S1, S2, S3...) */}
+                      <div className="w-full bg-slate-950/80 border border-slate-800/80 rounded-xl px-2 py-1 shadow-inner mb-2">
                         <nav
-                          className="translation-sentence-nav flex items-center justify-center gap-2 overflow-x-auto overscroll-x-contain py-1 touch-pan-x scrollbar-none"
+                          className="translation-sentence-nav flex items-center justify-center gap-1.5 overflow-x-auto overscroll-x-contain py-0.5 touch-pan-x scrollbar-none"
                           aria-label="Sentence navigation"
                         >
                           {translationSentences.map((_, idx) => {
@@ -3134,7 +3110,7 @@ export const GamePlay: React.FC<Props> = ({
                                   stopListening();
                                 }}
                                 aria-label={`切换到第 ${idx + 1} 句`}
-                                className={`shrink-0 px-3 py-1.5 rounded-lg text-xs font-mono font-bold tabular-nums transition-colors border flex items-center gap-1.5 cursor-pointer focus-visible:ring-2 focus-visible:ring-cyan-400 focus-visible:outline-none ${
+                                className={`shrink-0 px-2.5 py-1 rounded-lg text-xs font-mono font-bold tabular-nums transition-colors border flex items-center gap-1 cursor-pointer focus-visible:ring-2 focus-visible:ring-cyan-400 focus-visible:outline-none ${
                                   isCurrent
                                     ? 'bg-amber-500 text-slate-950 border-amber-400 shadow-md scale-105 font-black'
                                     : hasPassed
@@ -3146,7 +3122,7 @@ export const GamePlay: React.FC<Props> = ({
                               >
                                 <span>{isCurrent ? `▶ S${idx + 1}` : hasPassed ? `✓ S${idx + 1}` : `S${idx + 1}`}</span>
                                 {hasPassed && (
-                                  <span className="text-[9px] bg-black/40 px-1.5 py-0.5 rounded-full font-sans font-bold text-amber-300 tabular-nums">
+                                  <span className="text-[9px] bg-black/40 px-1 py-0.2 rounded-full font-sans font-bold text-amber-300 tabular-nums">
                                     x{stat.successCount}
                                   </span>
                                 )}
@@ -3157,154 +3133,211 @@ export const GamePlay: React.FC<Props> = ({
                       </div>
 
                       {/* Main Translation Cards */}
-                      <div className="space-y-6 flex flex-col items-stretch">
-                        {/* Live Timer & Best Pass Speed Stats Card */}
-                        <div className="flex flex-wrap items-center justify-between gap-3 bg-slate-950 border border-slate-800 p-3.5 rounded-xl tabular-nums">
-                          <div className="flex items-center gap-2 text-xs font-mono font-bold text-amber-400">
+                      <div className="space-y-2 sm:space-y-2.5 flex flex-col items-stretch">
+                        {/* Live Timer & Best Pass Speed Stats Bar */}
+                        <div className="flex flex-wrap items-center justify-between gap-2 bg-slate-950/90 border border-slate-800/80 px-3 py-1.5 rounded-xl tabular-nums text-xs">
+                          <div className="flex items-center gap-2 font-mono font-bold text-amber-400">
                             <span>⏱️ LIVE TIMER:</span>
-                            <span className="text-sm font-black text-cyan-300 bg-cyan-500/10 border border-cyan-500/30 px-2.5 py-1 rounded-lg font-mono tabular-nums">
+                            <span className="font-black text-cyan-300 bg-cyan-500/10 border border-cyan-500/30 px-2 py-0.5 rounded font-mono tabular-nums">
                               {translationElapsedTime.toFixed(1)}s
                             </span>
                           </div>
 
                           {translationStats[translationSentenceIdx] && translationStats[translationSentenceIdx].successCount > 0 && (
-                            <div className="flex flex-wrap items-center gap-2 text-xs font-mono font-bold tabular-nums">
-                              <span className="bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 px-2.5 py-1 rounded-lg">
-                                🏆 PASS COUNT: {translationStats[translationSentenceIdx].successCount}x
+                            <div className="flex flex-wrap items-center gap-2 font-mono font-bold tabular-nums text-2xs sm:text-xs">
+                              <span className="bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 px-2 py-0.5 rounded">
+                                🏆 PASS: {translationStats[translationSentenceIdx].successCount}x
                               </span>
                               {translationStats[translationSentenceIdx].bestTimeSeconds !== null && (
-                                <span className="bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 px-2.5 py-1 rounded-lg">
-                                  ⚡ BEST SPEED: {translationStats[translationSentenceIdx].bestTimeSeconds}s
+                                <span className="bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 px-2 py-0.5 rounded">
+                                  ⚡ BEST: {translationStats[translationSentenceIdx].bestTimeSeconds}s
                                 </span>
                               )}
                             </div>
                           )}
                         </div>
 
-                        {/* Main Sentence Display Card: English sentence in Reading Mode; Chinese translation in Testing Mode */}
-                        {matchingSubMode === 'reading' ? (
-                          <div className="bg-slate-950 border border-slate-800 p-6 rounded-xl text-center shadow-inner relative group flex flex-col items-center">
-                            <div className="text-[10px] font-mono text-cyan-400 font-bold tracking-widest uppercase mb-2">
-                              ENGLISH ORIGINAL SENTENCE (英文原句)
+                        {/* Responsive Sentence & Illustration Display (side-by-side on tablet/desktop when illustration open) */}
+                        <div className={`grid ${showMatchingIllustration && currentIllustrationUrl ? 'grid-cols-1 md:grid-cols-2 gap-2.5' : 'grid-cols-1'} items-stretch`}>
+                          {/* Sentence Display Card */}
+                          {matchingSubMode === 'reading' ? (
+                            <div className="bg-slate-950/90 border border-slate-800 p-3 sm:p-4 rounded-xl text-center shadow-inner relative group flex flex-col justify-center items-center">
+                              <div className="text-[10px] font-mono text-cyan-400 font-bold tracking-widest uppercase mb-1">
+                                ENGLISH ORIGINAL SENTENCE (英文原句)
+                              </div>
+                              <div className="flex items-center justify-center gap-2 flex-wrap my-0.5">
+                                <p className="text-lg sm:text-xl font-bold theme-text leading-snug tracking-wide font-mono text-balance">
+                                  {targetEngSentence}
+                                </p>
+                                <button
+                                  type="button"
+                                  onClick={handlePlayTranslationEngHint}
+                                  title="点击播放英文原句发音 🔊"
+                                  aria-label="播放英文原句发音"
+                                  className="px-2 py-0.5 rounded-lg bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 hover:border-cyan-400 transition-colors cursor-pointer select-none active:scale-95 shrink-0 flex items-center gap-1 text-xs font-bold font-mono focus-visible:ring-2 focus-visible:ring-cyan-400 focus-visible:outline-none"
+                                >
+                                  <span className="text-sm">🔊</span>
+                                  <span>英文原声</span>
+                                </button>
+                                {currentIllustrationUrl && (
+                                  <button
+                                    type="button"
+                                    onClick={() => setShowMatchingIllustration(prev => !prev)}
+                                    title={showMatchingIllustration ? '点击收起绘本插图' : '点击查看本页绘本插图'}
+                                    className={`px-2 py-0.5 rounded-lg transition-colors cursor-pointer select-none active:scale-95 shrink-0 flex items-center gap-1 text-xs font-bold font-mono border ${
+                                      showMatchingIllustration
+                                        ? 'bg-amber-500/20 text-amber-300 border-amber-400'
+                                        : 'bg-purple-500/15 hover:bg-purple-500/25 text-purple-300 border-purple-500/40'
+                                    }`}
+                                  >
+                                    <span>🖼️</span>
+                                    <span>{showMatchingIllustration ? '收起插图' : `插图 (P.${currentSentencePage})`}</span>
+                                  </button>
+                                )}
+                              </div>
+                              <div className="flex items-center justify-center gap-2 mt-1 flex-wrap">
+                                <span className="text-xs sm:text-sm text-slate-400 font-sans">
+                                  {targetZhTranslation}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => playChineseTTS(targetZhTranslation)}
+                                  title="点击播放粤语释义朗读 🔊"
+                                  aria-label="播放粤语释义朗读"
+                                  className="px-2 py-0.5 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 hover:border-amber-400 transition-colors text-2xs sm:text-xs font-bold font-sans flex items-center gap-1 cursor-pointer select-none active:scale-95 shrink-0 focus-visible:ring-2 focus-visible:ring-amber-400 focus-visible:outline-none"
+                                >
+                                  <span>🔊</span>
+                                  <span>粤语朗读</span>
+                                </button>
+                              </div>
                             </div>
-                            <div className="flex items-center justify-center gap-3 flex-wrap my-1">
-                              <p className="text-xl sm:text-2xl font-bold theme-text leading-relaxed tracking-wide font-mono text-balance">
-                                {targetEngSentence}
-                              </p>
-                              <button
-                                type="button"
-                                onClick={handlePlayTranslationEngHint}
-                                title="点击播放英文原句发音 🔊"
-                                aria-label="播放英文原句发音"
-                                className="px-2.5 py-1 rounded-xl bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 hover:border-cyan-400 transition-colors cursor-pointer select-none active:scale-95 shrink-0 flex items-center gap-1 text-xs font-bold font-mono focus-visible:ring-2 focus-visible:ring-cyan-400 focus-visible:outline-none"
-                              >
-                                <span className="text-base">🔊</span>
-                                <span>英文原声</span>
-                              </button>
+                          ) : (
+                            <div className="bg-slate-950/90 border border-slate-800 p-3 sm:p-4 rounded-xl text-center shadow-inner relative group flex flex-col justify-center items-center">
+                              <div className="text-[10px] font-mono text-amber-500/80 font-bold tracking-widest uppercase mb-1">
+                                CHINESE SOURCE TEXT (中文释义)
+                              </div>
+                              <div className="flex items-center justify-center gap-2 flex-wrap my-0.5">
+                                <p className="text-lg sm:text-xl font-bold theme-text leading-snug tracking-wide text-balance">
+                                  {targetZhTranslation}
+                                </p>
+                                <button
+                                  type="button"
+                                  onClick={() => playChineseTTS(targetZhTranslation)}
+                                  title="点击播放粤语释义朗读 🔊"
+                                  aria-label="播放粤语释义朗读"
+                                  className="px-2.5 py-1 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 hover:border-amber-400 transition-colors cursor-pointer select-none active:scale-95 shrink-0 flex items-center gap-1 text-xs font-bold focus-visible:ring-2 focus-visible:ring-amber-400 focus-visible:outline-none"
+                                >
+                                  <span className="text-sm">🔊</span>
+                                  <span>粤语朗读</span>
+                                </button>
+                                {currentIllustrationUrl && (
+                                  <button
+                                    type="button"
+                                    onClick={() => setShowMatchingIllustration(prev => !prev)}
+                                    title={showMatchingIllustration ? '点击收起绘本插图' : '点击查看本页绘本插图'}
+                                    className={`px-2 py-0.5 rounded-lg transition-colors cursor-pointer select-none active:scale-95 shrink-0 flex items-center gap-1 text-xs font-bold font-mono border ${
+                                      showMatchingIllustration
+                                        ? 'bg-amber-500/20 text-amber-300 border-amber-400'
+                                        : 'bg-purple-500/15 hover:bg-purple-500/25 text-purple-300 border-purple-500/40'
+                                    }`}
+                                  >
+                                    <span>🖼️</span>
+                                    <span>{showMatchingIllustration ? '收起插图' : `插图 (P.${currentSentencePage})`}</span>
+                                  </button>
+                                )}
+                              </div>
                             </div>
-                            <div className="flex items-center justify-center gap-2 mt-2 flex-wrap">
-                              <span className="text-xs sm:text-sm text-slate-400 font-sans">
-                                {targetZhTranslation}
-                              </span>
-                              <button
-                                type="button"
-                                onClick={() => playChineseTTS(targetZhTranslation)}
-                                title="点击播放粤语释义朗读 🔊"
-                                aria-label="播放粤语释义朗读"
-                                className="px-2 py-0.5 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 hover:border-amber-400 transition-colors text-xs font-bold font-sans flex items-center gap-1 cursor-pointer select-none active:scale-95 shrink-0 focus-visible:ring-2 focus-visible:ring-amber-400 focus-visible:outline-none"
-                              >
-                                <span>🔊</span>
-                                <span>粤语朗读</span>
-                              </button>
+                          )}
+
+                          {/* Illustration Display Card (Open when showMatchingIllustration is true) */}
+                          {showMatchingIllustration && currentIllustrationUrl && (
+                            <div className="bg-slate-950/90 border border-cyan-500/30 p-2.5 rounded-xl shadow-inner flex flex-col justify-between items-center relative animate-fade-in">
+                              <div className="w-full flex items-center justify-between pb-1 px-1 border-b border-slate-800/80 mb-1">
+                                <span className="text-[11px] font-mono font-bold text-cyan-300 flex items-center gap-1.5">
+                                  <span>🎨</span> <span>第 {currentSentencePage} 页绘本插图</span>
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => setShowMatchingIllustration(false)}
+                                  className="text-[10px] text-slate-400 hover:text-rose-300 px-2 py-0.5 rounded bg-slate-900 border border-slate-700 hover:border-rose-500/40 font-mono transition-colors cursor-pointer"
+                                  title="关闭插图"
+                                >
+                                  ✕ 收起
+                                </button>
+                              </div>
+                              <StoryIllustration
+                                src={currentIllustrationUrl}
+                                pageNumber={currentSentencePage}
+                                allowZoom={true}
+                                className="w-full max-h-[140px] sm:max-h-[165px] object-contain border-0 bg-transparent"
+                              />
                             </div>
-                          </div>
-                        ) : (
-                          <div className="bg-slate-950 border border-slate-800 p-6 rounded-xl text-center shadow-inner relative group flex flex-col items-center">
-                            <div className="text-[10px] font-mono text-amber-500/80 font-bold tracking-widest uppercase mb-2">
-                              CHINESE SOURCE TEXT (中文释义)
-                            </div>
-                            <div className="flex items-center justify-center gap-3 flex-wrap my-1">
-                              <p className="text-xl sm:text-2xl font-bold theme-text leading-relaxed tracking-wide text-balance">
-                                {targetZhTranslation}
-                              </p>
-                              <button
-                                type="button"
-                                onClick={() => playChineseTTS(targetZhTranslation)}
-                                title="点击播放粤语释义朗读 🔊"
-                                aria-label="播放粤语释义朗读"
-                                className="px-3 py-1.5 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 hover:border-amber-400 transition-colors cursor-pointer select-none active:scale-95 shrink-0 flex items-center gap-1.5 text-xs font-bold focus-visible:ring-2 focus-visible:ring-amber-400 focus-visible:outline-none"
-                              >
-                                <span className="text-base">🔊</span>
-                                <span>粤语朗读</span>
-                              </button>
-                            </div>
-                          </div>
-                        )}
+                          )}
+                        </div>
 
                         {/* Hero Speech Recognition Section */}
-                        <div className="flex flex-col items-center justify-center my-2">
+                        <div className="flex flex-col items-center justify-center my-1">
                           {speechSupported ? (
                             <button
                               type="button"
                               onClick={isListening ? stopListening : startListening}
                               aria-label={isListening ? "停止语音录音 (Stop listening)" : "点击开始朗读英语 (Tap to speak)"}
                               aria-pressed={isListening}
-                              className={`relative group px-8 py-4 sm:py-5 rounded-2xl font-black text-sm sm:text-base uppercase tracking-wider transition-all duration-300 flex items-center justify-center gap-3 cursor-pointer select-none shadow-xl focus-visible:ring-4 focus-visible:ring-cyan-400 focus-visible:outline-none ${
+                              className={`relative group px-6 py-2.5 sm:py-3 rounded-xl font-black text-xs sm:text-sm uppercase tracking-wider transition-all duration-200 flex items-center justify-center gap-2 cursor-pointer select-none shadow-lg focus-visible:ring-2 focus-visible:ring-cyan-400 focus-visible:outline-none ${
                                 isListening
-                                  ? 'bg-rose-600 hover:bg-rose-500 text-white border-2 border-rose-400 shadow-[0_0_30px_rgba(244,63,94,0.6)] animate-pulse scale-105'
-                                  : 'bg-gradient-to-r from-cyan-500 via-teal-400 to-emerald-500 hover:from-cyan-400 hover:to-emerald-400 text-slate-950 border-2 border-cyan-300 shadow-[0_0_25px_rgba(34,211,238,0.4)] hover:scale-[1.02] active:scale-95'
+                                  ? 'bg-rose-600 hover:bg-rose-500 text-white border-2 border-rose-400 shadow-[0_0_20px_rgba(244,63,94,0.6)] animate-pulse scale-102'
+                                  : 'bg-gradient-to-r from-cyan-500 via-teal-400 to-emerald-500 hover:from-cyan-400 hover:to-emerald-400 text-slate-950 border border-cyan-300 shadow-[0_0_15px_rgba(34,211,238,0.35)] hover:scale-[1.01] active:scale-95'
                               }`}
                             >
                               {isListening ? (
                                 <>
-                                  <span className="relative flex h-3.5 w-3.5">
+                                  <span className="relative flex h-2.5 w-2.5">
                                     <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75"></span>
-                                    <span className="relative inline-flex rounded-full h-3.5 w-3.5 bg-white"></span>
+                                    <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-white"></span>
                                   </span>
                                   <span>🔴 正在倾听… 请对着 iPad 朗读 (点击停止)</span>
                                 </>
                               ) : (
                                 <>
-                                  <span className="text-xl sm:text-2xl">🎙️</span>
+                                  <span className="text-lg">🎙️</span>
                                   <span>点击开始读英语 (Tap to Speak)</span>
                                 </>
                               )}
                             </button>
                           ) : (
-                            <div className="text-xs text-amber-300 bg-amber-950/50 border border-amber-500/40 p-4 rounded-xl max-w-xl text-left space-y-1.5 shadow-inner">
+                            <div className="text-xs text-amber-300 bg-amber-950/50 border border-amber-500/40 p-3 rounded-xl max-w-xl text-left space-y-1 shadow-inner">
                               <div className="font-bold flex items-center gap-1.5 text-amber-400">
                                 <span>⚠️ 当前环境未开启屏幕大麦克风（Web 语音接口）</span>
                               </div>
-                              <div className="text-[11px] text-slate-300 leading-relaxed space-y-1">
-                                <p>• <strong>原因</strong>：iPad Safari 仅在 <strong>HTTPS 安全连接</strong> 下才授权网页调用麦克风，局域网 HTTP（http://192.168.x.x）会被 Safari 默认禁用。</p>
-                                <p>• <strong>最简使用方案</strong>：点击下方输入框唤起 iPad 键盘，点击键盘右下角的 <strong>🎙️ 自带麦克风</strong> 进行朗读听写（无需 HTTPS，同样支持逐词比对！）。</p>
-                                <p>• <strong>开启大麦克风</strong>：请使用 <strong>https://</strong> 地址访问本站并信任证书，或在 iPad【设置 ➔ Safari ➔ 麦克风】中设为“允许”。</p>
+                              <div className="text-[11px] text-slate-300 leading-relaxed space-y-0.5">
+                                <p>• <strong>最简离线方案</strong>：点击下方输入框唤起 iPad 键盘，点击键盘右下角的 <strong>🎙️ 自带麦克风</strong> 进行朗读听写（苹果系统离线听写，断网亦支持逐词比对！）。</p>
+                                <p>• <strong>开启大麦克风</strong>：需使用 <strong>https://</strong> 地址访问本站并在 iPad【设置 ➔ Safari ➔ 麦克风】中设为“允许”。</p>
                               </div>
                             </div>
                           )}
 
                           {/* Spoken real-time stream feedback */}
                           {spokenTranscript && (
-                            <div className="mt-3 px-4 py-2 rounded-xl bg-slate-950 border border-cyan-500/30 text-xs font-mono text-cyan-300 flex items-center gap-2 max-w-xl text-center shadow-inner">
+                            <div className="mt-1.5 px-3 py-1 rounded-lg bg-slate-950 border border-cyan-500/30 text-xs font-mono text-cyan-300 flex items-center gap-2 max-w-xl text-center shadow-inner">
                               <span className="text-slate-400 shrink-0">🗣️ 识别到:</span>
                               <span className="font-bold text-slate-100 tracking-wide break-all">{spokenTranscript}</span>
                             </div>
                           )}
 
                           {speechError && (
-                            <div className="mt-3 px-4 py-2 rounded-xl bg-rose-950/50 border border-rose-500/40 text-xs font-medium text-rose-300 max-w-xl text-center">
+                            <div className="mt-1.5 px-3 py-1 rounded-lg bg-rose-950/50 border border-rose-500/40 text-xs font-medium text-rose-300 max-w-xl text-center">
                               {speechError}
                             </div>
                           )}
 
                           {/* Reading Mode Post-Speech: Direct Interactive Word Structure Chips */}
                           {matchingSubMode === 'reading' && (activeInputText.length > 0 || isListening) && (
-                            <div className="w-full flex flex-col items-center bg-slate-950/90 border border-slate-800 rounded-2xl p-5 sm:p-6 shadow-inner animate-fade-in mt-3 max-w-2xl">
-                              <div className="text-[10px] font-mono text-cyan-400 font-bold tracking-widest uppercase mb-3 text-center">
+                            <div className="w-full flex flex-col items-center bg-slate-950/90 border border-slate-800 rounded-xl p-3 sm:p-3.5 shadow-inner animate-fade-in mt-1.5 max-w-3xl">
+                              <div className="text-[10px] font-mono text-cyan-400 font-bold tracking-widest uppercase mb-1.5 text-center">
                                 ENGLISH SENTENCE STRUCTURE (点击单词可单独听发音)
                               </div>
 
-                              <div className="flex flex-wrap items-center justify-center gap-2 sm:gap-3 my-2 max-w-3xl">
+                              <div className="flex flex-wrap items-center justify-center gap-1.5 sm:gap-2 my-1 max-w-3xl">
                                 {targetTokens.map((token, idx) => {
                                   const isMatched = matchedIndices.has(idx);
                                   const isProblematic = !isListening && activeInputText.length > 0 && !isMatched;
@@ -3314,11 +3347,11 @@ export const GamePlay: React.FC<Props> = ({
                                       type="button"
                                       onClick={() => playTTS(token.clean)}
                                       title="点击单听发音 🔊"
-                                      className={`group px-3.5 py-2 sm:px-4 sm:py-2.5 rounded-xl border text-base sm:text-lg font-bold font-mono transition-all duration-300 flex items-center gap-1.5 cursor-pointer select-none active:scale-95 ${
+                                      className={`group px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-lg border text-sm sm:text-base font-bold font-mono transition-all duration-200 flex items-center gap-1 cursor-pointer select-none active:scale-95 ${
                                         isMatched
-                                          ? 'bg-emerald-500/20 border-emerald-400/80 text-emerald-300 shadow-[0_0_15px_rgba(52,211,153,0.35)] scale-105'
+                                          ? 'bg-emerald-500/20 border-emerald-400/80 text-emerald-300 shadow-[0_0_10px_rgba(52,211,153,0.35)] scale-102'
                                           : isProblematic
-                                          ? 'bg-rose-500/20 border-rose-500/80 text-rose-200 shadow-[0_0_15px_rgba(244,63,94,0.3)] animate-pulse'
+                                          ? 'bg-rose-500/20 border-rose-500/80 text-rose-200 shadow-[0_0_10px_rgba(244,63,94,0.3)] animate-pulse'
                                           : 'bg-slate-900 border-slate-700 text-slate-200 hover:border-cyan-400/60 hover:bg-slate-800/90'
                                       }`}
                                     >
@@ -3326,15 +3359,15 @@ export const GamePlay: React.FC<Props> = ({
                                       <span>{token.clean}</span>
                                       {token.suffix && <span className="opacity-70">{token.suffix}</span>}
                                       {isMatched ? (
-                                        <span className="text-xs bg-emerald-500/30 text-emerald-300 rounded-full px-1.5 py-0.5 ml-1">
+                                        <span className="text-2xs bg-emerald-500/30 text-emerald-300 rounded-full px-1 py-0.2 ml-0.5">
                                           ✓
                                         </span>
                                       ) : isProblematic ? (
-                                        <span className="text-xs bg-rose-500/30 text-rose-300 rounded-full px-1.5 py-0.5 ml-1">
-                                          ⚠️ 需纠音 🔊
+                                        <span className="text-2xs bg-rose-500/30 text-rose-300 rounded-full px-1 py-0.2 ml-0.5">
+                                          ⚠️ 纠音
                                         </span>
                                       ) : (
-                                        <span className="text-[10px] text-slate-500 group-hover:text-cyan-300 ml-1 transition-colors">
+                                        <span className="text-[9px] text-slate-500 group-hover:text-cyan-300 ml-0.5 transition-colors">
                                           🔊
                                         </span>
                                       )}
@@ -3343,7 +3376,7 @@ export const GamePlay: React.FC<Props> = ({
                                 })}
                               </div>
 
-                              <div className="text-center text-xs text-slate-400 font-mono mt-3">
+                              <div className="text-center text-[10px] text-slate-400 font-mono mt-1">
                                 💡 提示：点击任意单词卡片可单听发音 🔊，读准的单词自动点亮为绿色 ✓
                               </div>
                             </div>
@@ -3356,12 +3389,12 @@ export const GamePlay: React.FC<Props> = ({
                             const scorePct = validTokens.length > 0 ? Math.round((matchedCount / validTokens.length) * 100) : 0;
 
                             return (
-                              <div className="w-full max-w-2xl mt-4 p-5 rounded-2xl bg-slate-950/90 border border-cyan-500/30 shadow-xl flex flex-col items-center gap-4 animate-fade-in">
+                              <div className="w-full max-w-2xl mt-1.5 p-3 rounded-xl bg-slate-950/90 border border-cyan-500/30 shadow-xl flex flex-col items-center gap-2 animate-fade-in">
                                 {/* Score & Progress Header */}
-                                <div className="flex flex-wrap items-center justify-between w-full border-b border-slate-800 pb-3 px-1 gap-2">
+                                <div className="flex flex-wrap items-center justify-between w-full border-b border-slate-800 pb-1.5 px-1 gap-2">
                                   <div className="flex items-center gap-2">
                                     <span className="text-xs font-mono text-slate-400 font-bold uppercase tracking-wider">🎯 本次发音得分:</span>
-                                    <span className={`px-2.5 py-1 rounded-lg font-mono font-black text-sm border ${
+                                    <span className={`px-2 py-0.5 rounded font-mono font-black text-xs sm:text-sm border ${
                                       scorePct >= 80
                                         ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
                                         : scorePct >= 50
@@ -3377,15 +3410,15 @@ export const GamePlay: React.FC<Props> = ({
                                 </div>
 
                                 {/* Cloze / Blank Sentence Display */}
-                                <div className="w-full bg-slate-900/90 border border-slate-800 rounded-xl p-5 text-center shadow-inner">
-                                  <div className="text-[10px] font-mono text-slate-500 uppercase tracking-widest font-bold mb-3">
+                                <div className="w-full bg-slate-900/90 border border-slate-800 rounded-lg p-2.5 text-center shadow-inner">
+                                  <div className="text-[10px] font-mono text-slate-500 uppercase tracking-widest font-bold mb-1.5">
                                     SENTENCE RECOGNITION (挖空部分为读音有误或未读出的单词)
                                   </div>
-                                  <div className="text-base sm:text-lg font-mono leading-loose flex flex-wrap items-center justify-center gap-x-2 gap-y-3">
+                                  <div className="text-sm sm:text-base font-mono leading-relaxed flex flex-wrap items-center justify-center gap-x-1.5 gap-y-1.5">
                                     {targetTokens.map((token, idx) => {
                                       const isMatched = matchedIndices.has(idx);
                                       return isMatched ? (
-                                        <span key={token.id} className="inline-flex items-center text-emerald-300 font-bold bg-emerald-500/10 border border-emerald-500/30 px-2.5 py-1 rounded-lg shadow-sm">
+                                        <span key={token.id} className="inline-flex items-center text-emerald-300 font-bold bg-emerald-500/10 border border-emerald-500/30 px-2 py-0.5 rounded shadow-sm">
                                           {token.prefix}
                                           <span>{token.clean}</span>
                                           {token.suffix}
@@ -3394,7 +3427,7 @@ export const GamePlay: React.FC<Props> = ({
                                       ) : (
                                         <span
                                           key={token.id}
-                                          className="inline-flex items-center text-slate-400 font-bold bg-slate-950/80 border border-dashed border-amber-500/40 px-3 py-1 rounded-lg select-none"
+                                          className="inline-flex items-center text-slate-400 font-bold bg-slate-950/80 border border-dashed border-amber-500/40 px-2 py-0.5 rounded select-none"
                                         >
                                           {token.prefix}
                                           <span className="text-amber-400/90 tracking-widest font-black">______</span>
@@ -3405,7 +3438,7 @@ export const GamePlay: React.FC<Props> = ({
                                   </div>
                                 </div>
 
-                                <div className="text-[11px] text-slate-400 font-mono text-center flex items-center gap-1.5">
+                                <div className="text-[10px] text-slate-400 font-mono text-center flex items-center gap-1">
                                   <span>💡</span>
                                   <span>提示：将挖空 <strong>______</strong> 处的单词读准，点击大麦克风重新朗读整句！</span>
                                 </div>
@@ -3415,14 +3448,14 @@ export const GamePlay: React.FC<Props> = ({
 
                           {/* Success Card on Complete Match */}
                           {isAllMatched && (
-                            <div className="w-full max-w-2xl mt-4 p-5 rounded-2xl bg-emerald-500/20 border-2 border-emerald-400 text-emerald-300 shadow-[0_0_25px_rgba(52,211,153,0.4)] flex flex-col sm:flex-row items-center justify-between gap-4 animate-bounce">
-                              <div className="flex items-center gap-3">
-                                <span className="text-3xl">🎉</span>
+                            <div className="w-full max-w-2xl mt-1.5 p-3 rounded-xl bg-emerald-500/20 border border-emerald-400 text-emerald-300 shadow-[0_0_15px_rgba(52,211,153,0.35)] flex flex-col sm:flex-row items-center justify-between gap-3 animate-fade-in">
+                              <div className="flex items-center gap-2.5">
+                                <span className="text-2xl">🎉</span>
                                 <div>
-                                  <div className="font-black text-base sm:text-lg text-emerald-200">
+                                  <div className="font-black text-sm sm:text-base text-emerald-200">
                                     PERFECT! 本句全部单词发音正确！
                                   </div>
-                                  <div className="text-xs text-emerald-400/90 font-mono">
+                                  <div className="text-[11px] text-emerald-400/90 font-mono">
                                     请点击右侧按钮进入下一句。
                                   </div>
                                 </div>
@@ -3432,7 +3465,7 @@ export const GamePlay: React.FC<Props> = ({
                                 <button
                                   type="button"
                                   onClick={handleNextSentence}
-                                  className="shrink-0 px-6 py-3 rounded-xl font-black text-xs sm:text-sm font-mono uppercase tracking-wider bg-emerald-400 hover:bg-emerald-300 text-slate-950 shadow-lg transition-all cursor-pointer hover:scale-105 active:scale-95"
+                                  className="shrink-0 px-4 py-2 rounded-xl font-black text-xs font-mono uppercase tracking-wider bg-emerald-400 hover:bg-emerald-300 text-slate-950 shadow transition-all cursor-pointer hover:scale-102 active:scale-95"
                                 >
                                   Next Sentence ▶
                                 </button>
@@ -3441,7 +3474,7 @@ export const GamePlay: React.FC<Props> = ({
                                   type="button"
                                   onClick={handleCompleteTranslation}
                                   disabled={isSaving}
-                                  className="shrink-0 px-6 py-3 rounded-xl font-black text-xs sm:text-sm font-mono uppercase tracking-wider bg-cyan-400 hover:bg-cyan-300 text-slate-950 shadow-lg transition-all cursor-pointer hover:scale-105 active:scale-95"
+                                  className="shrink-0 px-4 py-2 rounded-xl font-black text-xs font-mono uppercase tracking-wider bg-cyan-400 hover:bg-cyan-300 text-slate-950 shadow transition-all cursor-pointer hover:scale-102 active:scale-95"
                                 >
                                   {isSaving ? 'Saving...' : '🎉 完成关卡 (+100 🪙)'}
                                 </button>
@@ -3452,16 +3485,16 @@ export const GamePlay: React.FC<Props> = ({
 
                         {/* Explicit iPad Keyboard / Manual Input Fallback (Testing Mode Only) */}
                         {matchingSubMode === 'testing' && (
-                          <div className="w-full bg-slate-950/90 border border-slate-800 rounded-xl p-4 flex flex-col gap-2">
-                            <div className="flex justify-between items-center text-xs font-mono text-slate-400">
-                              <span className="flex items-center gap-1.5">
+                          <div className="w-full bg-slate-950/90 border border-slate-800 rounded-xl p-2 sm:p-2.5 flex flex-col gap-1">
+                            <div className="flex justify-between items-center text-[11px] font-mono text-slate-400">
+                              <span className="flex items-center gap-1">
                                 ⌨️ 键盘备用输入（支持 iPad 键盘自带麦克风听写）：
                               </span>
                               {(translationTypedText || spokenTranscript) && (
                                 <button
                                   type="button"
                                   onClick={handleTranslationTouchClear}
-                                  className="text-slate-400 hover:text-rose-400 flex items-center gap-1 cursor-pointer bg-transparent border-0 font-bold text-xs"
+                                  className="text-slate-400 hover:text-rose-400 flex items-center gap-1 cursor-pointer bg-transparent border-0 font-bold text-[11px]"
                                 >
                                   🗑️ 清空重试
                                 </button>
@@ -3470,7 +3503,7 @@ export const GamePlay: React.FC<Props> = ({
                             <input
                               ref={translationInputRef}
                               type="text"
-                              className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-3 text-slate-100 placeholder-slate-500 font-mono text-sm focus:outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400 transition-all shadow-inner"
+                              className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-slate-100 placeholder-slate-500 font-mono text-xs sm:text-sm focus:outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400 transition-all shadow-inner"
                               placeholder="点击此处在输入框打字..."
                               value={translationTypedText}
                               onChange={handleTranslationTypingChange}
@@ -3483,29 +3516,29 @@ export const GamePlay: React.FC<Props> = ({
                         )}
 
                         {/* Next / Previous Sentence Navigation Controls */}
-                        <div className="flex flex-wrap items-center justify-between gap-3 w-full">
+                        <div className="flex flex-wrap items-center justify-between gap-2.5 w-full pt-1">
                           <button
                             type="button"
                             disabled={translationSentenceIdx === 0}
                             onClick={handlePrevSentence}
-                            className={`px-3.5 py-2 rounded-xl text-xs font-bold font-mono transition-all border flex items-center gap-1.5 ${
+                            className={`px-3 py-1.5 rounded-xl text-xs font-bold font-mono transition-all border flex items-center gap-1.5 ${
                               translationSentenceIdx > 0
                                 ? 'bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700 cursor-pointer'
                                 : 'bg-slate-900/40 text-slate-600 border-slate-800/50 cursor-not-allowed opacity-50'
                             }`}
                           >
-                            ◀ Previous Sentence
+                            ◀ Previous
                           </button>
 
                           {translationSentenceIdx < translationSentences.length - 1 ? (
                             <button
                               type="button"
                               onClick={handleNextSentence}
-                              className={`px-4 py-2 rounded-xl text-xs font-bold font-mono transition-all border flex items-center gap-1.5 shadow-md cursor-pointer active:translate-y-0.5 ${
+                              className={`px-4 py-1.5 rounded-xl text-xs font-bold font-mono transition-all border flex items-center gap-1.5 shadow-md cursor-pointer active:translate-y-0.5 ${
                                 matchingSubMode === 'reading'
                                   ? 'bg-gradient-to-r from-cyan-500 to-emerald-500 hover:from-cyan-400 hover:to-emerald-400 text-slate-950 border-cyan-400 font-black'
                                   : isAllMatched
-                                  ? 'bg-gradient-to-r from-cyan-500 to-emerald-500 hover:from-cyan-400 hover:to-emerald-400 text-slate-950 border-cyan-400 animate-pulse font-black scale-105'
+                                  ? 'bg-gradient-to-r from-cyan-500 to-emerald-500 hover:from-cyan-400 hover:to-emerald-400 text-slate-950 border-cyan-400 animate-pulse font-black scale-102'
                                   : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'
                               }`}
                               title="Go to next sentence"
@@ -3517,7 +3550,7 @@ export const GamePlay: React.FC<Props> = ({
                               type="button"
                               disabled={matchingSubMode === 'testing' ? (!isAllMatched || isSaving) : isSaving}
                               onClick={handleCompleteTranslation}
-                              className={`px-5 py-2 rounded-xl text-xs font-bold font-mono transition-all border flex items-center gap-1.5 shadow-md ${
+                              className={`px-4 py-1.5 rounded-xl text-xs font-bold font-mono transition-all border flex items-center gap-1.5 shadow-md ${
                                 matchingSubMode === 'reading' || isAllMatched
                                   ? 'bg-gradient-to-r from-cyan-500 via-emerald-400 to-teal-400 text-slate-950 border-cyan-400 cursor-pointer font-black'
                                   : 'bg-slate-900/40 text-slate-600 border-slate-800/50 cursor-not-allowed opacity-50'

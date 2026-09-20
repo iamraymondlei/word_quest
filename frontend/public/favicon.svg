@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="100%" height="100%">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0f172a" />
+      <stop offset="100%" stop-color="#020617" />
+    </linearGradient>
+    <linearGradient id="glowGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#22d3ee" />
+      <stop offset="100%" stop-color="#38bdf8" />
+    </linearGradient>
+    <linearGradient id="goldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#fbbf24" />
+      <stop offset="100%" stop-color="#f59e0b" />
+    </linearGradient>
+  </defs>
+
+  <!-- Base Rounded Hexagon / Shield -->
+  <rect width="128" height="128" rx="28" fill="url(#bgGrad)" stroke="url(#glowGrad)" stroke-width="4"/>
+
+  <!-- Compass / Star / Sparkles -->
+  <path d="M64 22 L72 56 L106 64 L72 72 L64 106 L56 72 L22 64 L56 56 Z" fill="url(#glowGrad)" opacity="0.3"/>
+
+  <!-- Book Base -->
+  <path d="M34 84 Q64 74 64 50 Q64 74 94 84 L94 48 Q64 38 64 26 Q64 38 34 48 Z" fill="url(#goldGrad)" opacity="0.95" />
+
+  <!-- Center Letter 'W' -->
+  <text x="64" y="98" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, monospace" font-size="34" font-weight="900" fill="#ffffff" text-anchor="middle" letter-spacing="1">WQ</text>
+</svg>

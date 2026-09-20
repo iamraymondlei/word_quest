@@ -5,6 +5,8 @@ import { ParentDashboard } from './components/ParentDashboard';
 import { GamePlay } from './components/GamePlay';
 import { SuspenseState } from './components/SuspenseState';
 import { FormBoundary } from './components/FormBoundary';
+import { apiService } from './utils/apiService';
+import { OfflineSyncBadge } from './components/OfflineSyncBadge';
 import './index.css';
 
 type Mode = 'map' | 'admin' | 'game';
@@ -67,12 +69,9 @@ const App: React.FC = () => {
       setLoading(true);
     }
     try {
-      const res = await fetch(`/api/islands?user_id=${userId}`);
-      if (res.ok) {
-        const data = await res.json();
+      const data = await apiService.getIslands(userId);
+      if (data) {
         setIslands(data);
-      } else {
-        console.error('Failed to load islands');
       }
     } catch (err) {
       console.error('Failed to load islands', err);
@@ -86,16 +85,12 @@ const App: React.FC = () => {
   const refreshUserProfile = async () => {
     if (!currentUser) return;
     try {
-      const res = await fetch('/api/users');
-      if (res.ok) {
-        const users = await res.json();
+      const users = await apiService.getUsers();
+      if (users && users.length > 0) {
         const found = users.find((u: any) => u.id === currentUser.id);
         if (found) {
           setCurrentUser(found);
           localStorage.setItem('wordquest_user', JSON.stringify(found));
-        } else {
-          // If the cached user ID no longer exists in the db, clean it up to prevent FK constraint failures
-          handleLogout();
         }
       }
     } catch (err) {
@@ -194,8 +189,17 @@ const App: React.FC = () => {
 
   const showVersionBadge = import.meta.env.VITE_SHOW_VERSION_BADGE !== 'false';
 
+  const renderOfflineBadge = () => (
+    <div className="fixed top-3 left-3 z-50 pointer-events-auto select-none font-mono">
+      <OfflineSyncBadge
+        currentUserId={currentUser?.id}
+        onRefreshData={() => currentUser && loadIslands(currentUser.id, false)}
+      />
+    </div>
+  );
+
   const renderDevBadge = () => (
-    <div className="fixed top-3 right-3 z-50 flex items-center gap-1.5 pointer-events-auto select-none font-mono">
+    <div className="fixed top-3 right-3 z-50 flex items-center gap-2 pointer-events-auto select-none font-mono">
       {showDevBadge && (
         <span className="bg-amber-500/10 border border-amber-500/30 text-amber-500 text-[9px] font-black px-2 py-0.5 rounded shadow-[0_0_10px_rgba(245,158,11,0.1)] uppercase tracking-wider">
           DEV MODE
@@ -292,6 +296,7 @@ const App: React.FC = () => {
         <FormBoundary>
           <ParentDashboard onBack={handleBackToMap} />
         </FormBoundary>
+        {renderOfflineBadge()}
         {renderDevBadge()}
         {renderVersionModal()}
       </div>
@@ -308,6 +313,7 @@ const App: React.FC = () => {
             />
           </FormBoundary>
         </SuspenseState>
+        {renderOfflineBadge()}
         {renderDevBadge()}
         {renderVersionModal()}
       </div>
@@ -351,6 +357,7 @@ const App: React.FC = () => {
           />
         )}
       </SuspenseState>
+      {renderOfflineBadge()}
       {renderDevBadge()}
       {renderVersionModal()}
     </div>

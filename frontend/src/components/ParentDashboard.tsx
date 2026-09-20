@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { FormBoundary } from './FormBoundary';
 import { SuspenseState } from './SuspenseState';
 import {
@@ -10,6 +10,7 @@ import {
   normalizeBuddyKey,
   normalizeMonsterKey
 } from './StoryChaseAssets';
+import { StoryIllustration } from './StoryIllustration';
 import './ParentDashboard.css';
 
 export interface WordItem {
@@ -85,6 +86,7 @@ export interface Island {
     sentence_num: number;
     sentence_text: string;
     translation: string;
+    illustration_url?: string | null;
   }>;
   story_questions: Array<{
     question: string;
@@ -116,9 +118,11 @@ RULES:
      - "meaning": clear and accurate Chinese translation
      - "example_sentence": an original sentence from the story containing this word
      - "example_translation": the Chinese translation of the example sentence
-4. **pages**: For each image (in order), extract ONLY the core narrative/story text. DO NOT extract exercise questions, quizzes, captions, metadata, or activity questions (such as 'Activity 1', 'Questions:', or book reflection prompts) that are not part of the main story content. Split into individual sentences. For each sentence provide:
-   - "en": the original English sentence exactly as written
-   - "zh": natural, child-friendly Chinese translation
+4. **pages**: For each image (in order):
+   - "illustration_box": Locate the main story illustration or photograph on this page and output its bounding box as [ymin, xmin, ymax, xmax] normalized integers from 0 to 1000. Exclude standalone text blocks, page numbers, and margins. If the page is text-only without any story picture, set to null.
+   - "sentences": Extract ONLY the core narrative/story text. DO NOT extract exercise questions, quizzes, captions, metadata, or activity questions (such as 'Activity 1', 'Questions:', or book reflection prompts) that are not part of the main story content. Split into individual sentences. For each sentence provide:
+     - "en": the original English sentence exactly as written
+     - "zh": natural, child-friendly Chinese translation
 5. **questions**: Generate exactly {question_count} comprehension questions in English. Each question should:
    - Test understanding of the story (who, what, when, where, why, how)
    - Be appropriate for the target reading level
@@ -136,15 +140,15 @@ interface Props {
 }
 
 export const ParentDashboard: React.FC<Props> = ({ onBack }) => {
-  const [words, setWords] = useState<WordItem[]>([]);
   const [islands, setIslands] = useState<Island[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
   const [loadingIslands, setLoadingIslands] = useState<boolean>(false);
-  const [file, setFile] = useState<File | null>(null);
   const [uploadStatus, setUploadStatus] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
-  const [fileKey, setFileKey] = useState<number>(0);
-  const [isUploading, setIsUploading] = useState<boolean>(false);
   const [isSaving, setIsSaving] = useState<boolean>(false);
+
+  // Total words count across all cognitive sectors
+  const totalWordCount = useMemo(() => {
+    return islands.reduce((acc, isl) => acc + (isl.words?.length || 0), 0);
+  }, [islands]);
   
   // Island configuration states
   const [newIslandName, setNewIslandName] = useState<string>('');
@@ -163,20 +167,12 @@ export const ParentDashboard: React.FC<Props> = ({ onBack }) => {
     { question: '', hint: '', answer: '' }
   ]);
   
-  // Error words state
-  const [errorWords, setErrorWords] = useState<Array<{
-    word: string;
-    translation: string;
-    error_count: number;
-  }>>([]);
-  const [aiPrompt, setAiPrompt] = useState<string>('');
-  const [selectedIslandForUpload, setSelectedIslandForUpload] = useState<string>('');
-  
   // Story CSV upload states
   const [selectedIslandId, setSelectedIslandId] = useState<string>('');
 
   // AI Story Import states
   const [isSavingAI, setIsSavingAI] = useState<boolean>(false);
+  const [aiImportMode, setAiImportMode] = useState<'new' | 'append'>('new');
   const [aiIslandName, setAiIslandName] = useState<string>('');
   const [aiGroupName, setAiGroupName] = useState<string>('General');
   const [aiQuestionCount, setAiQuestionCount] = useState<number>(5);
@@ -203,7 +199,7 @@ export const ParentDashboard: React.FC<Props> = ({ onBack }) => {
   const [aiStatus, setAiStatus] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   // Tab & User & Group Management States
-  const [activeTab, setActiveTab] = useState<'users' | 'stories' | 'groups' | 'ai_import' | 'vocabulary' | 'errors' | 'game_settings'>('stories');
+  const [activeTab, setActiveTab] = useState<'users' | 'stories' | 'groups' | 'ai_import' | 'game_settings'>('stories');
   const [isEditingStory, setIsEditingStory] = useState<boolean>(false);
   const [storySearchQuery, setStorySearchQuery] = useState<string>('');
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(() => {
@@ -216,6 +212,7 @@ export const ParentDashboard: React.FC<Props> = ({ onBack }) => {
   const [editingGroupNameInput, setEditingGroupNameInput] = useState<string>('');
   const [groupStatus, setGroupStatus] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [isGroupLoading, setIsGroupLoading] = useState<boolean>(false);
+  const [storyListStatus, setStoryListStatus] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   // Game Settings States
   const [gameSettings, setGameSettings] = useState<GameSettings>(DEFAULT_FRONTEND_GAME_SETTINGS);
@@ -270,6 +267,19 @@ export const ParentDashboard: React.FC<Props> = ({ onBack }) => {
     clearIslandFormFields();
     setUploadStatus(null);
     fetchIslands();
+  };
+
+  const handleOpenAiAppend = () => {
+    setAiImportMode('append');
+    setIsEditingStory(false);
+    setActiveTab('ai_import');
+    if (newIslandName || storyTitle) {
+      setAiIslandName(newIslandName || storyTitle);
+    }
+    if (groupName) {
+      setAiGroupName(groupName);
+    }
+    setAiStatus(null);
   };
 
   const fetchAiModels = async (cli: 'agy' | 'codex') => {
@@ -415,65 +425,145 @@ export const ParentDashboard: React.FC<Props> = ({ onBack }) => {
       if (res.ok && data.success) {
         const aiResult = data.data;
         const extractedTitle = aiResult.title || 'New Sector';
-        
-        // 1. Populate island name and story title, strictly using the user-specified group name
-        setNewIslandName(aiIslandName.trim() || extractedTitle);
-        setGroupName(aiGroupName.trim() || 'General');
-        setStoryTitle(extractedTitle);
-        
-        // 2. Flatten sentences and join with space for storyPassage
         const sortedPages = [...(aiResult.pages || [])].sort((a: any, b: any) => (a.page || 0) - (b.page || 0));
         const sentencesList = sortedPages.flatMap((page: any) => page.sentences || []);
         const combinedPassage = sentencesList.map((s: any) => s.en).join(' ');
-        setStoryPassage(combinedPassage);
 
-        // 3. Generate editable story passage translation array
-        const tempJson: any[] = [];
-        for (const page of sortedPages) {
-          let sentenceNum = 1;
-          for (const s of (page.sentences || [])) {
-            tempJson.push({
-              paragraph_num: page.page,
-              sentence_num: sentenceNum++,
-              sentence_text: s.en,
-              translation: s.zh
+        if (aiImportMode === 'append') {
+          // 1. Calculate max existing page number
+          const existingMaxPage = (storyPassageJson && storyPassageJson.length > 0)
+            ? Math.max(0, ...storyPassageJson.map((p: any) => p.paragraph_num || 1))
+            : 0;
+
+          // 2. Set or retain titles / groups
+          if (!newIslandName) {
+            setNewIslandName(aiIslandName.trim() || extractedTitle);
+          }
+          if (!storyTitle) {
+            setStoryTitle(extractedTitle);
+          }
+          if (!groupName || groupName === 'General') {
+            setGroupName(aiGroupName.trim() || 'General');
+          }
+
+          // 3. Append passage text
+          setStoryPassage((prev) => {
+            const prevTrimmed = (prev || '').trim();
+            return prevTrimmed ? `${prevTrimmed}\n\n${combinedPassage}` : combinedPassage;
+          });
+
+          // 4. Offset paragraph numbers and append passage json
+          const newTempJson: any[] = [];
+          for (const page of sortedPages) {
+            const assignedPageNum = existingMaxPage + (page.page || 1);
+            let sentenceNum = 1;
+            for (const s of (page.sentences || [])) {
+              newTempJson.push({
+                paragraph_num: assignedPageNum,
+                sentence_num: sentenceNum++,
+                sentence_text: s.en,
+                translation: s.zh,
+                illustration_url: page.illustration_url || null,
+              });
+            }
+          }
+          setStoryPassageJson((prev) => [...(prev || []), ...newTempJson]);
+
+          // 5. Append questions (filter out empty initial templates)
+          if (aiResult.questions && Array.isArray(aiResult.questions) && aiResult.questions.length > 0) {
+            setStoryQuestions((prev) => {
+              const validPrev = (prev || []).filter((q) => q.question && q.question.trim());
+              return [...validPrev, ...aiResult.questions];
             });
           }
+
+          // 6. Deduplicate and append vocabulary
+          if (aiResult.vocabulary && Array.isArray(aiResult.vocabulary)) {
+            setWordsList((prev) => {
+              const existingList = prev || [];
+              const existingWordSet = new Set(existingList.map((w: any) => (w.word || '').trim().toLowerCase()));
+              const newUniqueWords = aiResult.vocabulary.filter((v: any) => v.word && !existingWordSet.has(v.word.trim().toLowerCase()));
+              const minId = existingList.length > 0 
+                ? Math.min(0, ...existingList.map((w: any) => (typeof w.id === 'number' ? w.id : 0))) 
+                : 0;
+              const formattedWords = newUniqueWords.map((v: any, index: number) => ({
+                id: minId - 1 - index,
+                word: v.word || '',
+                translation: v.meaning || '',
+                sentence: v.example_sentence || '',
+                sentence_translation: v.example_translation || ''
+              }));
+              return [...existingList, ...formattedWords];
+            });
+          }
+
+          const totalPagesNow = existingMaxPage + sortedPages.length;
+          setAiStatus({
+            type: 'success',
+            text: `🎉 AI 成功追加 ${sortedPages.length} 页（当前故事现共计 ${totalPagesNow} 页）！已自动合并词汇与习题。`,
+          });
+
+          // Return to story editor
+          setIsEditingStory(true);
+          setActiveTab('stories');
+          setAiStoryImages(null);
+          setAiFileKey((prev) => prev + 1);
+        } else {
+          // 1. Populate island name and story title, strictly using the user-specified group name
+          setNewIslandName(aiIslandName.trim() || extractedTitle);
+          setGroupName(aiGroupName.trim() || 'General');
+          setStoryTitle(extractedTitle);
+          setStoryPassage(combinedPassage);
+
+          // 3. Generate editable story passage translation array
+          const tempJson: any[] = [];
+          for (const page of sortedPages) {
+            let sentenceNum = 1;
+            for (const s of (page.sentences || [])) {
+              tempJson.push({
+                paragraph_num: page.page,
+                sentence_num: sentenceNum++,
+                sentence_text: s.en,
+                translation: s.zh,
+                illustration_url: page.illustration_url || null,
+              });
+            }
+          }
+          setStoryPassageJson(tempJson);
+
+          // 4. Populate questions
+          setStoryQuestions(aiResult.questions && aiResult.questions.length > 0 
+            ? aiResult.questions 
+            : [{ question: '', hint: '', answer: '' }]);
+
+          // 5. Populate vocabulary words list
+          if (aiResult.vocabulary && Array.isArray(aiResult.vocabulary)) {
+            const formattedWords = aiResult.vocabulary.map((v: any, index: number) => ({
+              id: -1 - index, // temporary negative IDs
+              word: v.word || '',
+              translation: v.meaning || '',
+              sentence: v.example_sentence || '',
+              sentence_translation: v.example_translation || ''
+            }));
+            setWordsList(formattedWords);
+          }
+
+          setAiStatus({
+            type: 'success',
+            text: `🎉 AI 绘本解析成功！正在载入故事编辑器...`,
+          });
+          
+          setSelectedIslandId('');
+          setManualUserIds([...aiUserIds]);
+          setIsEditingStory(true);
+          setActiveTab('stories');
+          
+          setAiIslandName('');
+          setAiQuestionCount(5);
+          setAiModel(aiCli === 'codex' ? 'gpt-4o' : 'gemini-3.7-flash-high');
+          setAiStoryImages(null);
+          setAiFileKey((prev) => prev + 1);
         }
-        setStoryPassageJson(tempJson);
-
-        // 4. Populate questions
-        setStoryQuestions(aiResult.questions && aiResult.questions.length > 0 
-          ? aiResult.questions 
-          : [{ question: '', hint: '', answer: '' }]);
-
-        // 5. Populate vocabulary words list
-        if (aiResult.vocabulary && Array.isArray(aiResult.vocabulary)) {
-          const formattedWords = aiResult.vocabulary.map((v: any, index: number) => ({
-            id: -1 - index, // temporary negative IDs
-            word: v.word || '',
-            translation: v.meaning || '',
-            sentence: v.example_sentence || '',
-            sentence_translation: v.example_translation || ''
-          }));
-          setWordsList(formattedWords);
-        }
-
-        setAiStatus({
-          type: 'success',
-          text: `🎉 AI 绘本解析成功！正在载入故事编辑器...`,
-        });
-        
-        setSelectedIslandId('');
-        setManualUserIds([...aiUserIds]);
-        setIsEditingStory(true);
-        setActiveTab('stories');
-        
-        setAiIslandName('');
-        setAiQuestionCount(5);
-        setAiModel(aiCli === 'codex' ? 'gpt-4o' : 'gemini-3.7-flash-high');
-        setAiStoryImages(null);
-        setAiFileKey((prev) => prev + 1);
       } else {
         setAiStatus({ type: 'error', text: data.error || 'AI SYNTHESIS COMPILATION FAILED.' });
       }
@@ -518,24 +608,10 @@ export const ParentDashboard: React.FC<Props> = ({ onBack }) => {
     }
   };
 
-  const fetchWords = async () => {
-    setLoading(true);
-    try {
-      const res = await fetch('/api/words');
-      const data = await res.json();
-      setWords(data);
-    } catch (err) {
-      console.error('Failed to fetch words', err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   // Users list state
   const [users, setUsers] = useState<User[]>([]);
   const [manualUserIds, setManualUserIds] = useState<number[]>([]);
   const [aiUserIds, setAiUserIds] = useState<number[]>([]);
-  const [csvUserIds, setCsvUserIds] = useState<number[]>([]);
 
   // Modal state for updating sector user access
   const [accessModalIsland, setAccessModalIsland] = useState<Island | null>(null);
@@ -604,7 +680,6 @@ export const ParentDashboard: React.FC<Props> = ({ onBack }) => {
   );
 
   useEffect(() => {
-    fetchWords();
     fetchIslands();
     fetchUsers();
     fetchStoryGroups();
@@ -795,38 +870,6 @@ export const ParentDashboard: React.FC<Props> = ({ onBack }) => {
     setSettingStatus(null);
   };
 
-  const fetchErrorWords = async () => {
-    setLoading(true);
-    try {
-      const res = await fetch('/api/islands/export-errors?user_id=1');
-      const data = await res.json();
-      setErrorWords(data.csv ? parseErrorCSV(data.csv) : []);
-      setAiPrompt(data.prompt || '');
-    } catch (err) {
-      console.error('Failed to fetch error words', err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const parseErrorCSV = (csv: string) => {
-    const lines = csv.split('\n');
-    const result = [];
-    for (let i = 1; i < lines.length; i++) {
-      const line = lines[i].trim();
-      if (!line) continue;
-      const [word, translation, error_count] = line.split(',');
-      if (word && translation && error_count) {
-        result.push({
-          word: word.replace(/"/g, ''),
-          translation: translation.replace(/"/g, ''),
-          error_count: parseInt(error_count)
-        });
-      }
-    }
-    return result;
-  };
-
   const clearIslandFormFields = () => {
     setNewIslandName('');
     setGroupName('General');
@@ -897,54 +940,9 @@ export const ParentDashboard: React.FC<Props> = ({ onBack }) => {
     }
   };
 
-  const uploadWordsToIsland = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedIslandForUpload || !file) {
-      setUploadStatus({ type: 'error', text: 'SELECT COGNITIVE SECTOR AND TARGET CSV FILE.' });
-      return;
-    }
-
-    setIsUploading(true);
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('island_name', selectedIslandForUpload);
-
-    try {
-      const res = await fetch('/api/islands/upload-words', {
-        method: 'POST',
-        body: formData
-      });
-      
-      const data = await res.json();
-      if (data.success) {
-        if (csvUserIds.length > 0) {
-          const targetIsland = islands.find(isl => isl.name === selectedIslandForUpload);
-          if (targetIsland) {
-            await fetch(`/api/islands/${targetIsland.id}/access`, {
-              method: 'PUT',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ user_ids: csvUserIds })
-            });
-          }
-        }
-        setUploadStatus({ type: 'success', text: data.message });
-        setFile(null);
-        setFileKey(prev => prev + 1);
-        setCsvUserIds([]);
-        fetchIslands();
-      } else {
-        setUploadStatus({ type: 'error', text: data.error || 'TRANSMISSION COMPILATION FAILED.' });
-      }
-    } catch (err) {
-      setUploadStatus({ type: 'error', text: 'TRANSMISSION ERROR. PLEASE RETRY.' });
-    } finally {
-      setIsUploading(false);
-    }
-  };
-
   const updateSentenceTranslation = (
     index: number,
-    field: 'paragraph_num' | 'sentence_num' | 'sentence_text' | 'translation',
+    field: 'paragraph_num' | 'sentence_num' | 'sentence_text' | 'translation' | 'illustration_url',
     value: any
   ) => {
     const updated = [...storyPassageJson];
@@ -978,6 +976,31 @@ export const ParentDashboard: React.FC<Props> = ({ onBack }) => {
     setWordsList(updated);
   };
 
+  const updatePageIllustration = (pageNum: number, newUrl: string | null) => {
+    const formattedUrl = newUrl && newUrl.trim() ? newUrl.trim() : null;
+    const updated = storyPassageJson.map((item) =>
+      (item.paragraph_num || 1) === pageNum ? { ...item, illustration_url: formattedUrl } : item
+    );
+    setStoryPassageJson(updated);
+  };
+
+  const pageIllustrationsList = useMemo(() => {
+    const map = new Map<number, { pageNum: number; illustration_url: string | null; count: number }>();
+    (storyPassageJson || []).forEach((item) => {
+      const pNum = item.paragraph_num || 1;
+      if (!map.has(pNum)) {
+        map.set(pNum, { pageNum: pNum, illustration_url: item.illustration_url || null, count: 1 });
+      } else {
+        const entry = map.get(pNum)!;
+        entry.count++;
+        if (!entry.illustration_url && item.illustration_url) {
+          entry.illustration_url = item.illustration_url;
+        }
+      }
+    });
+    return Array.from(map.values()).sort((a, b) => a.pageNum - b.pageNum);
+  }, [storyPassageJson]);
+
   const addWordToList = () => {
     setWordsList([
       ...wordsList,
@@ -996,15 +1019,6 @@ export const ParentDashboard: React.FC<Props> = ({ onBack }) => {
     setWordsList(updated);
   };
 
-  const copyAiPrompt = async () => {
-    try {
-      await navigator.clipboard.writeText(aiPrompt);
-      setUploadStatus({ type: 'success', text: 'AI Prompt copied to clipboard!' });
-    } catch (err) {
-      setUploadStatus({ type: 'error', text: 'Copy failed. Please copy manually.' });
-    }
-  };
-
   const addQuestion = () => {
     setStoryQuestions([...storyQuestions, { question: '', hint: '', answer: '' }]);
   };
@@ -1019,19 +1033,20 @@ export const ParentDashboard: React.FC<Props> = ({ onBack }) => {
     setStoryQuestions(storyQuestions.filter((_, i) => i !== index));
   };
 
-  const handleDeleteIsland = async (id: number) => {
-    if (!window.confirm('Are you sure you want to delete this story sector?')) return;
+  const handleDeleteIsland = async (sector: Island) => {
+    const title = sector.story_title || sector.name;
+    if (!window.confirm(`确定要删除故事关卡「${title}」吗？此操作将同时清理关联单词与练习记录，不可撤销。`)) return;
     try {
-      const res = await fetch(`/api/islands/${id}`, { method: 'DELETE' });
+      const res = await fetch(`/api/islands/${sector.id}`, { method: 'DELETE' });
+      const data = await res.json().catch(() => ({}));
       if (res.ok) {
-        setUploadStatus({ type: 'success', text: 'Sector deleted successfully!' });
+        setStoryListStatus({ type: 'success', text: `故事关卡「${title}」已成功删除！` });
         fetchIslands();
       } else {
-        const data = await res.json();
-        setUploadStatus({ type: 'error', text: data.error || 'Failed to delete sector' });
+        setStoryListStatus({ type: 'error', text: data.error || '删除故事关卡失败，请重试' });
       }
     } catch (err) {
-      setUploadStatus({ type: 'error', text: 'Network transmission error' });
+      setStoryListStatus({ type: 'error', text: '网络请求失败，请检查服务连接' });
     }
   };
 
@@ -1154,47 +1169,7 @@ export const ParentDashboard: React.FC<Props> = ({ onBack }) => {
               )}
             </button>
 
-            {/* Nav 5: 词库中心 */}
-            <button
-              type="button"
-              onClick={() => { setActiveTab('vocabulary'); setIsEditingStory(false); setUploadStatus(null); fetchWords(); }}
-              className={`admin-nav-item w-full p-2.5 rounded-xl border flex items-center gap-3 cursor-pointer text-left ${
-                activeTab === 'vocabulary' && !isEditingStory
-                  ? 'active'
-                  : 'bg-slate-900/40 border-transparent text-slate-400 hover:text-slate-200'
-              }`}
-              title="词库中心 (VOCABULARY DATABASE)"
-            >
-              <span className="text-lg shrink-0">📖</span>
-              {!isSidebarCollapsed && (
-                <div className="min-w-0">
-                  <div className="text-xs font-bold font-mono tracking-wide truncate">词库中心</div>
-                  <div className="text-[10px] text-slate-500 font-mono truncate">Vocabulary ({words.length})</div>
-                </div>
-              )}
-            </button>
-
-            {/* Nav 6: 错题管理 */}
-            <button
-              type="button"
-              onClick={() => { setActiveTab('errors'); setIsEditingStory(false); fetchErrorWords(); setUploadStatus(null); }}
-              className={`admin-nav-item w-full p-2.5 rounded-xl border flex items-center gap-3 cursor-pointer text-left ${
-                activeTab === 'errors' && !isEditingStory
-                  ? 'active'
-                  : 'bg-slate-900/40 border-transparent text-slate-400 hover:text-slate-200'
-              }`}
-              title="错题管理 (ERROR LOG MANAGER)"
-            >
-              <span className="text-lg shrink-0">⚠️</span>
-              {!isSidebarCollapsed && (
-                <div className="min-w-0">
-                  <div className="text-xs font-bold font-mono tracking-wide truncate">错题管理</div>
-                  <div className="text-[10px] text-slate-500 font-mono truncate">Error Word Logs</div>
-                </div>
-              )}
-            </button>
-
-            {/* Nav 7: 游戏参数设定 */}
+            {/* Nav 5: 游戏参数设定 */}
             <button
               type="button"
               onClick={() => { setActiveTab('game_settings'); setIsEditingStory(false); setSettingStatus(null); fetchGameSettings(); }}
@@ -1244,8 +1219,6 @@ export const ParentDashboard: React.FC<Props> = ({ onBack }) => {
                   {activeTab === 'stories' && '📚 故事关卡库 (STORY & SECTOR LIBRARY)'}
                   {activeTab === 'groups' && '📁 故事分组管理 (STORY GROUPS DIRECTORY)'}
                   {activeTab === 'ai_import' && '🤖 AI 智能绘本导入工作室 (AI SYNTHESIS STUDIO)'}
-                  {activeTab === 'vocabulary' && '📖 词库数据库管理 (VOCABULARY DATABASE)'}
-                  {activeTab === 'errors' && '⚠️ 高频错题与提示词管理 (ERROR LOG MANAGER)'}
                   {activeTab === 'game_settings' && '🎮 游戏玩法与难度参数配置 (GAME SETTINGS)'}
                 </h1>
                 <p className="text-2xs text-slate-400 font-mono mt-1">
@@ -1253,8 +1226,6 @@ export const ParentDashboard: React.FC<Props> = ({ onBack }) => {
                   {activeTab === 'stories' && '管理全站英语故事关卡，支持独立多功能故事编辑器'}
                   {activeTab === 'groups' && '管理故事所属分类与关卡分组，支持增删改查及故事自动归并'}
                   {activeTab === 'ai_import' && '通过 Agent CLI 与多模态大模型一键提取绘本中英文与问答'}
-                  {activeTab === 'vocabulary' && '查看核心单词表，支持通过 CSV 批量导入词库'}
-                  {activeTab === 'errors' && '导出学生高频练习错词，生成个性化复习故事 Prompt'}
                   {activeTab === 'game_settings' && '调整 Story Chase 打字追逐游戏的怪兽移动速度、退后距离、等待冷却时间及可用怪兽 Emoji 池'}
                 </p>
               </div>
@@ -1268,7 +1239,7 @@ export const ParentDashboard: React.FC<Props> = ({ onBack }) => {
               </div>
               <div className="theme-card border theme-border rounded-xl p-4 shadow-lg flex flex-col justify-between hover:border-cyan-500/40 transition-all">
                 <span className="text-xs font-mono uppercase tracking-wider theme-text-muted mb-1">Word Count</span>
-                <span className="text-cyan-400 font-display text-2xl font-black">{words.length}</span>
+                <span className="text-cyan-400 font-display text-2xl font-black">{totalWordCount}</span>
               </div>
               <div className="theme-card border theme-border rounded-xl p-4 shadow-lg flex flex-col justify-between hover:border-cyan-500/40 transition-all">
                 <span className="text-xs font-mono uppercase tracking-wider theme-text-muted mb-1">Registered Students</span>
@@ -1613,6 +1584,14 @@ export const ParentDashboard: React.FC<Props> = ({ onBack }) => {
               )}
               <button
                 type="button"
+                onClick={handleOpenAiAppend}
+                className="px-4 py-2.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-mono text-xs font-bold rounded-xl shadow-lg shadow-purple-600/25 transition-all flex items-center gap-1.5 cursor-pointer active:scale-95 border border-purple-400/40"
+                title="分批或追加上传后续绘本页面，自动顺延页码并合并生词和习题"
+              >
+                <span>🤖 ➕</span> <span>AI 追加新页面 (APPEND)</span>
+              </button>
+              <button
+                type="button"
                 onClick={() => {
                   const form = document.getElementById('story-editor-form') as HTMLFormElement;
                   if (form) form.requestSubmit();
@@ -1861,6 +1840,119 @@ export const ParentDashboard: React.FC<Props> = ({ onBack }) => {
                 </div>
               </div>
 
+              {/* Section 2.5: 🖼️ 绘本逐页插图 (Page Illustrations Gallery) */}
+              <div className="bg-[#131B2E] border border-[#1F2D4A] rounded-2xl p-6 shadow-xl space-y-5">
+                <div className="flex items-center justify-between border-b border-[#1F2D4A] pb-3 flex-wrap gap-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xl">🖼️</span>
+                    <div>
+                      <h3 className="text-base font-bold text-slate-100 uppercase tracking-widest font-mono">
+                        绘本逐页插图 (PAGE ILLUSTRATIONS GALLERY)
+                      </h3>
+                      <p className="text-3xs text-slate-500 font-mono mt-0.5">
+                        AI 智能提取的绘本纯画面插图，按页码（段落）对应。学生阅读与离线模式下将优先展示。
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={handleOpenAiAppend}
+                      className="px-3 py-1.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white text-xs font-mono font-bold rounded-lg shadow-md flex items-center gap-1.5 transition-all cursor-pointer border border-purple-400/40 active:scale-95"
+                    >
+                      <span>🤖 ➕</span>
+                      <span>AI 追加新页面</span>
+                    </button>
+                    <span className="text-xs font-mono bg-cyan-950 text-cyan-300 border border-cyan-500/30 px-2.5 py-1 rounded-full">
+                      {pageIllustrationsList.filter((p) => p.illustration_url).length} / {pageIllustrationsList.length} 页含插图
+                    </span>
+                  </div>
+                </div>
+
+                {pageIllustrationsList.length === 0 ? (
+                  <div className="p-6 text-center text-slate-500 italic font-mono text-xs bg-slate-900/60 rounded-xl border border-slate-800 flex flex-col items-center gap-2">
+                    <span>暂无页码数据。请在下方输入故事文本或通过 AI 导入绘本图片。</span>
+                    <button
+                      type="button"
+                      onClick={handleOpenAiAppend}
+                      className="px-3 py-1.5 bg-purple-900/40 hover:bg-purple-900/60 text-purple-300 border border-purple-500/30 rounded-lg text-2xs font-mono font-bold cursor-pointer transition-all flex items-center gap-1 mt-1"
+                    >
+                      <span>🤖 ➕</span> <span>前往 AI 智能绘本导入</span>
+                    </button>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {pageIllustrationsList.map((pageItem) => (
+                      <div
+                        key={pageItem.pageNum}
+                        className="bg-slate-900/80 border border-slate-800 hover:border-cyan-500/30 rounded-xl p-3.5 flex flex-col justify-between gap-3 transition-all"
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-bold font-mono text-cyan-300 bg-cyan-950/80 px-2 py-0.5 rounded border border-cyan-500/30">
+                            第 {pageItem.pageNum} 页 (Para #{pageItem.pageNum})
+                          </span>
+                          <span className="text-[10px] font-mono text-slate-500">
+                            {pageItem.count} 句文本
+                          </span>
+                        </div>
+
+                        {/* Illustration Preview */}
+                        {pageItem.illustration_url ? (
+                          <div className="relative group rounded-lg overflow-hidden border border-slate-800 bg-black/50">
+                            <StoryIllustration
+                              src={pageItem.illustration_url}
+                              pageNumber={pageItem.pageNum}
+                              allowZoom={true}
+                              className="border-none bg-transparent"
+                            />
+                            <div className="flex items-center justify-end gap-2 p-1.5 bg-slate-950/80 border-t border-slate-800/80">
+                              <button
+                                type="button"
+                                onClick={() => updatePageIllustration(pageItem.pageNum, null)}
+                                className="px-2 py-0.5 bg-rose-950/80 hover:bg-rose-900 border border-rose-500/40 text-rose-300 rounded text-[10px] font-mono font-bold cursor-pointer"
+                              >
+                                🗑️ 移除插图
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="aspect-video rounded-lg border border-dashed border-slate-800 bg-slate-950/40 flex flex-col items-center justify-center text-slate-600 text-xs font-mono gap-1">
+                            <span>📄 无本页插图</span>
+                            <span className="text-[10px] text-slate-700">（纯文本或未提取到画面）</span>
+                          </div>
+                        )}
+
+                        {/* URL Editor input */}
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-mono text-slate-400 block">
+                            插图资源路径 (URL / Storage Key):
+                          </label>
+                          <div className="flex items-center gap-1.5">
+                            <input
+                              type="text"
+                              value={pageItem.illustration_url || ''}
+                              onChange={(e) => updatePageIllustration(pageItem.pageNum, e.target.value)}
+                              placeholder="/api/illustrations/... 或 https://..."
+                              className="flex-1 bg-[#0B0F19] border border-slate-800 text-slate-200 text-[11px] font-mono px-2 py-1 rounded focus:outline-none focus:border-cyan-500"
+                            />
+                            {pageItem.illustration_url && (
+                              <button
+                                type="button"
+                                onClick={() => updatePageIllustration(pageItem.pageNum, null)}
+                                className="text-slate-500 hover:text-rose-400 text-xs px-1.5 py-1"
+                                title="清空"
+                              >
+                                ✕
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
               {/* Section 3: 🧩 阅读理解问答 */}
               <div className="bg-[#131B2E] border border-[#1F2D4A] rounded-2xl p-6 shadow-xl space-y-6">
                 <div className="flex items-center justify-between border-b border-[#1F2D4A] pb-3 flex-wrap gap-2">
@@ -2027,13 +2119,23 @@ export const ParentDashboard: React.FC<Props> = ({ onBack }) => {
                   ◀ 返回故事关卡库 (CANCEL)
                 </button>
 
-                <button
-                  type="submit"
-                  disabled={isSaving}
-                  className="px-8 py-3 bg-gradient-to-r from-cyan-500 via-teal-400 to-emerald-500 hover:from-cyan-400 hover:to-emerald-400 text-slate-950 font-black text-xs uppercase tracking-wider rounded-xl shadow-lg shadow-cyan-500/25 transition-all cursor-pointer disabled:opacity-50 flex items-center gap-2 font-mono active:scale-95"
-                >
-                  <span>💾</span> <span>{isSaving ? 'SAVING...' : (selectedIslandId ? 'COMMIT SECTOR CONFIG (保存更改)' : 'INITIALIZE SECTOR (创建故事)')}</span>
-                </button>
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={handleOpenAiAppend}
+                    className="px-5 py-3 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-mono text-xs font-bold rounded-xl shadow-lg shadow-purple-600/25 transition-all flex items-center gap-1.5 cursor-pointer active:scale-95 border border-purple-400/40"
+                    title="分批或追加上传后续绘本页面，自动顺延页码并合并生词和习题"
+                  >
+                    <span>🤖 ➕</span> <span>AI 追加新页面 (APPEND)</span>
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isSaving}
+                    className="px-8 py-3 bg-gradient-to-r from-cyan-500 via-teal-400 to-emerald-500 hover:from-cyan-400 hover:to-emerald-400 text-slate-950 font-black text-xs uppercase tracking-wider rounded-xl shadow-lg shadow-cyan-500/25 transition-all cursor-pointer disabled:opacity-50 flex items-center gap-2 font-mono active:scale-95"
+                  >
+                    <span>💾</span> <span>{isSaving ? 'SAVING...' : (selectedIslandId ? 'COMMIT SECTOR CONFIG (保存更改)' : 'INITIALIZE SECTOR (创建故事)')}</span>
+                  </button>
+                </div>
               </div>
             </form>
           </FormBoundary>
@@ -2077,6 +2179,27 @@ export const ParentDashboard: React.FC<Props> = ({ onBack }) => {
                 </button>
               </div>
             </div>
+
+            {storyListStatus && (
+              <div className={`p-3 rounded-xl text-xs font-mono border flex items-center justify-between shadow-md ${
+                storyListStatus.type === 'success' 
+                  ? 'bg-emerald-950/60 border-emerald-500/50 text-emerald-300' 
+                  : 'bg-rose-950/60 border-rose-500/50 text-rose-300'
+              }`}>
+                <div className="flex items-center gap-2">
+                  <span>{storyListStatus.type === 'success' ? '✅' : '⚠️'}</span>
+                  <span>{storyListStatus.text}</span>
+                </div>
+                <button 
+                  type="button" 
+                  onClick={() => setStoryListStatus(null)}
+                  className="opacity-60 hover:opacity-100 font-bold px-2 py-0.5 rounded cursor-pointer transition-opacity"
+                  title="Close"
+                >
+                  ✕
+                </button>
+              </div>
+            )}
 
             {/* Filter and Search controls */}
             <div className="flex flex-wrap items-center justify-between gap-4">
@@ -2235,6 +2358,14 @@ export const ParentDashboard: React.FC<Props> = ({ onBack }) => {
                             <span className="text-[10px] font-mono bg-slate-900 border border-slate-800 text-slate-300 px-2 py-0.5 rounded-md flex items-center gap-1">
                               <span>🧩</span> <span>{questionsCount} 问答</span>
                             </span>
+                            {(sector.story_passage_json || []).some((p) => p.illustration_url) && (
+                              <span className="text-[10px] font-mono bg-indigo-950/80 border border-indigo-500/40 text-indigo-300 px-2 py-0.5 rounded-md flex items-center gap-1 shadow-sm">
+                                <span>🖼️</span>{' '}
+                                <span>
+                                  {new Set((sector.story_passage_json || []).filter((p) => p.illustration_url).map((p) => p.illustration_url)).size} 插图
+                                </span>
+                              </span>
+                            )}
                           </div>
 
                           {/* Assigned Users Badge */}
@@ -2283,7 +2414,7 @@ export const ParentDashboard: React.FC<Props> = ({ onBack }) => {
 
                           <button
                             type="button"
-                            onClick={() => handleDeleteIsland(sector.id)}
+                            onClick={() => handleDeleteIsland(sector)}
                             className="text-xs px-2.5 py-1.5 bg-rose-950/40 hover:bg-rose-950 border border-rose-500/30 hover:border-rose-500 text-rose-400 rounded-lg font-mono transition-all cursor-pointer flex items-center gap-1"
                             title="删除故事关卡"
                           >
@@ -2344,6 +2475,79 @@ export const ParentDashboard: React.FC<Props> = ({ onBack }) => {
                 </div>
 
                 <form onSubmit={importAiIsland} className="flex flex-col gap-6">
+                  {/* Mode Switcher: 🆕 创建新故事 vs ➕ 追加到当前故事 */}
+                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between bg-slate-900/90 border border-slate-800 rounded-xl p-3.5 gap-3">
+                    <div className="flex flex-wrap items-center gap-3">
+                      <span className="text-xs font-mono font-bold text-slate-400 uppercase tracking-wider">
+                        导入模式 (IMPORT MODE):
+                      </span>
+                      <div className="inline-flex rounded-lg bg-slate-950 p-1 border border-slate-800">
+                        <button
+                          type="button"
+                          onClick={() => setAiImportMode('new')}
+                          className={`px-3.5 py-1.5 rounded-md text-xs font-mono font-bold transition-all cursor-pointer ${
+                            aiImportMode === 'new'
+                              ? 'bg-cyan-500 text-slate-950 shadow-md shadow-cyan-500/30'
+                              : 'text-slate-400 hover:text-slate-200'
+                          }`}
+                        >
+                          🆕 创建新故事 (New Story)
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setAiImportMode('append')}
+                          className={`px-3.5 py-1.5 rounded-md text-xs font-mono font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                            aiImportMode === 'append'
+                              ? 'bg-purple-600 text-white shadow-md shadow-purple-600/30'
+                              : 'text-slate-400 hover:text-slate-200'
+                          }`}
+                        >
+                          <span>➕ 追加到当前故事 (Append Pages)</span>
+                          {storyPassageJson.length > 0 && (
+                            <span className="bg-purple-950 text-purple-200 border border-purple-400/30 text-[10px] px-1.5 py-0.2 rounded-full font-normal">
+                              已有 {Math.max(0, ...storyPassageJson.map((p: any) => p.paragraph_num || 1))} 页
+                            </span>
+                          )}
+                        </button>
+                      </div>
+                    </div>
+
+                    {(storyPassageJson.length > 0 || storyTitle || newIslandName) && (
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsEditingStory(true);
+                            setActiveTab('stories');
+                          }}
+                          className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-cyan-300 text-xs font-mono rounded-lg transition-all cursor-pointer flex items-center gap-1.5 active:scale-95"
+                        >
+                          <span>📖</span>
+                          <span>返回故事编辑器 ({storyTitle || newIslandName || '当前故事'})</span>
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  {aiImportMode === 'append' && (
+                    <div className="p-4 bg-purple-950/40 border border-purple-500/40 rounded-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs font-mono text-purple-200 shadow-inner">
+                      <div className="flex items-start sm:items-center gap-2.5">
+                        <span className="text-xl">🔄</span>
+                        <div>
+                          <div className="font-bold text-purple-100 flex items-center gap-2">
+                            <span>追加导入模式已开启 (Append Mode Active)</span>
+                            <span className="text-3xs bg-purple-900 border border-purple-400/40 text-purple-200 px-2 py-0.5 rounded-full">
+                              目标故事: {storyTitle || newIslandName || '当前正在编辑的故事'}
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-purple-300/90 mt-0.5 leading-relaxed">
+                            每次可上传 1-10 张扫描图。解析后将自动从第 <strong className="text-amber-300 underline font-black">{(storyPassageJson.length > 0 ? Math.max(0, ...storyPassageJson.map((p: any) => p.paragraph_num || 1)) : 0) + 1}</strong> 页开始顺延编号，图文、生词（自动去重）与阅读理解题将自动合并。您可以多次分批追加，最后在故事编辑器中统一保存！
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     {/* 1. Sector Name */}
                     <div className="flex flex-col gap-2">
@@ -2573,10 +2777,18 @@ export const ParentDashboard: React.FC<Props> = ({ onBack }) => {
                   <button 
                     type="submit" 
                     id="btn-submit-ai-island" 
-                    className="w-full mt-2 py-3.5 bg-gradient-to-r from-cyan-500 via-purple-500 to-pink-600 text-white font-black text-xs uppercase tracking-wider rounded-xl shadow-lg shadow-cyan-500/25 hover:from-cyan-400 hover:to-pink-500 active:scale-[0.99] transition-all disabled:opacity-50 cursor-pointer font-mono" 
+                    className={`w-full mt-2 py-3.5 text-white font-black text-xs uppercase tracking-wider rounded-xl shadow-lg active:scale-[0.99] transition-all disabled:opacity-50 cursor-pointer font-mono ${
+                      aiImportMode === 'append'
+                        ? 'bg-gradient-to-r from-purple-600 via-indigo-600 to-cyan-600 shadow-purple-600/25 hover:from-purple-500 hover:to-cyan-500'
+                        : 'bg-gradient-to-r from-cyan-500 via-purple-500 to-pink-600 shadow-cyan-500/25 hover:from-cyan-400 hover:to-pink-500'
+                    }`}
                     disabled={isSavingAI}
                   >
-                    {isSavingAI ? 'AI COMPILATION RUNNING...' : '🚀 LAUNCH AI SYNTHESIS PROCESS (开始解析并自动跳转编辑)'}
+                    {isSavingAI 
+                      ? 'AI COMPILATION RUNNING...' 
+                      : (aiImportMode === 'append'
+                          ? `➕ START MULTIMODAL SYNTHESIS & APPEND (开始解析并追加至第 ${(storyPassageJson.length > 0 ? Math.max(0, ...storyPassageJson.map((p: any) => p.paragraph_num || 1)) : 0) + 1} 页起)`
+                          : '🚀 LAUNCH AI SYNTHESIS PROCESS (开始解析并载入新故事)')}
                   </button>
                   {aiStatus && (
                     <p className={`p-3 text-xs rounded-lg border mt-2 font-mono ${
@@ -2594,183 +2806,7 @@ export const ParentDashboard: React.FC<Props> = ({ onBack }) => {
         </div>
       )}
 
-      {/* View 4: 📖 Vocabulary Database Management Tab */}
-      {activeTab === 'vocabulary' && !isEditingStory && (
-        <div className="flex flex-col gap-8 animate-fade-in">
-          <FormBoundary>
-            <form onSubmit={uploadWordsToIsland} className="bg-[#131B2E] border border-[#1F2D4A] rounded-xl p-6 shadow-xl">
-              <h3 className="text-base font-bold text-cyan-400 uppercase tracking-widest mb-2 font-mono">IMPORT VOCABULARY VIA CSV</h3>
-              <p className="text-3xs text-slate-500 mb-6 font-mono">Upload a CSV file structured as: word, translation, sentence, sentence_translation.</p>
-              
-              <div className="flex flex-col gap-4">
-                <div className="flex flex-col gap-2">
-                  <label className="text-xs text-slate-400 uppercase tracking-widest font-mono font-bold">SELECT TARGET SECTOR</label>
-                  <SuspenseState isLoading={loadingIslands}>
-                    <select 
-                      value={selectedIslandForUpload}
-                      onChange={(e) => setSelectedIslandForUpload(e.target.value)}
-                      required
-                      className="bg-slate-900 border border-slate-800 rounded-lg px-4 py-2 text-sm text-cyan-300 font-mono focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500"
-                    >
-                      <option value="">Select sector</option>
-                      {islands.map((island) => (
-                        <option key={island.id} value={island.name}>
-                          {island.name}
-                        </option>
-                      ))}
-                    </select>
-                  </SuspenseState>
-                </div>
-                
-                {renderUserSelectionGroup(csvUserIds, setCsvUserIds)}
-
-                <div className="flex gap-4 items-center flex-wrap pt-2">
-                  <input 
-                    key={fileKey} 
-                    type="file" 
-                    accept=".csv" 
-                    disabled={isUploading} 
-                    onChange={(e) => setFile(e.target.files?.[0] || null)} 
-                    className="flex-1 bg-slate-900 border border-slate-800 text-slate-300 font-mono rounded-lg px-4 py-2 text-sm file:bg-[#131B2E] file:border file:border-[#1F2D4A] file:text-cyan-400 file:px-3 file:py-1 file:rounded-md file:mr-4 file:text-xs file:font-mono hover:file:bg-[#1A2642] transition-all cursor-pointer"
-                  />
-                  <button 
-                    type="submit" 
-                    className="px-6 py-2.5 bg-gradient-to-r from-cyan-500 to-purple-600 text-white font-bold text-xs uppercase tracking-wider rounded-lg shadow-lg shadow-cyan-500/20 hover:from-cyan-400 hover:to-purple-500 transition-all disabled:opacity-50 cursor-pointer font-mono" 
-                    disabled={isUploading}
-                  >
-                    {isUploading ? 'IMPORTING...' : 'EXECUTE IMPORT'}
-                  </button>
-                </div>
-              </div>
-              {uploadStatus && (
-                <p className={`p-3 text-xs rounded-lg border text-center mt-4 font-mono ${
-                  uploadStatus.type === 'success' 
-                    ? 'bg-emerald-950/40 border-emerald-500/40 text-emerald-400' 
-                    : 'bg-rose-950/40 border-rose-500/40 text-rose-400'
-                }`}>
-                  {uploadStatus.text}
-                </p>
-              )}
-            </form>
-          </FormBoundary>
-
-          <div className="bg-[#131B2E] border border-[#1F2D4A] rounded-xl p-6 shadow-xl">
-            <h3 className="text-base font-bold text-slate-100 border-b border-[#1F2D4A] pb-3 mb-6 uppercase tracking-widest font-mono">ACTIVE VOCABULARY LIST</h3>
-            <SuspenseState isLoading={loading}>
-              {words.length === 0 ? (
-                <p className="text-xs text-slate-500 italic p-8 text-center select-none font-mono">Vocabulary database is empty. Import words using the CSV upload form above.</p>
-              ) : (
-                <div className="table-responsive bg-[#0F172A] border border-[#1F2D4A] rounded-xl overflow-hidden shadow-xl">
-                  <table className="w-full text-xs text-left font-mono">
-                    <thead>
-                      <tr className="bg-[#131B2E] border-b border-[#1F2D4A] text-slate-400 font-mono">
-                        <th className="p-3 font-semibold uppercase tracking-wider w-[15%]">WORD</th>
-                        <th className="p-3 font-semibold uppercase tracking-wider w-[20%]">CHINESE MEANING</th>
-                        <th className="p-3 font-semibold uppercase tracking-wider w-[40%]">CONTEXT & TRANSLATION</th>
-                        <th className="p-3 font-semibold uppercase tracking-wider w-[6%] text-center">LISTENING</th>
-                        <th className="p-3 font-semibold uppercase tracking-wider w-[6%] text-center">SPEAKING</th>
-                        <th className="p-3 font-semibold uppercase tracking-wider w-[6%] text-center">READING</th>
-                        <th className="p-3 font-semibold uppercase tracking-wider w-[7%] text-center">WRITING</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {words.map((item) => (
-                        <tr key={item.id} className="border-b border-[#1F2D4A]/50 hover:bg-[#131B2E]/40 transition-colors">
-                          <td className="p-3 text-sm font-bold text-cyan-400 select-all font-mono">{item.word}</td>
-                          <td className="p-3 text-slate-300 font-mono">{item.translation}</td>
-                          <td className="p-3 text-slate-400 leading-relaxed font-sans">
-                            <div className="font-medium text-slate-200">{item.sentence}</div>
-                            <div className="text-slate-500 text-2xs mt-0.5">{item.sentence_translation}</div>
-                          </td>
-                          <td className="p-3 text-center font-bold tracking-tighter font-mono">
-                            {item.progress.listening_passed ? <span className="text-emerald-400">🟢 PASSED</span> : <span className="text-slate-600">🔴 PENDING</span>}
-                          </td>
-                          <td className="p-3 text-center font-bold tracking-tighter font-mono">
-                            {item.progress.speaking_passed ? <span className="text-emerald-400">🟢 PASSED</span> : <span className="text-slate-600">🔴 PENDING</span>}
-                          </td>
-                          <td className="p-3 text-center font-bold tracking-tighter font-mono">
-                            {item.progress.reading_passed ? <span className="text-emerald-400">🟢 PASSED</span> : <span className="text-slate-600">🔴 PENDING</span>}
-                          </td>
-                          <td className="p-3 text-center font-bold tracking-tighter font-mono">
-                            {item.progress.writing_passed ? <span className="text-emerald-400">🟢 PASSED</span> : <span className="text-slate-600">🔴 PENDING</span>}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </SuspenseState>
-          </div>
-        </div>
-      )}
-
-      {/* View 5: ⚠️ Error Words Management Tab */}
-      {activeTab === 'errors' && !isEditingStory && (
-        <div className="flex flex-col gap-6 animate-fade-in">
-          <div className="flex justify-between items-center bg-[#131B2E] border border-[#1F2D4A] p-6 rounded-xl shadow-xl">
-            <div>
-              <h3 className="text-base font-bold text-cyan-400 uppercase tracking-widest font-mono">ERROR LOG MANAGER</h3>
-              <p className="text-3xs text-slate-500 mt-1 font-mono">Export high-frequency user error logs to generated AI synthesis prompt templates.</p>
-            </div>
-            <button 
-              onClick={copyAiPrompt} 
-              className="px-5 py-2.5 bg-gradient-to-r from-cyan-500 to-purple-600 text-white font-bold text-xs uppercase tracking-wider rounded-lg shadow-lg shadow-cyan-500/20 hover:from-cyan-400 hover:to-purple-500 transition-all cursor-pointer font-mono"
-            >
-              📋 COPY AI PROMPT TEMPLATE
-            </button>
-          </div>
-
-          {uploadStatus && (
-            <p className={`p-3 text-xs rounded-lg border text-center font-mono ${
-              uploadStatus.type === 'success' 
-                ? 'bg-emerald-950/40 border-emerald-500/40 text-emerald-400' 
-                : 'bg-rose-950/40 border-rose-500/40 text-rose-400'
-            }`}>
-              {uploadStatus.text}
-            </p>
-          )}
-          
-          <div className="bg-[#131B2E] border border-[#1F2D4A] rounded-xl p-6 shadow-xl">
-            <h4 className="text-xs uppercase tracking-widest text-slate-400 font-mono font-bold mb-4">🤖 AI INDIVIDUALIZED STORY GENERATOR PROMPT</h4>
-            <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 max-h-[300px] overflow-y-auto font-mono text-xs text-cyan-300 leading-relaxed whitespace-pre-wrap select-all">
-              <pre>{aiPrompt}</pre>
-            </div>
-          </div>
-          
-          <div className="bg-[#131B2E] border border-[#1F2D4A] rounded-xl p-6 shadow-xl">
-            <h4 className="text-xs uppercase tracking-widest text-slate-400 font-mono font-bold mb-4">HIGH-FREQUENCY ERROR STATISTICS</h4>
-            <SuspenseState isLoading={loading}>
-              {errorWords.length === 0 ? (
-                <p className="text-xs text-slate-500 italic p-4 text-center font-mono">No error logs detected in database.</p>
-              ) : (
-                <div className="table-responsive bg-[#0F172A] border border-[#1F2D4A] rounded-xl overflow-hidden shadow-xl">
-                  <table className="w-full text-xs text-left font-mono">
-                    <thead>
-                      <tr className="bg-[#131B2E] border-b border-[#1F2D4A] text-slate-400 font-mono">
-                        <th className="p-3 font-semibold uppercase tracking-wider w-1/3">WORD</th>
-                        <th className="p-3 font-semibold uppercase tracking-wider w-1/3">TRANSLATION</th>
-                        <th className="p-3 font-semibold uppercase tracking-wider w-1/3">ERROR COUNT</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {errorWords.map((item, index) => (
-                        <tr key={index} className="border-b border-[#1F2D4A]/50 hover:bg-[#131B2E]/40 transition-colors">
-                          <td className="p-3 text-sm font-bold text-rose-400 select-all font-mono">{item.word}</td>
-                          <td className="p-3 text-slate-300 font-mono">{item.translation}</td>
-                          <td className="p-3 text-slate-400 font-bold font-mono">{item.error_count} times</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </SuspenseState>
-          </div>
-        </div>
-      )}
-
-      {/* View 6: 🎮 Game Settings Tab */}
+      {/* View 5: 🎮 Game Settings Tab */}
       {activeTab === 'game_settings' && !isEditingStory && (
         <div className="flex flex-col gap-6 animate-fade-in">
           <FormBoundary>

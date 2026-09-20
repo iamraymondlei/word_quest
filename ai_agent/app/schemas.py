@@ -28,6 +28,14 @@ class PageContent(BaseModel):
     """Content extracted from a single page of the picture book."""
 
     page: int = Field(..., description="页码（从 1 开始）")
+    illustration_box: list[int] | None = Field(
+        default=None,
+        description="插画归一化边界框 [ymin, xmin, ymax, xmax]（取值 0-1000）",
+    )
+    illustration_url: str | None = Field(
+        default=None,
+        description="提取并裁剪后的插图持久化访问 URL",
+    )
     sentences: list[SentencePair] = Field(
         default_factory=list,
         description="该页所有句子的中英对照",
@@ -87,11 +95,13 @@ is about and its educational value.
      - "meaning": clear and accurate Chinese translation \
      - "example_sentence": an original sentence from the story containing this word \
      - "example_translation": the Chinese translation of the example sentence
-4. **pages**: For each image (in order), extract ONLY the core narrative/story text. \
+4. **pages**: For each image (in order):
+   - "illustration_box": Locate the main story illustration or photograph on this page and output its bounding box as [ymin, xmin, ymax, xmax] normalized integers from 0 to 1000. Exclude standalone text blocks, page numbers, and margins. If the page is text-only without any story picture, set to null.
+   - "sentences": Extract ONLY the core narrative/story text. \
 DO NOT extract exercise questions, quizzes, captions, metadata, or activity questions (such as 'Activity 1', 'Questions:', or book reflection prompts) that are not part of the main story content. \
 Split into individual sentences. For each sentence provide:
-   - "en": the original English sentence exactly as written
-   - "zh": natural, child-friendly Chinese translation
+     - "en": the original English sentence exactly as written
+     - "zh": natural, child-friendly Chinese translation
 5. **questions**: Generate exactly {question_count} comprehension questions in English. \
 Each question should:
    - Test understanding of the story (who, what, when, where, why, how)

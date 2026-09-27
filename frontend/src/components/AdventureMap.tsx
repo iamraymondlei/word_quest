@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import './AdventureMap.css';
+import { OfflineSyncBadge } from './OfflineSyncBadge';
 import { isIPadOrTabletDevice } from '../utils/device';
 import { apiService } from '../utils/apiService';
 import {
@@ -384,6 +385,7 @@ export const AdventureMap: React.FC<AdventureMapProps> = ({
               Pick a story to start reading and playing!
             </p>
           </div>
+          <OfflineSyncBadge currentUserId={currentUser.id} variant="map" />
         </div>
 
         {/* Story Group Selector Tabs & Summary */}

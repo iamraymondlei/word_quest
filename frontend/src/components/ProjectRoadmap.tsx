@@ -468,6 +468,33 @@ export const ROADMAP_ITEMS: RoadmapItem[] = [
     verification: '在小屏笔记本与 iPad 屏幕上实测，10 组单词连线卡片全部一屏直达，体验极佳。'
   },
 
+  // Phase 8: 歌曲歌词逐句播放与歌词单词学习
+  {
+    id: 'TASK-8.1',
+    title: '歌曲歌词逐句播放与歌词单词学习 (LRC Song Learning)',
+    category: 'gameplay',
+    categoryLabel: '学生端交互与游戏',
+    status: 'CONFIRMED',
+    version: 'v2.6',
+    date: '2026-Q4',
+    summary: '支持家长上传完整 MP3；系统读取歌曲元数据并通过 LRCLIB API 匹配带时间戳的 LRC 歌词，管理员确认版本后，孩子可逐句播放并学习歌词单词。',
+    steps: [
+      '定义歌曲内容模型：保存歌曲标题、歌手、专辑、MP3 地址、音频时长、来源记录、LRC 原文、解析后的歌词句子、起止时间、语言和目标单词；保留原始 LRC 便于重新解析。',
+      '接入 LRCLIB 查询：后端使用歌曲名、歌手名、专辑名和 MP3 时长调用 /api/get，优先获取 syncedLyrics；没有精确结果时调用 /api/search 展示候选版本供管理员选择。',
+      '实现版本匹配与校验：重点比较音频时长（LRCLIB 通常要求约 ±2 秒）、歌手、专辑和歌词内容；标记时长不一致或只有普通歌词的结果，禁止静默套用错误版本。',
+      '实现 LRC 解析器：支持 [mm:ss.xx] 与 [mm:ss:xxx] 时间格式、同一句多个时间戳、空行和元数据标签；按下一句开始时间推导当前句结束时间，最后一句使用音频时长。',
+      '在 ParentDashboard 增加歌曲管理入口：上传 MP3 后自动查找歌词，展示候选 LRC、来源和匹配度；支持管理员确认、粘贴/上传自有 LRC、逐句试听并微调时间后保存。',
+      '在学员端增加歌曲学习页面：展示可点击歌词、当前播放句高亮、单句播放、单句循环、上一句/下一句和整首播放；所有播放使用同一份完整 MP3，不生成重复音频文件。',
+      '复用现有词汇学习能力：从歌词句子提取或由家长确认最多 20 个目标词，提供单词发音、释义、例句/歌词上下文和图片提示，并持久化目标词配置。',
+      '增加渐进式练习入口：第一版提供目标词拼写练习，并为听音选词、歌词填空和图片选词保留扩展结构；把“听懂、认词、拼写”分别记录，避免只以播放歌曲代表掌握。',
+      '处理音频边界：播放开始时设置 currentTime，监听 timeupdate/ended 在句尾暂停；切句、退出页面和卸载组件时清理监听器、暂停音频并释放对象 URL。',
+      '补充校验和验收：LRC 格式错误、时间倒序、重复歌词、尾部间奏、缺少音频时长、移动端浏览器自动播放限制，以及管理员试听与修正流程。'
+    ],
+    affectedFiles: ['backend/src/controllers/songController.ts', 'backend/src/routes/songRoutes.ts', 'backend/src/utils/lrcParser.ts', 'db/init.sql', 'docker-compose.yml', 'frontend/src/components/ParentDashboard.tsx', 'frontend/src/components/SongManager.tsx', 'frontend/src/components/SongLearning.tsx', 'frontend/src/utils/apiService.ts', 'docs/features/song-learning.md', 'docs/DATA_MODEL.md'],
+    technicalNotes: '第一版优先使用 LRCLIB 公共 API，不在本地部署 Whisper 等 AI 模型；API 只接收歌曲元数据，不上传 MP3。找不到匹配或版本不一致时回退到管理员上传/编辑 LRC。播放采用 HTMLAudioElement + LRC 时间区间控制，不切割 MP3；LRC 通常只提供每句开始时间，因此结束时间默认为下一句开始时间，并提供管理员微调。',
+    verification: '管理员上传 MP3 后能看到 LRCLIB 候选及匹配时长，确认正确版本或上传自有 LRC；系统能解析、试听、修正并保存歌词；学员点击任一句只播放该句区间，循环播放边界稳定；目标单词练习和学习进度可在刷新后恢复。'
+  },
+
   // =========================================================================
   // 待开发细分 1: 确定会加入的功能 (Confirmed for Upcoming Releases)
   // =========================================================================
@@ -1244,6 +1271,20 @@ export const ProjectRoadmap: React.FC = () => {
 
                   <div className="flex items-center gap-2.5 shrink-0 self-end sm:self-center">
                     <span className="text-2xs font-mono text-slate-500">{item.date}</span>
+
+                    {item.id === 'TASK-8.1' && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          window.open('/prototypes/song-learning.html', '_blank', 'noopener,noreferrer');
+                        }}
+                        className="px-2.5 py-1 rounded-lg text-xs font-mono font-bold transition-all flex items-center gap-1 cursor-pointer border bg-violet-950/60 hover:bg-violet-900/70 text-violet-200 border-violet-500/40"
+                        title="打开歌曲学习页 HTML 原型"
+                      >
+                        🎵 打开原型
+                      </button>
+                    )}
 
                     {/* Admin Status Edit Button */}
                     <button

@@ -27,6 +27,7 @@ Word Quest 是面向儿童英语学习的本地 Web 应用。学员按故事进�
 | `SECURITY.md` | 信任边界、敏感资产与现存风险 |
 | `KNOWN_ISSUES.md` | 当前可复现问题和临时规避方式 |
 | `features/` | Story Chase、Word Matching、内容管理等复杂功能 |
+| `features/song-learning.md` | MP3 + LRCLIB/LRC 歌曲逐句播放与歌词单词学习执行计划 |
 | `decisions/` | 不应随日常实现改写的架构决定 |
 | `runbooks/` | 专项人工操作手册 |
 | `archive/` | 已失效的知识库、交接记录、规格和实施计划 |
@@ -36,4 +37,3 @@ Word Quest 是面向儿童英语学习的本地 Web 应用。学员按故事进�
 - 文档定义预期行为；代码、路由、Schema 和测试反映当前可执行事实。
 - 两者冲突时必须报告并在同一次变更中同步，不得用归档资料覆盖当前文档。
 - Schema 当前仍分散在 `db/init.sql`、后端启动迁移和测试初始化中；具体风险见 [KNOWN_ISSUES.md](KNOWN_ISSUES.md)。
-

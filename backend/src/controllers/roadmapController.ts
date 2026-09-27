@@ -460,6 +460,72 @@ export const INITIAL_ROADMAP_ITEMS = [
     priority: 'NORMAL'
   },
 
+  // Phase 8: 歌曲歌词逐句播放与歌词单词学习
+  {
+    id: 'TASK-8.1',
+    title: '歌曲歌词逐句播放与歌词单词学习 (LRC Song Learning)',
+    category: 'gameplay',
+    category_label: '学生端交互与游戏',
+    status: 'CONFIRMED',
+    version: 'v2.6',
+    date_str: '2026-Q4',
+    summary: '支持家长上传完整 MP3；系统读取歌曲元数据并通过 LRCLIB API 匹配带时间戳的 LRC 歌词，管理员确认版本后，孩子可逐句播放并学习歌词单词。',
+    steps_json: [
+      '定义歌曲内容模型：保存歌曲标题、歌手、专辑、MP3 地址、音频时长、来源记录、LRC 原文、解析后的歌词句子、起止时间、语言和目标单词；保留原始 LRC 便于重新解析。',
+      '接入 LRCLIB 查询：后端使用歌曲名、歌手名、专辑名和 MP3 时长调用 /api/get，优先获取 syncedLyrics；没有精确结果时调用 /api/search 展示候选版本供管理员选择。',
+      '实现版本匹配与校验：重点比较音频时长（LRCLIB 通常要求约 ±2 秒）、歌手、专辑和歌词内容；标记时长不一致或只有普通歌词的结果，禁止静默套用错误版本。',
+      '实现 LRC 解析器：支持 [mm:ss.xx] 与 [mm:ss:xxx] 时间格式、同一句多个时间戳、空行和元数据标签；按下一句开始时间推导当前句结束时间，最后一句使用音频时长。',
+      '在 ParentDashboard 增加歌曲管理入口：上传 MP3 后自动查找歌词，展示候选 LRC、来源和匹配度；支持管理员确认、粘贴/上传自有 LRC、逐句试听并微调时间后保存。',
+      '在学员端增加歌曲学习页面：展示可点击歌词、当前播放句高亮、单句播放、单句循环、上一句/下一句和整首播放；所有播放使用同一份完整 MP3，不生成重复音频文件。',
+      '复用现有词汇学习能力：从歌词句子提取或由家长确认最多 20 个目标词，提供单词发音、释义、例句/歌词上下文和图片提示，并持久化目标词配置。',
+      '增加渐进式练习入口：第一版提供目标词拼写练习，并为听音选词、歌词填空和图片选词保留扩展结构；把“听懂、认词、拼写”分别记录，避免只以播放歌曲代表掌握。',
+      '处理音频边界：播放开始时设置 currentTime，监听 timeupdate/ended 在句尾暂停；切句、退出页面和卸载组件时清理监听器、暂停音频并释放对象 URL。',
+      '补充校验和验收：LRC 格式错误、时间倒序、重复歌词、尾部间奏、缺少音频时长、移动端浏览器自动播放限制，以及管理员试听与修正流程。'
+    ],
+    affected_files_json: ['backend/src/controllers/songController.ts', 'backend/src/routes/songRoutes.ts', 'backend/src/utils/lrcParser.ts', 'db/init.sql', 'docker-compose.yml', 'frontend/src/components/ParentDashboard.tsx', 'frontend/src/components/SongManager.tsx', 'frontend/src/components/SongLearning.tsx', 'frontend/src/utils/apiService.ts', 'docs/features/song-learning.md', 'docs/DATA_MODEL.md'],
+    technical_notes: '第一版优先使用 LRCLIB 公共 API，不在本地部署 Whisper 等 AI 模型；API 只接收歌曲元数据，不上传 MP3。找不到匹配或版本不一致时回退到管理员上传/编辑 LRC。播放采用 HTMLAudioElement + LRC 时间区间控制，不切割 MP3；LRC 通常只提供每句开始时间，因此结束时间默认为下一句开始时间，并提供管理员微调。',
+    verification: '管理员上传 MP3 后能看到 LRCLIB 候选及匹配时长，确认正确版本或上传自有 LRC；系统能解析、试听、修正并保存歌词；学员点击任一句只播放该句区间，循环播放边界稳定；目标单词练习和学习进度可在刷新后恢复。',
+    priority: 'HIGH'
+  },
+
+  // Phase 9: 单词宝库与深度词汇学习系统 (Word Bank & Vocabulary Exploration Lab)
+  {
+    id: 'TASK-9.1',
+    title: '单词宝库与深度词汇学习系统 (Word Bank & Vocabulary Exploration Lab)',
+    category: 'gameplay',
+    category_label: '学生端交互与游戏',
+    status: 'CONFIRMED',
+    version: 'v2.7',
+    date_str: '2026-Q4',
+    summary: '支持 Admin 后台批量导入生词并由 AI 自动生成例句/反义词/词根/词源；学员可在 iPad PWA 全屏离线环境下进行“学单词”深度卡片探索，及看词选义、听音选义、听音拼写三大限时闯关游戏。',
+    steps_json: [
+      '设计独立词单与词汇库数据模型：创建 word_books 表（词单分组：标题、描述、标签、排序）与 vocabulary_words 表（单词、音标、核心释义、趣味生动例句 JSON、反义词、同义词、词根词缀构词说明、词源故事），彻底解耦于单一绘本故事。',
+      '在 Admin 管理后台新增“单词宝库与导入 (Word Import)”独立模块：支持管理员多行粘贴生词（或上传 CSV），并结合现有 ai_agent / Gemini 服务一键批量解析补齐趣味例句、反义词、词根和词源，生成可编辑审查表格，确认后持久化入库。',
+      '适配 iPad PWA 全屏离线架构：扩展前端 IndexedDB 离线存储引擎（offlineStorage.ts），支持 word_books 与 vocabulary_words 本地离线快照打包与同步队列（syncQueue），确保断网全屏运行时流畅无阻。',
+      '实现原生离线语音发音：采用 iOS / Webkit 原生 window.speechSynthesis Web Speech API 方案，进入学习时提供轻触手势激活音频上下文，实现零流量占用且 100% 离线发音。',
+      '开发“📖 学单词”深度探索卡片：呈现生动幽默的生活与奇幻例句（重点词高亮）、成对反义词与同义词对比、词根词缀组件化拆解（如 cur- 关心 + -ious），以及通俗趣味的词源小故事，引导孩子在语境中内化词义。',
+      '开发“⚡ 看词选义”限时反应游戏：展示英文单词与音标，倒计时条（8~10s），动态从同词库抽取 3 个干扰释义生成 4 个单选按钮，支持连击 Combo 与金币星星即时结算。',
+      '开发“🎧 听音选义”限时辨音游戏：自动播放单词纯正发音，遮蔽拼写，限时倒计时内从 4 个选项中选出正确释义或辨析词形，支持限次点击重听。',
+      '开发“✍️ 听音拼写”限时拼词挑战：播放发音并提供下划线字母槽位；针对 iPad 全屏视口进行特别优化（题目与发音置于屏幕上半区），呼出系统软键盘时不遮挡试题，并设置 autocomplete="off" autocorrect="off" 防止系统联想泄露答案。',
+      '打通学员学习进度与错题本联动：学员在词汇游戏中的正误记录原子同步至 user_word_progress，对高频错词自动提高后续复习权重与错词本标记。'
+    ],
+    affected_files_json: [
+      'backend/src/controllers/roadmapController.ts',
+      'backend/src/controllers/wordController.ts',
+      'backend/src/routes/wordRoutes.ts',
+      'db/init.sql',
+      'frontend/src/utils/offlineStorage.ts',
+      'frontend/src/components/ParentDashboard.tsx',
+      'frontend/public/prototypes/word-bank.html',
+      'docs/prototypes/word-bank.html',
+      'docs/DATA_MODEL.md',
+      'docs/REQUIREMENTS.md'
+    ],
+    technical_notes: '采用方案 A 独立词单实体，彻底解耦原有 words 必须绑定 island_id 的历史包袱。iPad 软键盘弹出时避免使用 fixed 绝对定位导致的视口推挤错位，采用上半区流式卡片设计。发音优先使用本地 Web Speech API，完全免除 MP3 流量消耗与离线资源下载负担。',
+    verification: '在 iPad Safari 中添加至主屏幕并以 Standalone 全屏运行，切断网络后仍可完整浏览词单探索卡片；看词选义、听音选义、听音拼写三项限时游戏交互流畅、发音清晰、输入防泄题生效；Admin 后台粘贴生词后 AI 能秒级解析丰富字段并正确入库。',
+    priority: 'HIGH'
+  },
+
   // 确定加入 (CONFIRMED)
   {
     id: 'FEAT-CONFIRM-01',
@@ -678,37 +744,84 @@ export const getRoadmapItems = async (req: Request, res: Response) => {
   try {
     const [rows]: any = await pool.query('SELECT * FROM project_roadmap_tasks ORDER BY id ASC');
 
-    if (!rows || rows.length === 0) {
-      // Seed table
-      for (const item of INITIAL_ROADMAP_ITEMS) {
-        await pool.query(
-          `INSERT IGNORE INTO project_roadmap_tasks 
-           (id, title, category, category_label, status, version, date_str, summary, steps_json, affected_files_json, technical_notes, verification, priority, discard_reason, alternative_solution)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          [
-            item.id,
-            item.title,
-            item.category,
-            item.category_label,
-            item.status,
-            item.version,
-            item.date_str,
-            item.summary,
-            JSON.stringify(item.steps_json),
-            JSON.stringify(item.affected_files_json),
-            item.technical_notes,
-            item.verification,
-            item.priority || 'NORMAL',
-            (item as any).discard_reason || null,
-            (item as any).alternative_solution || null
-          ]
-        );
-      }
-      const [seededRows]: any = await pool.query('SELECT * FROM project_roadmap_tasks ORDER BY id ASC');
-      return res.json(formatRows(seededRows));
+    // INSERT IGNORE also backfills newly added built-in tasks for existing databases.
+    for (const item of INITIAL_ROADMAP_ITEMS) {
+      await pool.query(
+        `INSERT IGNORE INTO project_roadmap_tasks
+         (id, title, category, category_label, status, version, date_str, summary, steps_json, affected_files_json, technical_notes, verification, priority, discard_reason, alternative_solution)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          item.id,
+          item.title,
+          item.category,
+          item.category_label,
+          item.status,
+          item.version,
+          item.date_str,
+          item.summary,
+          JSON.stringify(item.steps_json),
+          JSON.stringify(item.affected_files_json),
+          item.technical_notes,
+          item.verification,
+          item.priority || 'NORMAL',
+          (item as any).discard_reason || null,
+          (item as any).alternative_solution || null
+        ]
+      );
     }
-
-    return res.json(formatRows(rows));
+    // Keep the planned implementation details current for TASK-8.1 while
+    // preserving any status/version decision made by an administrator.
+    const songLearningPlan = INITIAL_ROADMAP_ITEMS.find((item) => item.id === 'TASK-8.1');
+    if (songLearningPlan) {
+      await pool.query(
+        `UPDATE project_roadmap_tasks
+         SET title = ?, category = ?, category_label = ?, date_str = ?, summary = ?,
+             steps_json = ?, affected_files_json = ?, technical_notes = ?, verification = ?, priority = ?
+         WHERE id = 'TASK-8.1'`,
+        [
+          songLearningPlan.title,
+          songLearningPlan.category,
+          songLearningPlan.category_label,
+          songLearningPlan.date_str,
+          songLearningPlan.summary,
+          JSON.stringify(songLearningPlan.steps_json),
+          JSON.stringify(songLearningPlan.affected_files_json),
+          songLearningPlan.technical_notes,
+          songLearningPlan.verification,
+          songLearningPlan.priority || 'NORMAL'
+        ]
+      );
+    }
+    // TASK-8.1 was initially seeded as a draft during development; promote that
+    // transitional value once so existing databases show the confirmed plan.
+    await pool.query(
+      `UPDATE project_roadmap_tasks SET status = 'CONFIRMED'
+       WHERE id = 'TASK-8.1' AND status = 'PLANNED'`
+    );
+    // Keep the planned implementation details current for TASK-9.1
+    const vocabPlan = INITIAL_ROADMAP_ITEMS.find((item) => item.id === 'TASK-9.1');
+    if (vocabPlan) {
+      await pool.query(
+        `UPDATE project_roadmap_tasks
+         SET title = ?, category = ?, category_label = ?, date_str = ?, summary = ?,
+             steps_json = ?, affected_files_json = ?, technical_notes = ?, verification = ?, priority = ?
+         WHERE id = 'TASK-9.1'`,
+        [
+          vocabPlan.title,
+          vocabPlan.category,
+          vocabPlan.category_label,
+          vocabPlan.date_str,
+          vocabPlan.summary,
+          JSON.stringify(vocabPlan.steps_json),
+          JSON.stringify(vocabPlan.affected_files_json),
+          vocabPlan.technical_notes,
+          vocabPlan.verification,
+          vocabPlan.priority || 'HIGH'
+        ]
+      );
+    }
+    const [seededRows]: any = await pool.query('SELECT * FROM project_roadmap_tasks ORDER BY id ASC');
+    return res.json(formatRows(seededRows));
   } catch (err: any) {
     console.error('getRoadmapItems error:', err.message);
     res.status(500).json({ error: 'Failed to fetch roadmap items from database' });

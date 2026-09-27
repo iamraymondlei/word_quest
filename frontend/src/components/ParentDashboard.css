@@ -86,5 +86,17 @@
   box-shadow: 0 0 15px rgba(6, 182, 212, 0.15);
 }
 
+.field {
+  border: 1px solid rgba(71, 85, 105, 0.8);
+  border-radius: 0.6rem;
+  background: rgba(2, 6, 23, 0.65);
+  color: #e2e8f0;
+  padding: 0.6rem 0.75rem;
+  font: inherit;
+  font-size: 0.75rem;
+}
+
+.field::placeholder { color: #64748b; }
+.field:focus { outline: 2px solid rgba(34, 211, 238, 0.35); outline-offset: 1px; border-color: rgba(34, 211, 238, 0.7); }
 
 

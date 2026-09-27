@@ -13,6 +13,7 @@ import {
 } from './StoryChaseAssets';
 import { isIPadOrTabletDevice } from '../utils/device';
 import { apiService } from '../utils/apiService';
+import { isForcedOffline } from '../utils/offlineMode';
 import { StoryIllustration } from './StoryIllustration';
 import './GamePlay.css';
 
@@ -140,6 +141,7 @@ export const GamePlay: React.FC<Props> = ({
   };
 
   const handlePlayAudioHint = (idx: number, text: string) => {
+    if (isForcedOffline()) return;
     if (!('speechSynthesis' in window)) {
       alert('⚠️ Your browser does not support Speech Synthesis API.');
       return;
@@ -189,6 +191,7 @@ export const GamePlay: React.FC<Props> = ({
   // --- translation drill mode state and refs ---
 
   const playChineseTTS = (text: string) => {
+    if (isForcedOffline()) return;
     if (!('speechSynthesis' in window)) {
       alert('⚠️ Your browser does not support Speech Synthesis API.');
       return;
@@ -363,6 +366,7 @@ export const GamePlay: React.FC<Props> = ({
 
   // Play TTS voice
   const playTTS = (text: string) => {
+    if (isForcedOffline()) return;
     if ('speechSynthesis' in window) {
       window.speechSynthesis.cancel();
       const utterance = new SpeechSynthesisUtterance(text);
@@ -1712,6 +1716,10 @@ export const GamePlay: React.FC<Props> = ({
 
   // Start listening trigger
   const startListening = useCallback(() => {
+    if (isForcedOffline()) {
+      setSpeechError('离线模式下已关闭可能联网的语音识别，请使用键盘输入。');
+      return;
+    }
     const SpeechRecognitionClass = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition || (globalThis as any).SpeechRecognition || (globalThis as any).webkitSpeechRecognition;
     if (!SpeechRecognitionClass) {
       setSpeechSupported(false);
@@ -1806,6 +1814,7 @@ export const GamePlay: React.FC<Props> = ({
   }, [translationSentenceIdx, gameMode, stage, stopListening]);
 
   const handlePlayTranslationEngHint = () => {
+    if (isForcedOffline()) return;
     if (!('speechSynthesis' in window)) {
       alert('⚠️ Your browser does not support Speech Synthesis API.');
       return;

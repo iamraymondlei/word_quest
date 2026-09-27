@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { SuspenseState } from './SuspenseState';
 import { RunnerSprite, BUDDY_CHARACTERS, normalizeBuddyKey } from './StoryChaseAssets';
 import { apiService } from '../utils/apiService';
+import { isForcedOffline } from '../utils/offlineMode';
+import { OfflineSyncBadge } from './OfflineSyncBadge';
 import './UserSelect.css';
 
 interface User {
@@ -37,7 +39,7 @@ export const UserSelect: React.FC<UserSelectProps> = ({ onLogin, onAdminClick })
       if (data && data.length > 0) {
         setUsers(data.filter((u: User) => u.username.toLowerCase() !== 'admin'));
       } else {
-        if (typeof navigator !== 'undefined' && !navigator.onLine) {
+        if (isForcedOffline() || (typeof navigator !== 'undefined' && !navigator.onLine)) {
           setError('当前处于离线模式，本地暂无已缓存的玩家档案。请在连接 Wi-Fi 时打开本页面一次。');
         } else {
           setError('FAILED TO RETRIEVE ACTIVE PROFILES.');
@@ -92,6 +94,11 @@ export const UserSelect: React.FC<UserSelectProps> = ({ onLogin, onAdminClick })
               ⏰ {currentTime.toLocaleTimeString()}
             </div>
           </div>
+        </div>
+
+        <div className="mb-6 flex flex-wrap items-center gap-3 rounded-xl border theme-border bg-slate-950/30 px-3 py-2.5">
+          <span className="text-xs font-bold theme-text-muted">使用模式</span>
+          <OfflineSyncBadge onRefreshData={fetchUsers} />
         </div>
 
         {error && (

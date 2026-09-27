@@ -19,6 +19,11 @@ describe('Project Roadmap & Changelog API (/api/roadmap)', () => {
       expect(res.status).toBe(200);
       expect(Array.isArray(res.body)).toBe(true);
       expect(res.body.length).toBeGreaterThanOrEqual(30);
+      const songTask = res.body.find((item: any) => item.id === 'TASK-8.1');
+      expect(songTask).toBeDefined();
+      expect(songTask.status).toBe('CONFIRMED');
+      expect(songTask.steps.length).toBeGreaterThanOrEqual(8);
+      expect(songTask.summary).toContain('MP3');
 
       const firstItem = res.body[0];
       expect(firstItem).toHaveProperty('id');

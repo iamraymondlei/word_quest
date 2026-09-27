@@ -28,4 +28,6 @@ scripts/
 docker-compose.yml
 ai_agent/Dockerfile
 backend/Dockerfile
-frontend/Dockerfile
+!frontend/Dockerfile
+frontend/.local-certs/
+frontend/public/wordquest-local-ca.cer

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { AdventureMap, Island } from './components/AdventureMap';
 import { UserSelect } from './components/UserSelect';
 import { ParentDashboard } from './components/ParentDashboard';
+import { SongLearning } from './components/SongLearning';
 import { GamePlay } from './components/GamePlay';
 import { SuspenseState } from './components/SuspenseState';
 import { FormBoundary } from './components/FormBoundary';
@@ -190,7 +191,7 @@ const App: React.FC = () => {
   const showVersionBadge = import.meta.env.VITE_SHOW_VERSION_BADGE !== 'false';
 
   const renderOfflineBadge = () => (
-    <div className="fixed top-3 left-3 z-50 pointer-events-auto select-none font-mono">
+    <div className="fixed left-4 z-50 pointer-events-auto select-none font-mono" style={{ bottom: 'max(1rem, env(safe-area-inset-bottom))' }}>
       <OfflineSyncBadge
         currentUserId={currentUser?.id}
         onRefreshData={() => currentUser && loadIslands(currentUser.id, false)}
@@ -303,6 +304,14 @@ const App: React.FC = () => {
     );
   }
 
+  const adminSongPreview = new URLSearchParams(window.location.search).get('preview') === 'admin'
+    || localStorage.getItem('wordquest_song_preview_admin') === '1';
+  if (currentPath.startsWith('/songs') && (currentUser?.is_admin === 1 || adminSongPreview)) {
+    if (adminSongPreview) localStorage.removeItem('wordquest_song_preview_admin');
+    const songIdMatch = currentPath.match(/^\/songs\/(\d+)/);
+    return <SongLearning songId={songIdMatch ? Number(songIdMatch[1]) : undefined} onBack={() => navigateTo('/')} />;
+  }
+
   if (!currentUser) {
     return (
       <div className="app-container relative">
@@ -313,7 +322,6 @@ const App: React.FC = () => {
             />
           </FormBoundary>
         </SuspenseState>
-        {renderOfflineBadge()}
         {renderDevBadge()}
         {renderVersionModal()}
       </div>
@@ -357,7 +365,7 @@ const App: React.FC = () => {
           />
         )}
       </SuspenseState>
-      {renderOfflineBadge()}
+      {mode === 'game' && renderOfflineBadge()}
       {renderDevBadge()}
       {renderVersionModal()}
     </div>

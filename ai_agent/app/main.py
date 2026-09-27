@@ -15,7 +15,7 @@ from fastapi.staticfiles import StaticFiles
 from PIL import Image, UnidentifiedImageError
 
 from app.config import settings
-from app.schemas import APIResponse
+from app.schemas import APIResponse, SongTranslationRequest, TranslationResponse
 from app.services.gemini_parser import GeminiParser, get_available_models, get_cli_config
 
 logger = logging.getLogger(__name__)
@@ -107,6 +107,26 @@ async def list_models(cli: str = "agy"):
         "models": cfg.get("models", []),
         "default_model": cfg.get("default_model", "gemini-3.7-flash-high" if cli == "agy" else "gpt-5.6-sol"),
     }
+
+
+@app.post("/translate-song", response_model=TranslationResponse)
+async def translate_song(request: SongTranslationRequest):
+    """Translate synced song lines and selected vocabulary into child-friendly Chinese."""
+    if parser is None:
+        raise HTTPException(status_code=503, detail="Story parser is not initialized.")
+    if any(not line.strip() or len(line) > 500 for line in request.sentences):
+        raise HTTPException(status_code=400, detail="歌词句子不能为空且单句不超过 500 个字符。")
+    if any(not word.strip() or len(word) > 80 for word in request.words):
+        raise HTTPException(status_code=400, detail="目标单词不能为空且单词不超过 80 个字符。")
+    cli = request.cli.lower().strip()
+    if cli not in {"agy", "codex"}:
+        raise HTTPException(status_code=400, detail="cli must be 'agy' or 'codex'.")
+    try:
+        result = await parser.translate_song_content(request.sentences, request.words, request.model, cli)
+        return TranslationResponse(success=True, data=result)
+    except ValueError as exc:
+        logger.error("Song translation failed: %s", exc)
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
 
 
 @app.post("/parse", response_model=APIResponse)

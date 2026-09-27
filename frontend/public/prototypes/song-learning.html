@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>WordQuest · Song Lab Prototype</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --ink: #f6f7fb;
+      --muted: #9ba4bc;
+      --line: rgba(255,255,255,.11);
+      --panel: rgba(18, 24, 44, .78);
+      --panel-strong: #18203a;
+      --cyan: #6ce5e8;
+      --violet: #a78bfa;
+      --coral: #ff9f8a;
+      --yellow: #f7d774;
+      --bg: #080b16;
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-width: 320px;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 12% 0%, rgba(108,229,232,.17), transparent 30rem),
+        radial-gradient(circle at 92% 18%, rgba(167,139,250,.17), transparent 26rem),
+        var(--bg);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    button { font: inherit; }
+    .shell { max-width: 1260px; margin: 0 auto; padding: 28px 28px 48px; }
+    .topbar { display: flex; align-items: center; justify-content: space-between; gap: 20px; margin-bottom: 42px; }
+    .brand { display: flex; align-items: center; gap: 12px; letter-spacing: .08em; font-weight: 800; }
+    .brand-mark { width: 38px; height: 38px; display: grid; place-items: center; border: 1px solid rgba(108,229,232,.55); border-radius: 13px 13px 13px 4px; color: var(--cyan); background: rgba(108,229,232,.08); box-shadow: 0 0 28px rgba(108,229,232,.14); }
+    .top-actions { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 12px; }
+    .pill { border: 1px solid var(--line); border-radius: 999px; padding: 7px 12px; background: rgba(255,255,255,.04); }
+
+    .hero { display: grid; grid-template-columns: 1.1fr .9fr; align-items: end; gap: 36px; margin-bottom: 32px; }
+    .eyebrow { color: var(--cyan); font: 700 11px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .16em; text-transform: uppercase; }
+    h1 { margin: 12px 0 10px; max-width: 700px; font-family: Georgia, "Times New Roman", serif; font-size: clamp(42px, 7vw, 78px); line-height: .98; letter-spacing: -.055em; font-weight: 500; }
+    .hero p { max-width: 570px; margin: 0; color: var(--muted); font-size: 15px; line-height: 1.7; }
+    .hero-note { justify-self: end; max-width: 320px; padding: 18px; border-left: 2px solid var(--coral); color: #e4e7f3; font-size: 13px; line-height: 1.6; background: linear-gradient(90deg, rgba(255,159,138,.1), transparent); }
+
+    .workspace { display: grid; grid-template-columns: minmax(0, 1.32fr) minmax(300px, .68fr); gap: 18px; }
+    .card { border: 1px solid var(--line); border-radius: 24px; background: var(--panel); box-shadow: 0 22px 70px rgba(0,0,0,.24); backdrop-filter: blur(18px); }
+    .player { position: relative; overflow: hidden; padding: 24px; }
+    .player::after { content: ""; position: absolute; width: 220px; height: 220px; right: -65px; top: -78px; border-radius: 50%; border: 1px solid rgba(108,229,232,.18); box-shadow: 0 0 0 16px rgba(108,229,232,.03), 0 0 0 32px rgba(108,229,232,.02); pointer-events: none; }
+    .song-meta { display: flex; justify-content: space-between; align-items: flex-start; gap: 20px; margin-bottom: 24px; }
+    .song-meta h2 { margin: 4px 0; font-size: 24px; letter-spacing: -.03em; }
+    .song-meta p { margin: 0; color: var(--muted); font-size: 13px; }
+    .album-art { width: 82px; height: 82px; display: grid; place-items: center; flex: 0 0 auto; border-radius: 20px; color: #101528; font-size: 35px; background: linear-gradient(135deg, var(--yellow), var(--coral) 52%, var(--violet)); transform: rotate(3deg); box-shadow: 9px 12px 0 rgba(247,215,116,.08); }
+    .wave { display: flex; align-items: center; gap: 4px; height: 46px; margin: 4px 0 16px; }
+    .wave i { display: block; width: 4px; border-radius: 9px; background: linear-gradient(var(--cyan), var(--violet)); opacity: .78; animation: breathe 1.6s ease-in-out infinite alternate; }
+    .wave i:nth-child(3n) { animation-delay: -.6s; } .wave i:nth-child(4n) { animation-delay: -.95s; } .wave i:nth-child(5n) { animation-delay: -.3s; }
+    @keyframes breathe { from { transform: scaleY(.45); } to { transform: scaleY(1); } }
+    .progress { height: 6px; border-radius: 99px; overflow: hidden; background: rgba(255,255,255,.1); cursor: pointer; }
+    .progress > span { display: block; width: 38%; height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--cyan), var(--violet)); transition: width .25s ease; }
+    .time { display: flex; justify-content: space-between; margin-top: 8px; color: var(--muted); font: 11px ui-monospace, monospace; }
+    .controls { display: flex; align-items: center; justify-content: center; gap: 12px; margin: 20px 0 24px; }
+    .icon-btn, .play-btn { border: 1px solid var(--line); color: var(--ink); background: rgba(255,255,255,.05); cursor: pointer; transition: transform .2s, border-color .2s, background .2s; }
+    .icon-btn:hover, .play-btn:hover { transform: translateY(-2px); border-color: rgba(108,229,232,.7); background: rgba(108,229,232,.12); }
+    .icon-btn { width: 38px; height: 38px; border-radius: 12px; }
+    .play-btn { width: 52px; height: 52px; border-radius: 18px; color: #071118; font-size: 20px; background: var(--cyan); border-color: var(--cyan); }
+    .loop-btn.active { color: var(--cyan); border-color: var(--cyan); }
+    .section-label { display: flex; align-items: center; justify-content: space-between; margin: 0 0 12px; color: var(--muted); font: 700 11px ui-monospace, monospace; letter-spacing: .12em; text-transform: uppercase; }
+    .lyrics { display: grid; gap: 7px; }
+    .lyric { display: grid; grid-template-columns: 36px 1fr auto; align-items: center; gap: 12px; width: 100%; padding: 13px 14px; border: 1px solid transparent; border-radius: 15px; color: #e0e4f0; text-align: left; background: rgba(255,255,255,.035); cursor: pointer; }
+    .lyric:hover { background: rgba(255,255,255,.07); }
+    .lyric.active { border-color: rgba(108,229,232,.5); color: #fff; background: linear-gradient(90deg, rgba(108,229,232,.15), rgba(167,139,250,.1)); box-shadow: inset 3px 0 var(--cyan); }
+    .lyric .num { color: var(--muted); font: 11px ui-monospace, monospace; }
+    .lyric .text { font-size: 16px; line-height: 1.45; }
+    .lyric .zh { display: block; margin-top: 3px; color: var(--muted); font-size: 11px; }
+    .lyric .stamp { color: var(--muted); font: 11px ui-monospace, monospace; }
+
+    .side { display: grid; align-content: start; gap: 18px; }
+    .vocab, .practice { padding: 22px; }
+    .vocab h3, .practice h3 { margin: 0 0 5px; font-size: 19px; }
+    .sub { margin: 0 0 18px; color: var(--muted); font-size: 12px; line-height: 1.5; }
+    .word-card { padding: 16px; border: 1px solid rgba(247,215,116,.25); border-radius: 18px; background: linear-gradient(135deg, rgba(247,215,116,.11), rgba(255,159,138,.05)); }
+    .word-top { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+    .word { font: 700 26px Georgia, serif; color: var(--yellow); }
+    .phonetic { color: var(--muted); font-size: 12px; }
+    .meaning { margin: 7px 0 14px; color: #f9ead0; font-size: 14px; }
+    .example { padding-top: 12px; border-top: 1px solid rgba(255,255,255,.1); color: #d5d9e7; font-size: 12px; line-height: 1.6; }
+    .example em { color: var(--cyan); font-style: normal; }
+    .word-nav { display: flex; justify-content: space-between; align-items: center; margin-top: 12px; color: var(--muted); font-size: 11px; }
+    .mini-btn { border: 0; color: var(--cyan); background: transparent; cursor: pointer; }
+    .practice { background: linear-gradient(145deg, rgba(167,139,250,.14), rgba(108,229,232,.05)); }
+    .practice-row { display: flex; align-items: center; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--line); }
+    .practice-row:last-child { border-bottom: 0; }
+    .practice-icon { width: 32px; height: 32px; display: grid; place-items: center; border-radius: 10px; color: var(--violet); background: rgba(167,139,250,.14); }
+    .practice-row strong { display: block; font-size: 13px; } .practice-row span { color: var(--muted); font-size: 11px; }
+    .start { width: 100%; margin-top: 16px; padding: 13px 16px; border: 0; border-radius: 14px; color: #110e1e; font-weight: 800; background: linear-gradient(90deg, var(--yellow), var(--coral)); cursor: pointer; }
+    .toast { position: fixed; left: 50%; bottom: 22px; transform: translate(-50%, 80px); padding: 11px 16px; border: 1px solid rgba(108,229,232,.45); border-radius: 999px; color: var(--ink); background: #121a2e; box-shadow: 0 10px 40px rgba(0,0,0,.3); opacity: 0; transition: .3s ease; pointer-events: none; font-size: 12px; }
+    .toast.show { transform: translate(-50%, 0); opacity: 1; }
+    @media (max-width: 900px) { .hero, .workspace { grid-template-columns: 1fr; } .hero-note { justify-self: start; } }
+    @media (max-width: 560px) { .shell { padding: 20px 14px 38px; } .topbar { margin-bottom: 28px; } .top-actions .pill:first-child { display: none; } .player, .vocab, .practice { padding: 17px; } .lyric { grid-template-columns: 28px 1fr; } .lyric .stamp { grid-column: 2; } .album-art { width: 64px; height: 64px; font-size: 27px; } }
+    @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; } }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <header class="topbar">
+      <div class="brand"><span class="brand-mark">♫</span><span>WORDQUEST / SONG LAB</span></div>
+      <div class="top-actions"><span class="pill">学生模式 · Mia</span><span class="pill">原声速度 1.0×</span></div>
+    </header>
+
+    <section class="hero">
+      <div>
+        <div class="eyebrow">listen · notice · remember</div>
+        <h1>Sing it.<br /><i style="color:var(--cyan);font-style:normal">Learn it.</i></h1>
+        <p>把喜欢的歌变成一条会发光的学习路径。点击一句歌词，听它在原曲里的声音，再把其中的单词带到小游戏里。</p>
+      </div>
+      <div class="hero-note">现在播放的是第 04 句。歌词来自 LRC，歌曲仍然是一份完整 MP3；每一句只是一个可点击的时间区间。</div>
+    </section>
+
+    <section class="workspace">
+      <article class="card player">
+        <div class="song-meta">
+          <div><div class="eyebrow">MY FIRST SONG / 01</div><h2>Count on Me</h2><p>Bruno Mars · 句子学习版</p></div>
+          <div class="album-art">☀</div>
+        </div>
+        <div class="wave" aria-label="audio waveform">
+          <i style="height:21%"></i><i style="height:45%"></i><i style="height:72%"></i><i style="height:38%"></i><i style="height:88%"></i><i style="height:56%"></i><i style="height:31%"></i><i style="height:66%"></i><i style="height:92%"></i><i style="height:43%"></i><i style="height:72%"></i><i style="height:54%"></i><i style="height:29%"></i><i style="height:83%"></i><i style="height:46%"></i><i style="height:68%"></i><i style="height:35%"></i><i style="height:93%"></i><i style="height:44%"></i><i style="height:73%"></i><i style="height:26%"></i><i style="height:62%"></i><i style="height:86%"></i><i style="height:39%"></i><i style="height:69%"></i><i style="height:32%"></i><i style="height:80%"></i><i style="height:48%"></i><i style="height:65%"></i><i style="height:27%"></i><i style="height:75%"></i><i style="height:42%"></i><i style="height:90%"></i><i style="height:34%"></i><i style="height:58%"></i><i style="height:78%"></i><i style="height:36%"></i><i style="height:67%"></i><i style="height:52%"></i><i style="height:84%"></i><i style="height:30%"></i><i style="height:60%"></i><i style="height:76%"></i><i style="height:41%"></i><i style="height:55%"></i><i style="height:89%"></i><i style="height:37%"></i><i style="height:70%"></i><i style="height:49%"></i><i style="height:81%"></i>
+        </div>
+        <div class="progress" id="progress"><span id="progressBar"></span></div><div class="time"><span id="currentTime">01:12</span><span>03:17</span></div>
+        <div class="controls"><button class="icon-btn" data-action="prev" aria-label="上一句">↶</button><button class="icon-btn" data-action="back" aria-label="后退五秒">−5</button><button class="play-btn" id="play" aria-label="播放">▶</button><button class="icon-btn" data-action="forward" aria-label="前进五秒">+5</button><button class="icon-btn loop-btn" id="loop" data-action="loop" aria-label="单句循环">↻</button></div>
+        <div class="section-label"><span>LYRICS / 句子歌词</span><span id="lineCount">04 / 08</span></div>
+        <div class="lyrics" id="lyrics"></div>
+      </article>
+
+      <aside class="side">
+        <section class="card vocab">
+          <div class="section-label"><span>WORD SPOTLIGHT</span><span>本句目标词 01</span></div>
+          <h3>今天认识一个词</h3><p class="sub">点击歌词里的高亮词，或者跟着下面的例句再听一次。</p>
+          <div class="word-card"><div class="word-top"><span class="word">count on</span><span class="phonetic">/kaʊnt ɒn/</span></div><div class="meaning">依靠；指望</div><div class="example">You can <em>count on</em> me like one, two, three.<br /><span style="color:var(--muted)">你可以依靠我，就像数一、二、三。</span></div><div class="word-nav"><button class="mini-btn" data-toast="播放单词发音">🔊 听发音</button><span>1 / 3</span><button class="mini-btn" data-toast="下一个目标词">下一个 →</button></div></div>
+        </section>
+        <section class="card practice">
+          <div class="section-label"><span>REPLAY TO REMEMBER</span><span>本首歌曲</span></div>
+          <h3>继续练习</h3><p class="sub">先听懂，再认出，最后自己写出来。</p>
+          <div class="practice-row"><div class="practice-icon">◉</div><div><strong>听音选单词</strong><span>听这一句，选出正确的词</span></div><span style="margin-left:auto;color:var(--cyan)">01</span></div>
+          <div class="practice-row"><div class="practice-icon">⌁</div><div><strong>歌词填空</strong><span>把缺少的词放回原句</span></div><span style="margin-left:auto;color:var(--violet)">02</span></div>
+          <div class="practice-row"><div class="practice-icon">✎</div><div><strong>拼写挑战</strong><span>听发音，写出目标单词</span></div><span style="margin-left:auto;color:var(--coral)">03</span></div>
+          <button class="start" data-toast="练习模式即将开始">开始这一首的练习 →</button>
+        </section>
+      </aside>
+    </section>
+  </main>
+  <div class="toast" id="toast"></div>
+  <script>
+    const lines = [
+      ['If you ever find yourself stuck in the middle of the sea', '如果你发现自己困在大海中央', '00:05'],
+      ['I’ll sail the world to find you', '我会航遍全世界去找你', '00:20'],
+      ['If you ever find yourself lost in the dark and you can’t see', '如果你迷失在黑暗中，看不见方向', '00:34'],
+      ['I’ll be the light to guide you', '我会成为指引你的光', '01:12'],
+      ['Find out what we’re made of', '去发现我们由什么组成', '01:28'],
+      ['When we are called to help our friends in need', '当朋友需要帮助时', '01:43'],
+      ['You can count on me like one, two, three', '你可以依靠我，就像数一、二、三', '01:58'],
+      ['I’ll be there', '我会在那里', '02:08']
+    ];
+    const lyrics = document.querySelector('#lyrics');
+    let active = 3, playing = false, loop = false, progress = 38;
+    function render() {
+      lyrics.innerHTML = lines.map((line, i) => `<button class="lyric ${i === active ? 'active' : ''}" data-index="${i}"><span class="num">${String(i + 1).padStart(2, '0')}</span><span class="text">${line[0]}<span class="zh">${line[1]}</span></span><span class="stamp">${line[2]}</span></button>`).join('');
+      document.querySelector('#lineCount').textContent = `${String(active + 1).padStart(2, '0')} / ${String(lines.length).padStart(2, '0')}`;
+      lyrics.querySelectorAll('.lyric').forEach(btn => btn.addEventListener('click', () => { active = Number(btn.dataset.index); progress = 12 + active * 10; render(); showToast(`正在播放第 ${active + 1} 句`); }));
+    }
+    function showToast(message) { const toast = document.querySelector('#toast'); toast.textContent = message; toast.classList.add('show'); clearTimeout(window.toastTimer); window.toastTimer = setTimeout(() => toast.classList.remove('show'), 1800); }
+    render();
+    document.querySelector('#play').addEventListener('click', e => { playing = !playing; e.currentTarget.textContent = playing ? 'Ⅱ' : '▶'; showToast(playing ? '播放中 · 点击歌词可切换句子' : '已暂停'); });
+    document.querySelector('#loop').addEventListener('click', e => { loop = !loop; e.currentTarget.classList.toggle('active', loop); showToast(loop ? '已开启单句循环' : '已关闭单句循环'); });
+    document.querySelector('#progress').addEventListener('click', e => { progress = Math.max(0, Math.min(100, (e.offsetX / e.currentTarget.offsetWidth) * 100)); document.querySelector('#progressBar').style.width = `${progress}%`; });
+    document.querySelectorAll('[data-action="prev"], [data-action="back"], [data-action="forward"]').forEach(btn => btn.addEventListener('click', () => showToast(`${btn.textContent} · 原型演示`)));
+    document.querySelectorAll('[data-toast]').forEach(btn => btn.addEventListener('click', () => showToast(btn.dataset.toast)));
+  </script>
+</body>
+</html>
+

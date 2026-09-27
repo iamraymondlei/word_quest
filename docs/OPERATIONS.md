@@ -39,6 +39,7 @@
 | 变量 | 用途 |
 |---|---|
 | `BACKEND_URL` | Vite `/api` 代理目标 |
+| `FRONTEND_TLS_CERT_FILE`, `FRONTEND_TLS_KEY_FILE` | 可选的受信任 HTTPS 服务器证书与私钥路径；必须成对设置。局域网 iPad PWA 需要证书包含实际访问 IP 或域名。缺省 basic SSL 证书只适合本机开发。 |
 
 ### AI service
 
@@ -81,19 +82,39 @@ python -m venv .venv
 
 若改用其他后端端口，则同时修改 `BACKEND_PORT`（或 `PORT`）和 `BACKEND_URL`。不要把真实环境值写回文档。
 
-## 5. Compose 启动
+## 5. Compose 启动与日常标准构建环境 (5173)
 
-前提：外部 `shared-infra` 网络和 MySQL 已存在，`.env.prod` 已安全配置。
+本项目在引入“离线模式开关”与 iPad PWA 全屏桌面图标支持后，**Docker 容器环境（前端主机端口 5173，后端主机端口 8000）作为唯一且标准的日常运行与测试环境**。
+
+### 为什么无需启动本地 Dev 环境（5174/8010）？
+- **真实环境对齐**：iPad PWA 添加到主屏幕全屏运行、离线 Service Worker 缓存，以及 Web Speech API 均强依赖受信任的生产级 HTTPS 证书（挂载于 `frontend/.local-certs/`）。
+- **静态资源预缓存**：Docker 前端镜像默认运行 `npm run serve:offline`（执行 `npm run build && vite preview`），自动构建生成带有 Service Worker 预缓存清单（`sw.js`）的完整生产包，而本地开发模式 `npm run dev` 默认不具备此离线生产特性。
+- **单一数据源**：后端容器直连 `mysql-prod`（`wordquest` 数据库），数据与功能直接在同一真实环境中验证。
+
+### 日常快速构建与更新命令
+
+日常代码改动后，直接按需执行以下命令构建并部署到 5173 环境：
 
 ```bash
-docker compose config
-docker compose build
-docker compose up -d
+# 1. 前后端均有改动时：
+docker compose up -d --build frontend backend
+
+# 2. 仅改动前端界面、离线缓存或游戏玩法逻辑时（推荐，速度最快）：
+docker compose up -d --build frontend
+
+# 3. 仅改动后端控制器、API 路由或迁移脚本时：
+docker compose up -d --build backend
 ```
 
-停止应用服务：
+> **构建优化**：Dockerfile 均配置了依赖分层缓存机制，只要 `package.json` 未发生变更，构建时会自动复用 npm 依赖层，快速完成编译与容器重载。
+
+### 停止与管理应用服务：
 
 ```bash
+# 查看容器状态
+docker compose ps
+
+# 停止应用服务（只影响本项目三个应用容器，不触碰共享 MySQL）
 docker compose down
 ```
 
@@ -108,6 +129,22 @@ curl http://127.0.0.1:8080/health
 
 前端可打开 `https://127.0.0.1:5174`（源码开发）或 Compose 映射地址。自签名开发证书会触发浏览器确认；它不适合作为生产证书。
 
+离线安装与验证必须使用生产构建：在 `frontend/` 执行 `npm run serve:offline`，Docker 前端镜像也默认执行此命令。此命令先构建静态资源，再通过 Vite preview 提供 HTTPS 和 `/api` 代理；`npm run dev` 默认不会生成可离线启动的 PWA 缓存。先在 iPad 联网打开页面并等待 Service Worker 安装，再在应用的“iPad 离线模式与题库管理”中下载当前用户的故事与插图。保持同一访问地址，从 iPad 主屏幕图标重新打开，并在飞行模式下确认档案、故事和插图可用。首次访问、浏览器清理网站数据或更换地址后，须重新联网缓存。离线时依赖服务端的管理和歌曲接口不可用。
+
+> **部署更新提醒**：每次通过 `docker compose up -d --build frontend` 部署新版本后，iPad 上的 PWA 由于此前已被 Service Worker 缓存，需在**联网状态下先打开应用下拉刷新一次（或重新进入）**，等待 Service Worker 静默拉取新资源包并激活后，再切换回离线模式使用。
+
+登录后可在 Story Adventure Map 标题旁点击“下载离线题库”；旁边的“在线模式 · 管理”入口可切换离线和同步。账号选择卡片内也保留模式入口，游戏和管理页面的状态入口位于左下角。开关状态保存在当前浏览器的网站数据中；离线时应用请求被拦截，Service Worker 只返回本地缓存，关闭网页再打开仍保持离线。切回在线才恢复网络请求和待同步进度。浏览器或系统自身的网络活动不受网页控制；语音识别和语音合成在离线模式下禁用，以免触发外部服务。清理 Safari 网站数据会同时清除离线题库和开关状态。
+
+首次在 iPad 安装或更新 PWA 时，题库下载与 Service Worker 接管是两个独立步骤。切换离线会等待已激活的离线程序；如果 Safari 尚未让它接管当前页面，应用先保持在线自动重载一次，接管后再开启离线。若证书不受信任或 Service Worker 无法激活，会显示明确错误，不能把仅有题库数据误认为可离线启动。
+
+当前 Docker 前端的局域网证书由本机私有 CA 签发，服务器证书覆盖 iPad 使用的 `192.168.103.10`。iPad 必须使用这个 HTTPS 地址，并完成以下一次性设置：
+
+1. 在 iPad Safari 打开 `https://192.168.103.10:5173/wordquest-local-ca.cer`，下载 WordQuest Local CA 根证书；也可从可信设备将该 `.cer` 文件传到 iPad。
+2. 在 iPad“设置”中安装已下载的描述文件，然后在“设置 → 通用 → 关于本机 → 证书信任设置”中为 WordQuest Local CA 开启完全信任。Apple 要求额外开启此项，安装描述文件本身不够。
+3. 重新用同一地址打开 Safari，确认不再出现证书警告，再进入主屏幕应用下载题库并开启离线。IP 改变后必须重新签发包含新 IP 的服务器证书；不要通过清除 Safari 网站数据尝试修复证书，因为那会删除离线题库。
+
+根证书安装和完整信任步骤以 [Apple 的测试服务器 HTTPS 指南](https://developer.apple.com/library/archive/qa/qa1948/_index.html) 为准。私有 CA 密钥仅保存在本机 `frontend/.local-certs/`，不得提交、共享或挂载到容器；Compose 只读挂载服务器证书及服务器私钥。
+
 ## 7. 数据库初始化与迁移
 
 - `db/init.sql` 是当前基础初始化脚本，但尚不能安全代表完整当前 Schema；不要在生产直接执行。
@@ -121,5 +158,7 @@ curl http://127.0.0.1:8080/health
 - 恢复前验证备份完整性，并在隔离实例演练。
 - 生产恢复必须先停止写入、记录恢复点并取得用户明确确认。
 - 不在 Git、文档或 Agent 日志中保存含真实个人数据或密码的 dump。
+
+歌曲 MP3 上传文件在 Compose 中持久化到 `wordquest_song_uploads` volume；备份/迁移环境时必须同时备份该 volume，否则数据库中的 `audio_url` 会失效。LRCLIB 查询只发送歌曲元数据，不发送音频文件。
 
 局域网/iPad 接入细节见 [runbooks/wsl2-lan-access.md](runbooks/wsl2-lan-access.md)。

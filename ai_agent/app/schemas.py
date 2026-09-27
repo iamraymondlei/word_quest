@@ -24,6 +24,31 @@ class SentencePair(BaseModel):
     zh: str = Field(..., description="中文翻译")
 
 
+class SongWordTranslation(BaseModel):
+    word: str
+    meaning: str
+    phonetic: str = ""
+    example: str = ""
+
+
+class SongTranslationRequest(BaseModel):
+    sentences: list[str] = Field(..., min_length=1, max_length=100)
+    words: list[str] = Field(default_factory=list, max_length=60)
+    model: str | None = None
+    cli: str = "agy"
+
+
+class SongTranslationResult(BaseModel):
+    sentences: list[SentencePair]
+    words: list[SongWordTranslation]
+
+
+class TranslationResponse(BaseModel):
+    success: bool = True
+    data: SongTranslationResult | None = None
+    error: str | None = None
+
+
 class PageContent(BaseModel):
     """Content extracted from a single page of the picture book."""
 

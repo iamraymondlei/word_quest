@@ -4,15 +4,41 @@
  */
 
 import { offlineStorage } from './offlineStorage';
+import { isForcedOffline } from './offlineMode';
 
 export interface SyncStatus {
   isOnline: boolean;
+  forcedOffline: boolean;
   isSyncing: boolean;
   pendingCount: number;
   lastSyncTime: number | null;
   storyCount: number;
   wordCount: number;
   illustrationCount?: number;
+}
+
+export interface SongSegment {
+  id: number;
+  startTime: number;
+  endTime: number;
+  text: string;
+}
+
+export interface Song {
+  id: number;
+  title: string;
+  artist: string;
+  album: string;
+  duration_seconds: number | null;
+  audio_url: string;
+  lrc_text: string | null;
+  lrc_source: string | null;
+  lrclib_id: number | null;
+  match_duration_seconds: number | null;
+  status: 'READY' | 'NEEDS_LYRICS' | string;
+  segments: SongSegment[];
+  targetWords: string[];
+  translations: { sentences: Array<{ en: string; zh: string }>; words: Array<{ word: string; meaning: string; phonetic?: string; example?: string }> } | null;
 }
 
 class ApiService {
@@ -32,6 +58,7 @@ class ApiService {
   }
 
   isOnline(): boolean {
+    if (isForcedOffline()) return false;
     if (typeof navigator !== 'undefined' && 'onLine' in navigator) {
       return navigator.onLine;
     }
@@ -51,6 +78,7 @@ class ApiService {
     const pending = await offlineStorage.getPendingSyncActions();
     return {
       isOnline: this.isOnline(),
+      forcedOffline: isForcedOffline(),
       isSyncing: this.isSyncing,
       pendingCount: pending.length,
       lastSyncTime: meta?.lastSyncTime || null,
@@ -67,6 +95,7 @@ class ApiService {
 
   // ── 1. Users API ──────────────────────────────────────────────────────
   async getUsers(): Promise<any[]> {
+    if (isForcedOffline()) return offlineStorage.getCachedUsers();
     try {
       const res = await fetch('/api/users');
       if (res.ok) {
@@ -143,6 +172,7 @@ class ApiService {
 
   // ── 2. Islands / Stories API ──────────────────────────────────────────
   async getIslands(userId: number): Promise<any[]> {
+    if (isForcedOffline()) return offlineStorage.getCachedIslands(userId);
     try {
       const res = await fetch(`/api/islands?user_id=${userId}`);
       if (res.ok) {
@@ -231,6 +261,7 @@ class ApiService {
   }
 
   async getTranslationStats(userId: number, islandId: number): Promise<any> {
+    if (isForcedOffline()) return { translation_stats: {} };
     try {
       const res = await fetch(`/api/progress/get-translation-stats?user_id=${userId}&island_id=${islandId}`);
       if (res.ok) {
@@ -244,6 +275,13 @@ class ApiService {
 
   // ── 4. Game Settings API ──────────────────────────────────────────────
   async getGameSettings(): Promise<any> {
+    if (isForcedOffline()) {
+      return (await offlineStorage.getCachedSettings()) || {
+        stage1_passing_score: 80, stage2_passing_score: 80,
+        stage3_passing_score: 80, stage4_passing_score: 80,
+        stage3_monster_speed: 1.0,
+      };
+    }
     try {
       const res = await fetch('/api/game-settings');
       if (res.ok) {
@@ -267,8 +305,57 @@ class ApiService {
     );
   }
 
+  async getSongs(): Promise<Song[]> {
+    if (isForcedOffline()) throw new Error('歌曲尚未支持离线播放，请切换到在线模式。');
+    const response = await fetch('/api/songs');
+    if (!response.ok) throw new Error('无法加载歌曲列表');
+    return response.json();
+  }
+
+  async uploadSong(formData: FormData): Promise<{ song: Song; candidates: Array<Record<string, unknown>> }> {
+    const response = await fetch('/api/songs', { method: 'POST', body: formData });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || '歌曲上传失败');
+    return data;
+  }
+
+  async updateSong(songId: number, payload: { title?: string; artist?: string; album?: string; lrc_text?: string; lrc_source?: string; lrclib_id?: number | null; match_duration_seconds?: number | null; segments?: SongSegment[]; target_words?: string[] }): Promise<Song> {
+    const response = await fetch(`/api/songs/${songId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || '歌曲保存失败');
+    return data;
+  }
+
+  async translateSong(songId: number, payload: { sentences?: string[]; words?: string[]; model?: string; cli?: string } = {}): Promise<{ song: Song; translations: Song['translations'] }> {
+    const response = await fetch(`/api/songs/${songId}/translate`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || '歌词翻译失败');
+    return data;
+  }
+
+  async deleteSong(songId: number): Promise<void> {
+    const response = await fetch(`/api/songs/${songId}`, { method: 'DELETE' });
+    if (!response.ok) throw new Error('歌曲删除失败');
+  }
+
+  async parseSongLrc(lrcText: string, duration?: number): Promise<SongSegment[]> {
+    const response = await fetch('/api/songs/parse-lrc', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ lrc_text: lrcText, duration }),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || 'LRC 解析失败');
+    return data.segments || [];
+  }
+
   // ── 5. Cache All For Offline Button (一键下载离线题库) ─────────────────
   async cacheAllForOffline(userId: number): Promise<{ success: boolean; storyCount: number; wordCount: number; illustrationCount?: number; error?: string }> {
+    if (isForcedOffline()) return { success: false, storyCount: 0, wordCount: 0, error: '请先切换到在线模式' };
     try {
       // 1. Fetch and cache users
       const usersRes = await fetch('/api/users');
@@ -327,8 +414,13 @@ class ApiService {
         );
       }
 
+      if (cachedIllustrationCount !== illustrationUrls.size) {
+        throw new Error('部分插图下载失败，请保持联网后重试');
+      }
+
       // Update offline metadata
       await offlineStorage.saveMetadata({
+        userId,
         lastSyncTime: Date.now(),
         storyCount: islands.length,
         wordCount: totalWords,

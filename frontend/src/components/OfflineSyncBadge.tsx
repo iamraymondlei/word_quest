@@ -1,23 +1,30 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { apiService, SyncStatus } from '../utils/apiService';
+import { offlineStorage } from '../utils/offlineStorage';
+import { consumeOfflineSwitchError, isForcedOffline, setForcedOffline } from '../utils/offlineMode';
 
 interface OfflineSyncBadgeProps {
   currentUserId?: number;
   onRefreshData?: () => void;
+  variant?: 'badge' | 'map';
 }
 
-export const OfflineSyncBadge: React.FC<OfflineSyncBadgeProps> = ({ currentUserId, onRefreshData }) => {
+export const OfflineSyncBadge: React.FC<OfflineSyncBadgeProps> = ({ currentUserId, onRefreshData, variant = 'badge' }) => {
   const [status, setStatus] = useState<SyncStatus>({
-    isOnline: typeof navigator !== 'undefined' ? navigator.onLine : true,
+    isOnline: typeof navigator !== 'undefined' ? navigator.onLine && !isForcedOffline() : true,
+    forcedOffline: isForcedOffline(),
     isSyncing: false,
     pendingCount: 0,
     lastSyncTime: null,
     storyCount: 0,
     wordCount: 0,
   });
-  const [showModal, setShowModal] = useState(false);
+  const [initialSwitchError] = useState(() => consumeOfflineSwitchError());
+  const [showModal, setShowModal] = useState(Boolean(initialSwitchError));
   const [isCaching, setIsCaching] = useState(false);
-  const [cacheMessage, setCacheMessage] = useState<string | null>(null);
+  const [isSwitching, setIsSwitching] = useState(false);
+  const [cacheMessage, setCacheMessage] = useState<string | null>(initialSwitchError);
 
   useEffect(() => {
     const unsubscribe = apiService.subscribeStatus((newStatus) => {
@@ -66,10 +73,69 @@ export const OfflineSyncBadge: React.FC<OfflineSyncBadgeProps> = ({ currentUserI
     }
   };
 
+  const handleModeSwitch = async () => {
+    setCacheMessage(null);
+    setIsSwitching(true);
+    try {
+      if (!status.forcedOffline) {
+        const users = await offlineStorage.getCachedUsers();
+        const candidates = currentUserId
+          ? users.filter((user) => user.id === currentUserId)
+          : users.filter((user) => user.username?.toLowerCase() !== 'admin');
+        let hasCompleteCache = false;
+        for (const user of candidates) {
+          const stories = await offlineStorage.getCachedIslands(user.id);
+          if (stories.length === 0) continue;
+          const illustrationUrls = new Set<string>();
+          for (const story of stories) {
+            for (const page of story.story_passage_json || []) {
+              if (page?.illustration_url) illustrationUrls.add(page.illustration_url);
+            }
+          }
+          const illustrations = await Promise.all(
+            [...illustrationUrls].map((url) => offlineStorage.getIllustrationBlob(url))
+          );
+          if (illustrations.every(Boolean)) {
+            hasCompleteCache = true;
+            break;
+          }
+        }
+        if (!hasCompleteCache) {
+          throw new Error('本机没有完整的离线题库。请联网选择账号，下载故事和插图后再切换。');
+        }
+      }
+      await setForcedOffline(!status.forcedOffline);
+    } catch (error) {
+      setCacheMessage(`⚠️ ${error instanceof Error ? error.message : '切换失败'}`);
+      setIsSwitching(false);
+    }
+  };
+
   return (
     <>
-      {/* Top Bar Badge */}
-      <button
+      {variant === 'map' ? (
+        <div className="flex flex-wrap items-center gap-2 font-mono">
+          <button
+            type="button"
+            onClick={() => {
+              setShowModal(true);
+              void handleManualCache();
+            }}
+            disabled={isCaching || !status.isOnline || !currentUserId}
+            className="rounded-xl bg-cyan-500 px-4 py-2.5 text-xs font-black text-slate-950 shadow-lg shadow-cyan-500/20 transition-colors hover:bg-cyan-400 disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
+          >
+            {isCaching ? '⏳ 正在下载题库...' : '📥 下载离线题库'}
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowModal(true)}
+            className="rounded-xl border theme-border bg-slate-950/50 px-3 py-2.5 text-xs font-bold theme-text cursor-pointer hover:border-cyan-400"
+          >
+            {status.forcedOffline ? '离线模式 · 管理' : status.isOnline ? '在线模式 · 管理' : '网络不可用 · 管理'}
+            {status.pendingCount > 0 ? ` · ${status.pendingCount} 待同步` : ''}
+          </button>
+        </div>
+      ) : <button
         onClick={() => setShowModal(true)}
         className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-mono transition-all backdrop-blur-md cursor-pointer border shadow-sm select-none"
         style={{
@@ -84,7 +150,7 @@ export const OfflineSyncBadge: React.FC<OfflineSyncBadgeProps> = ({ currentUserI
             status.isOnline ? 'bg-emerald-400 animate-pulse shadow-[0_0_6px_#34d399]' : 'bg-amber-400'
           }`}
         />
-        <span>{status.isOnline ? '在线' : '离线模式'}</span>
+        <span>{status.forcedOffline ? '离线模式' : status.isOnline ? '在线' : '网络不可用'}</span>
 
         {status.isSyncing && (
           <span className="text-cyan-300 animate-spin text-[10px]">🔄</span>
@@ -95,10 +161,10 @@ export const OfflineSyncBadge: React.FC<OfflineSyncBadgeProps> = ({ currentUserI
             {status.pendingCount}待同步
           </span>
         )}
-      </button>
+      </button>}
 
       {/* Offline Management Modal */}
-      {showModal && (
+      {showModal && createPortal(
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-md animate-in fade-in duration-200">
           <div className="w-full max-w-md bg-slate-900 border border-slate-700 rounded-2xl p-6 shadow-2xl text-slate-100 font-mono space-y-4">
             <div className="flex items-center justify-between border-b border-slate-800 pb-3">
@@ -128,7 +194,7 @@ export const OfflineSyncBadge: React.FC<OfflineSyncBadgeProps> = ({ currentUserI
                     }`}
                   />
                   <span className={status.isOnline ? 'text-emerald-400' : 'text-amber-300'}>
-                    {status.isOnline ? '已连接局域网/互联网' : '未连接网络 (完全离线)'}
+                    {status.forcedOffline ? '已手动开启离线模式' : status.isOnline ? '设备显示已联网' : '设备未连接网络'}
                   </span>
                 </div>
               </div>
@@ -143,6 +209,21 @@ export const OfflineSyncBadge: React.FC<OfflineSyncBadgeProps> = ({ currentUserI
                     : '暂无离线故事'}
                 </div>
               </div>
+            </div>
+
+            <div className="rounded-xl border border-cyan-500/30 bg-slate-950/60 p-3 space-y-2 text-xs">
+              <div className="font-bold text-cyan-200">使用模式</div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={status.forcedOffline}
+                onClick={handleModeSwitch}
+                disabled={isSwitching || isCaching}
+                className="w-full rounded-lg border border-cyan-500/50 px-3 py-2 font-bold text-white hover:bg-cyan-900/50 disabled:opacity-50 cursor-pointer"
+              >
+                {isSwitching ? '正在切换...' : status.forcedOffline ? '离线已开启 · 点击切回在线' : '在线已开启 · 点击切到离线'}
+              </button>
+              <p className="text-slate-400">离线模式会保存到本机；关闭网页后重开仍只使用本地数据。切回在线后才会恢复同步。</p>
             </div>
 
             {/* Pending actions */}
@@ -161,7 +242,7 @@ export const OfflineSyncBadge: React.FC<OfflineSyncBadgeProps> = ({ currentUserI
                   )}
                 </div>
                 <p className="text-[11px] text-amber-300/80">
-                  离线游玩的金币、通关成绩已保存在 iPad 本地。连上电脑 Wi-Fi 后会自动同步！
+                  离线游玩的金币、通关成绩已保存在 iPad 本地。切回在线模式并连上网络后会同步。
                 </p>
               </div>
             )}
@@ -199,7 +280,8 @@ export const OfflineSyncBadge: React.FC<OfflineSyncBadgeProps> = ({ currentUserI
               </p>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </>
   );

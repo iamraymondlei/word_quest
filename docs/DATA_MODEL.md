@@ -96,6 +96,50 @@
 
 保存项目路线图条目，包括任务 ID、标题、类别、状态、版本、日期、摘要、步骤、影响文件、技术说明、验证方式、优先级及放弃/替代方案。后端在表为空时写入代码内置种子；该表不是 migration 历史。
 
+### `songs`
+
+| 字段 | 含义 |
+|---|---|
+| `id` | 自增主键 |
+| `title` / `artist` / `album` | 歌曲元数据 |
+| `duration_seconds` | 上传音频时长，用于 LRCLIB 版本匹配 |
+| `audio_url` | 后端受控的 MP3 播放地址 |
+| `lrc_text` | 原始 LRC，便于重新解析和人工校对 |
+| `lrc_source` | `lrclib` 或 `manual` |
+| `lrclib_id` / `match_duration_seconds` | 外部匹配记录和匹配版本时长 |
+| `status` | `READY` 或 `NEEDS_LYRICS` |
+| `segments_json` | `{ id, startTime, endTime, text }[]` |
+| `target_words_json` | 管理员确认的目标词数组，最多 20 个 |
+
+句子结束时间通常取下一句开始时间，最后一句取音频时长；管理员可以覆盖边界。MP3 不被切割，所有逐句播放都通过同一 `audio_url` 的时间区间完成。
+
+### `word_books` (单词宝库词单 - Phase 9)
+
+| 字段 | 含义 |
+|---|---|
+| `id` | 自增主键 |
+| `title` | 词单名称（如“RAZ Level E 冒险核心词”） |
+| `description` | 词单简介/适读年级说明 |
+| `tags` | 标签/分类（如自然拼读、高频词） |
+| `sort_order` | 排序权重 |
+| `created_at` | 创建时间 |
+
+### `vocabulary_words` (独立词汇库 - Phase 9)
+
+| 字段 | 含义 |
+|---|---|
+| `id` | 自增主键 |
+| `book_id` | 所属词单 ID，外键关联 `word_books.id` |
+| `word` | 英文单词（小写规范化） |
+| `phonetic` | 国际音标（如 `/ˈkjʊəriəs/`） |
+| `translation` | 核心中文释义 |
+| `fun_sentences_json` | 生动趣味例句 JSON 数组，包含英文与中文翻译 |
+| `antonyms` | 反义词（逗号分隔或字符串） |
+| `synonyms` | 同义词（逗号分隔或字符串） |
+| `root_affixes` | 词根词缀构词拆解说明（如 `cur-` 关心 + `-ious`） |
+| `etymology` | 趣味通俗词源背景小故事 |
+| `created_at` | 创建时间 |
+
 ### 故事插图
 
 插图文件保存在外部 MinIO 的 `wordquest-stories` bucket 中，数据库不保存二进制。`story_passage_json` 的句子元素可包含 `illustration_url`，通常指向 `/api/illustrations/<filename>`；AI 解析结果还可临时包含页面级 `illustration_box`。
@@ -107,7 +151,9 @@ users ──< user_island_access >── islands ──< words
   │                                  │
   └──< user_island_progress >────────┘
   │
-  └──< user_word_progress >──────── words
+  └──< user_word_progress >──────── words / vocabulary_words
+
+word_books ──< vocabulary_words (独立词单体系，解耦于绘本故事)
 
 story_groups.name ──(逻辑关联)── islands.group_name
 game_settings、version_history、project_roadmap_tasks 为全局表

@@ -8,7 +8,7 @@ import tempfile
 import time
 
 from app.config import settings
-from app.schemas import DEFAULT_SYSTEM_PROMPT, StoryParseResult
+from app.schemas import DEFAULT_SYSTEM_PROMPT, SongTranslationResult, StoryParseResult
 
 logger = logging.getLogger(__name__)
 
@@ -246,6 +246,44 @@ class GeminiParser:
         codex_path = shutil.which("codex")
         logger.info("GeminiParser initialized. agy: %s, codex: %s", agy_path or "Not found", codex_path or "Not found")
 
+    async def translate_song_content(self, sentences: list[str], words: list[str] | None = None, model: str | None = None, cli: str = "agy") -> SongTranslationResult:
+        cli_type = (cli or "agy").lower().strip()
+        if cli_type not in {"agy", "codex"}:
+            raise ValueError("cli must be 'agy' or 'codex'.")
+        effective_model = normalize_agy_model(model or settings.GEMINI_MODEL) if cli_type == "agy" else normalize_codex_model(model)
+        prompt = (
+            "Translate English song lyrics for Chinese elementary school children. Return ONLY valid JSON, no markdown. "
+            "Shape: {\"sentences\":[{\"en\":\"original\",\"zh\":\"Chinese\"}],\"words\":[{\"word\":\"word\",\"meaning\":\"Chinese meaning\",\"phonetic\":\"IPA or empty\",\"example\":\"short English example\"}]}. "
+            "Preserve sentence order and exact English text. Translate every sentence naturally. Requested words only.\n"
+            f"Sentences: {json.dumps(sentences, ensure_ascii=False)}\nWords: {json.dumps(words or [], ensure_ascii=False)}"
+        )
+        if cli_type == "codex":
+            if not shutil.which("codex"):
+                raise ValueError("系统未找到 codex 命令。")
+            cmd = ["codex", "exec", "--dangerously-bypass-approvals-and-sandbox", "--ephemeral"]
+            if effective_model and effective_model.lower() not in ("default", "none"):
+                cmd.extend(["-m", effective_model])
+            cmd.append("-")
+            proc = await asyncio.create_subprocess_exec(*cmd, stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+            stdout, stderr = await asyncio.wait_for(proc.communicate(input=prompt.encode("utf-8")), timeout=180)
+        else:
+            if not shutil.which("agy"):
+                raise ValueError("系统未找到 agy 命令。")
+            cmd = ["agy", "--dangerously-skip-permissions", "--disable-slash-commands"]
+            if effective_model:
+                cmd.extend(["--model", effective_model])
+            cmd.extend(["-p", prompt])
+            proc = await asyncio.create_subprocess_exec(*cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=180)
+        if len(stdout) + len(stderr) > settings.MAX_CLI_OUTPUT_BYTES:
+            raise ValueError("CLI 输出超过允许大小。")
+        if proc.returncode != 0:
+            raise ValueError(f"{cli_type} CLI Error: {stderr.decode().strip()}")
+        try:
+            return SongTranslationResult.model_validate(_clean_and_parse_json(stdout.decode().strip()))
+        except Exception as exc:
+            raise ValueError(f"翻译结果不是有效 JSON: {exc}") from exc
+
     async def parse_images(
         self,
         images: list[tuple[bytes, str]],
@@ -428,5 +466,4 @@ class GeminiParser:
             raise ValueError(f"绘本解析失败: {e}")
         finally:
             shutil.rmtree(temp_dir, ignore_errors=True)
-
 

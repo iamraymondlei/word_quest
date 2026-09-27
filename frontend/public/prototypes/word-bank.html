@@ -1,0 +1,1068 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+  <title>WordQuest · 单词宝库与深度学习原型 (Word Bank Prototype)</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #070a14;
+      --panel: rgba(16, 23, 42, 0.85);
+      --panel-strong: #141e36;
+      --line: rgba(255, 255, 255, 0.1);
+      --line-active: rgba(108, 229, 232, 0.4);
+      --cyan: #38bdf8;
+      --emerald: #34d399;
+      --amber: #fbbf24;
+      --rose: #f43f5e;
+      --purple: #a855f7;
+      --ink: #f1f5f9;
+      --muted: #94a3b8;
+    }
+
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    body {
+      margin: 0;
+      padding: 0;
+      background:
+        radial-gradient(circle at 10% 5%, rgba(56, 189, 248, 0.15), transparent 28rem),
+        radial-gradient(circle at 90% 15%, rgba(168, 85, 247, 0.15), transparent 25rem),
+        var(--bg);
+      color: var(--ink);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* Top Global Header */
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 16px 24px;
+      border-bottom: 1px solid var(--line);
+      background: rgba(11, 16, 32, 0.7);
+      backdrop-filter: blur(12px);
+      position: sticky;
+      top: 0;
+      z-index: 50;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-weight: 800;
+      letter-spacing: 0.05em;
+    }
+    .brand-icon {
+      width: 36px;
+      height: 36px;
+      border-radius: 10px;
+      background: linear-gradient(135deg, #0284c7, #6366f1);
+      display: grid;
+      place-items: center;
+      font-size: 18px;
+      box-shadow: 0 0 16px rgba(56, 189, 248, 0.3);
+    }
+    .brand-title {
+      font-size: 16px;
+      font-weight: 800;
+      background: linear-gradient(to right, #38bdf8, #818cf8);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .nav-tabs {
+      display: flex;
+      gap: 8px;
+      background: rgba(15, 23, 42, 0.6);
+      padding: 4px;
+      border-radius: 12px;
+      border: 1px solid var(--line);
+    }
+    .nav-btn {
+      background: transparent;
+      border: none;
+      color: var(--muted);
+      padding: 6px 14px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .nav-btn.active {
+      background: var(--panel-strong);
+      color: var(--cyan);
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+    }
+    .badge-bar {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      font-size: 11px;
+    }
+    .tag-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 4px 10px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid var(--line);
+      color: var(--muted);
+      font-family: monospace;
+    }
+    .tag-pill.live {
+      border-color: rgba(52, 211, 153, 0.4);
+      color: var(--emerald);
+      background: rgba(52, 211, 153, 0.08);
+    }
+
+    /* Container */
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 24px;
+    }
+
+    /* Sub-nav inside Student View */
+    .sub-tabs {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 24px;
+      overflow-x: auto;
+      padding-bottom: 4px;
+    }
+    .sub-tab-btn {
+      padding: 10px 18px;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      color: var(--muted);
+      font-size: 14px;
+      font-weight: 700;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      transition: all 0.2s;
+      white-space: nowrap;
+    }
+    .sub-tab-btn:hover {
+      border-color: var(--line-active);
+      color: var(--ink);
+    }
+    .sub-tab-btn.active {
+      background: linear-gradient(145deg, #1e293b, #0f172a);
+      border-color: var(--cyan);
+      color: var(--cyan);
+      box-shadow: 0 0 15px rgba(56, 189, 248, 0.15);
+    }
+
+    /* Mode Content Panels */
+    .mode-panel { display: none; }
+    .mode-panel.active { display: block; animation: fadeIn 0.25s ease-out; }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(6px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* =========================================
+       1. 深度学单词卡片 (Deep Word Explorer)
+       ========================================= */
+    .explore-card {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 24px;
+      padding: 32px;
+      backdrop-filter: blur(16px);
+      box-shadow: 0 16px 40px rgba(0, 0, 0, 0.4);
+      position: relative;
+      overflow: hidden;
+    }
+    .explore-card::before {
+      content: "";
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 3px;
+      background: linear-gradient(90deg, var(--cyan), var(--purple), var(--emerald));
+    }
+    .word-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid var(--line);
+      padding-bottom: 20px;
+      margin-bottom: 24px;
+    }
+    .word-title-group {
+      display: flex;
+      align-items: baseline;
+      gap: 16px;
+    }
+    .main-word {
+      font-size: 42px;
+      font-weight: 900;
+      letter-spacing: -0.02em;
+      color: #fff;
+    }
+    .phonetic-badge {
+      font-family: monospace;
+      font-size: 18px;
+      color: var(--cyan);
+      background: rgba(56, 189, 248, 0.1);
+      padding: 4px 12px;
+      border-radius: 8px;
+      border: 1px solid rgba(56, 189, 248, 0.2);
+    }
+    .audio-play-btn {
+      width: 48px;
+      height: 48px;
+      border-radius: 50%;
+      background: rgba(56, 189, 248, 0.15);
+      border: 1px solid var(--cyan);
+      color: var(--cyan);
+      font-size: 20px;
+      display: grid;
+      place-items: center;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .audio-play-btn:hover {
+      background: var(--cyan);
+      color: #000;
+      transform: scale(1.05);
+    }
+
+    .explore-grid {
+      display: grid;
+      grid-template-columns: 1.2fr 1fr;
+      gap: 24px;
+    }
+    @media (max-width: 860px) {
+      .explore-grid { grid-template-columns: 1fr; }
+    }
+
+    .info-section {
+      background: rgba(15, 23, 42, 0.5);
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 20px;
+    }
+    .info-label {
+      font-size: 11px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 12px;
+    }
+    .sentence-item {
+      margin-bottom: 16px;
+      padding-bottom: 14px;
+      border-bottom: 1px dashed rgba(255, 255, 255, 0.07);
+    }
+    .sentence-item:last-child {
+      margin-bottom: 0;
+      padding-bottom: 0;
+      border-bottom: none;
+    }
+    .en-sentence {
+      font-size: 16px;
+      line-height: 1.5;
+      font-weight: 600;
+      color: #e2e8f0;
+      margin-bottom: 4px;
+    }
+    .en-sentence em {
+      color: var(--amber);
+      font-style: normal;
+      background: rgba(251, 191, 36, 0.15);
+      padding: 0 4px;
+      border-radius: 4px;
+    }
+    .zh-sentence {
+      font-size: 13px;
+      color: var(--muted);
+    }
+
+    /* Roots & Affixes pill breakdown */
+    .root-chain {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 8px;
+    }
+    .root-tag {
+      background: rgba(168, 85, 247, 0.12);
+      border: 1px solid rgba(168, 85, 247, 0.3);
+      color: #d8b4fe;
+      padding: 6px 12px;
+      border-radius: 8px;
+      font-size: 13px;
+    }
+    .root-tag strong {
+      color: #fff;
+    }
+
+    /* Antonyms & Synonyms */
+    .contrast-box {
+      display: flex;
+      gap: 12px;
+      margin-top: 8px;
+    }
+    .contrast-badge {
+      flex: 1;
+      padding: 10px;
+      border-radius: 10px;
+      font-size: 13px;
+    }
+    .contrast-badge.antonym {
+      background: rgba(244, 63, 94, 0.1);
+      border: 1px solid rgba(244, 63, 94, 0.3);
+      color: #fda4af;
+    }
+    .contrast-badge.synonym {
+      background: rgba(52, 211, 153, 0.1);
+      border: 1px solid rgba(52, 211, 153, 0.3);
+      color: #6ee7b7;
+    }
+
+    /* Etymology */
+    .etymology-content {
+      font-size: 14px;
+      line-height: 1.6;
+      color: #cbd5e1;
+      background: rgba(251, 191, 36, 0.05);
+      border-left: 3px solid var(--amber);
+      padding: 12px 16px;
+      border-radius: 0 10px 10px 0;
+    }
+
+    .card-footer-nav {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-top: 24px;
+      padding-top: 16px;
+      border-top: 1px solid var(--line);
+    }
+    .btn-secondary {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--line);
+      color: #cbd5e1;
+      padding: 10px 20px;
+      border-radius: 10px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .btn-secondary:hover {
+      background: rgba(255, 255, 255, 0.1);
+      color: #fff;
+    }
+
+    /* =========================================
+       2. 限时答题公用舞台 (Game Arena)
+       ========================================= */
+    .game-arena {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 24px;
+      padding: 28px;
+      backdrop-filter: blur(16px);
+      box-shadow: 0 16px 40px rgba(0, 0, 0, 0.4);
+      max-width: 760px;
+      margin: 0 auto;
+    }
+    .game-stats-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+      font-size: 14px;
+      font-family: monospace;
+    }
+    .timer-track {
+      width: 100%;
+      height: 8px;
+      background: rgba(255, 255, 255, 0.08);
+      border-radius: 999px;
+      overflow: hidden;
+      margin-bottom: 24px;
+    }
+    .timer-fill {
+      height: 100%;
+      width: 75%;
+      background: linear-gradient(90deg, var(--emerald), var(--amber), var(--rose));
+      transition: width 1s linear;
+    }
+    .prompt-box {
+      text-align: center;
+      padding: 30px 20px;
+      background: rgba(15, 23, 42, 0.6);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      margin-bottom: 28px;
+    }
+    .prompt-word {
+      font-size: 38px;
+      font-weight: 900;
+      color: #fff;
+      margin-bottom: 8px;
+    }
+    .sound-wave-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: rgba(56, 189, 248, 0.15);
+      border: 1px solid var(--cyan);
+      color: var(--cyan);
+      padding: 10px 22px;
+      border-radius: 999px;
+      font-size: 15px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .sound-wave-btn:hover {
+      background: var(--cyan);
+      color: #000;
+    }
+
+    .options-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+    @media (max-width: 600px) {
+      .options-grid { grid-template-columns: 1fr; }
+    }
+    .option-btn {
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 18px 20px;
+      color: #e2e8f0;
+      font-size: 16px;
+      font-weight: 600;
+      text-align: left;
+      cursor: pointer;
+      transition: all 0.15s ease-out;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .option-btn:hover {
+      background: rgba(56, 189, 248, 0.1);
+      border-color: var(--cyan);
+      transform: translateY(-2px);
+    }
+    .option-btn.correct {
+      background: rgba(52, 211, 153, 0.2) !important;
+      border-color: var(--emerald) !important;
+      color: #6ee7b7 !important;
+      box-shadow: 0 0 16px rgba(52, 211, 153, 0.3);
+    }
+    .option-btn.wrong {
+      background: rgba(244, 63, 94, 0.2) !important;
+      border-color: var(--rose) !important;
+      color: #fda4af !important;
+    }
+    .option-key {
+      display: inline-block;
+      width: 28px;
+      height: 28px;
+      line-height: 26px;
+      text-align: center;
+      background: rgba(255, 255, 255, 0.08);
+      border-radius: 6px;
+      font-size: 13px;
+      font-family: monospace;
+      color: var(--muted);
+    }
+
+    /* =========================================
+       3. 拼单词界面 (Spelling Arena on iPad)
+       ========================================= */
+    .spelling-slots {
+      display: flex;
+      justify-content: center;
+      gap: 10px;
+      margin: 28px 0;
+    }
+    .letter-slot {
+      width: 50px;
+      height: 56px;
+      border-bottom: 3px solid var(--cyan);
+      background: rgba(255, 255, 255, 0.04);
+      border-radius: 8px 8px 0 0;
+      display: grid;
+      place-items: center;
+      font-size: 28px;
+      font-weight: 900;
+      color: #fff;
+      font-family: monospace;
+    }
+    .letter-slot.filled {
+      background: rgba(56, 189, 248, 0.1);
+    }
+    .spelling-input-ipad {
+      width: 100%;
+      background: rgba(0, 0, 0, 0.3);
+      border: 2px solid var(--cyan);
+      border-radius: 12px;
+      padding: 16px;
+      font-size: 20px;
+      color: #fff;
+      font-family: monospace;
+      text-align: center;
+      outline: none;
+      letter-spacing: 0.2em;
+      box-shadow: 0 0 20px rgba(56, 189, 248, 0.15);
+    }
+    .ipad-notice {
+      margin-top: 14px;
+      font-size: 12px;
+      color: var(--muted);
+      text-align: center;
+    }
+
+    /* =========================================
+       4. Admin 后台导入与 AI 赋能
+       ========================================= */
+    .admin-card {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      padding: 28px;
+      margin-bottom: 24px;
+    }
+    .admin-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+    }
+    .admin-title {
+      font-size: 18px;
+      font-weight: 800;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .word-textarea {
+      width: 100%;
+      height: 120px;
+      background: rgba(15, 23, 42, 0.8);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 14px;
+      color: #f8fafc;
+      font-family: monospace;
+      font-size: 14px;
+      outline: none;
+      resize: vertical;
+      margin-bottom: 16px;
+    }
+    .word-textarea:focus {
+      border-color: var(--cyan);
+    }
+    .admin-actions {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .btn-ai {
+      background: linear-gradient(135deg, #0284c7, #6366f1);
+      border: none;
+      color: #fff;
+      padding: 12px 24px;
+      border-radius: 12px;
+      font-weight: 700;
+      font-size: 14px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      box-shadow: 0 4px 16px rgba(99, 102, 241, 0.35);
+      transition: all 0.2s;
+    }
+    .btn-ai:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px rgba(99, 102, 241, 0.5);
+    }
+
+    /* Editable Review Table */
+    .table-container {
+      overflow-x: auto;
+      margin-top: 20px;
+    }
+    .review-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+    .review-table th {
+      text-align: left;
+      padding: 10px 14px;
+      background: rgba(255, 255, 255, 0.05);
+      color: var(--muted);
+      border-bottom: 1px solid var(--line);
+      white-space: nowrap;
+    }
+    .review-table td {
+      padding: 12px 14px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      vertical-align: top;
+    }
+    .editable-input {
+      background: rgba(0, 0, 0, 0.3);
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 6px 8px;
+      color: #fff;
+      font-size: 13px;
+      width: 100%;
+      outline: none;
+    }
+    .editable-input:focus {
+      border-color: var(--cyan);
+    }
+
+    /* Toast */
+    .toast {
+      position: fixed;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%) translateY(50px);
+      opacity: 0;
+      background: #1e293b;
+      border: 1px solid var(--cyan);
+      color: #fff;
+      padding: 10px 24px;
+      border-radius: 999px;
+      font-size: 14px;
+      font-weight: 600;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+      transition: all 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+      z-index: 100;
+      pointer-events: none;
+    }
+    .toast.show {
+      transform: translateX(-50%) translateY(0);
+      opacity: 1;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Top Global Header -->
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand-icon">📚</div>
+      <div>
+        <div class="brand-title">WORDQUEST // VOCAB LAB</div>
+        <div style="font-size: 10px; color: var(--muted); font-family: monospace;">WORD BANK & EXPLORATION SYSTEM</div>
+      </div>
+    </div>
+
+    <!-- Switch between Student & Admin View -->
+    <div class="nav-tabs">
+      <button class="nav-btn active" id="btn-view-student" onclick="switchMainView('student')">🎓 学员互动端 (iPad PWA)</button>
+      <button class="nav-btn" id="btn-view-admin" onclick="switchMainView('admin')">🛠️ 管理后台 (单词导入与AI)</button>
+    </div>
+
+    <div class="badge-bar">
+      <span class="tag-pill live">● iOS PWA 全屏就绪</span>
+      <span class="tag-pill">⚡ 离线缓存支持</span>
+      <span class="tag-pill">🔊 本地 Web Speech</span>
+    </div>
+  </header>
+
+  <main class="container">
+
+    <!-- =========================================
+         VIEW 1: 学员端 (Student View)
+         ========================================= -->
+    <div id="view-student">
+      <!-- Sub Modes Navigation -->
+      <div class="sub-tabs">
+        <button class="sub-tab-btn active" onclick="switchSubMode('learn', this)">
+          <span>📖</span> 01 // 学单词 (探索卡片)
+        </button>
+        <button class="sub-tab-btn" onclick="switchSubMode('game-reading', this)">
+          <span>⚡</span> 02 // 看词选义 (限时反应)
+        </button>
+        <button class="sub-tab-btn" onclick="switchSubMode('game-listening', this)">
+          <span>🎧</span> 03 // 听音选义 (限时辨音)
+        </button>
+        <button class="sub-tab-btn" onclick="switchSubMode('game-spelling', this)">
+          <span>✍️</span> 04 // 听音拼写 (限时打字)
+        </button>
+      </div>
+
+      <!-- Mode 1: 学单词深度卡片 -->
+      <div class="mode-panel active" id="panel-learn">
+        <article class="explore-card">
+          <div class="word-header">
+            <div class="word-title-group">
+              <span class="main-word" id="learn-word">curious</span>
+              <span class="phonetic-badge" id="learn-phonetic">/ˈkjʊəriəs/</span>
+              <span style="font-size: 14px; color: var(--muted); font-weight: 600;">adj. 好奇的；奇妙的</span>
+            </div>
+            <button class="audio-play-btn" onclick="playAudio('curious')" title="播放真实发音">🔊</button>
+          </div>
+
+          <div class="explore-grid">
+            <!-- Left: 趣味生活与故事例句 -->
+            <div class="info-section">
+              <div class="info-label">✨ 幽默生动的语境例句 (Humorous Context)</div>
+              <div class="sentence-item">
+                <div class="en-sentence">The <em>curious</em> little kitten pressed the big red button and vanished!</div>
+                <div class="zh-sentence">那只充满好奇心的小猫按下了大红按钮，然后瞬间消失了！</div>
+              </div>
+              <div class="sentence-item">
+                <div class="en-sentence">Scientists are always <em>curious</em> about what aliens eat for breakfast.</div>
+                <div class="zh-sentence">科学家总是对“外星人早餐吃什么”充满好奇。</div>
+              </div>
+            </div>
+
+            <!-- Right: 词根词缀、反义词与词源故事 -->
+            <div style="display: flex; flex-direction: column; gap: 16px;">
+              <!-- 词根词缀 -->
+              <div class="info-section">
+                <div class="info-label">🧩 词根与构词剖析 (Root & Affixes)</div>
+                <div class="root-chain">
+                  <span class="root-tag"><strong>cur-</strong> / <strong>cure</strong> (关心、在意)</span>
+                  <span class="root-tag"><strong>-ious</strong> (形容词后缀: 充满...的)</span>
+                </div>
+                <div style="font-size: 12px; color: var(--muted); margin-top: 6px;">
+                  同源家族词：<em>accurate</em> (精确的 ➔ 细心在意的), <em>curator</em> (博物馆馆长 ➔ 照料藏品的人)。
+                </div>
+              </div>
+
+              <!-- 反义词与同义词 -->
+              <div class="info-section">
+                <div class="info-label">⚖️ 语义对照网络 (Semantic Contrast)</div>
+                <div class="contrast-box">
+                  <div class="contrast-badge antonym">
+                    <strong>反义词 (Antonym)</strong><br />
+                    indifferent (冷漠的), unconcerned
+                  </div>
+                  <div class="contrast-badge synonym">
+                    <strong>同义词 (Synonym)</strong><br />
+                    inquisitive, eager to know
+                  </div>
+                </div>
+              </div>
+
+              <!-- 趣味词源背景 -->
+              <div class="info-section">
+                <div class="info-label">📜 词源小秘密 (Etymology Tale)</div>
+                <div class="etymology-content">
+                  来自拉丁语 <em>cura</em>（关怀、照料）。古时候指“对事物极度上心、想要探究明白”，后来演变出名言 "Curiosity killed the cat"（好奇害死猫）！
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="card-footer-nav">
+            <button class="btn-secondary" onclick="prevWord()">← 上一个单词</button>
+            <span style="font-size: 13px; color: var(--muted); font-family: monospace;">词单探索进度：<strong style="color:var(--cyan)">03</strong> / 15 词</span>
+            <button class="btn-secondary" onclick="nextWord()">下一个单词 →</button>
+          </div>
+        </article>
+      </div>
+
+      <!-- Mode 2: 看词选中文 (限时游戏) -->
+      <div class="mode-panel" id="panel-game-reading">
+        <div class="game-arena">
+          <div class="game-stats-bar">
+            <span>⏱️ 限时倒计时: <strong style="color:var(--amber)" id="timer-read">8.5s</strong></span>
+            <span>🔥 连击 (COMBO): <strong style="color:var(--rose)">x5</strong></span>
+            <span>🪙 本轮金币: <strong style="color:var(--emerald)">+120</strong></span>
+          </div>
+          <div class="timer-track"><div class="timer-fill" style="width: 85%;"></div></div>
+
+          <div class="prompt-box">
+            <div style="font-size: 12px; color: var(--muted); margin-bottom: 4px; text-transform: uppercase;">LOOK & MATCH // 看单词选中文</div>
+            <div class="prompt-word">resilient</div>
+            <div style="font-family: monospace; color: var(--cyan); font-size: 15px;">/rɪˈzɪliənt/</div>
+          </div>
+
+          <div class="options-grid">
+            <button class="option-btn" onclick="handlePick(this, false)"><span class="option-key">A</span> 脆弱容易破碎的</button>
+            <button class="option-btn" onclick="handlePick(this, true)"><span class="option-key">B</span> 有韧性的；迅速恢复的</button>
+            <button class="option-btn" onclick="handlePick(this, false)"><span class="option-key">C</span> 傲慢自大的</button>
+            <button class="option-btn" onclick="handlePick(this, false)"><span class="option-key">D</span> 模糊不清的</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Mode 3: 听音选义 (限时辨音) -->
+      <div class="mode-panel" id="panel-game-listening">
+        <div class="game-arena">
+          <div class="game-stats-bar">
+            <span>🎧 听力测试 · 第 04/10 题</span>
+            <span>⏱️ 倒计时: <strong style="color:var(--amber)">7.2s</strong></span>
+          </div>
+          <div class="timer-track"><div class="timer-fill" style="width: 72%;"></div></div>
+
+          <div class="prompt-box">
+            <div style="font-size: 12px; color: var(--muted); margin-bottom: 12px;">LISTEN & MATCH // 听英文发音，选正确释义</div>
+            <button class="sound-wave-btn" onclick="playAudio('mysterious')">
+              <span>🔊</span> <span>正在发音 (点击重听)</span>
+            </button>
+          </div>
+
+          <div class="options-grid">
+            <button class="option-btn" onclick="handlePick(this, false)"><span class="option-key">A</span> 喧闹危险的</button>
+            <button class="option-btn" onclick="handlePick(this, false)"><span class="option-key">B</span> 普普通通的</button>
+            <button class="option-btn" onclick="handlePick(this, true)"><span class="option-key">C</span> 神秘莫测的 (mysterious)</button>
+            <button class="option-btn" onclick="handlePick(this, false)"><span class="option-key">D</span> 甜美可口的</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Mode 4: 听音拼写 (限时打字) -->
+      <div class="mode-panel" id="panel-game-spelling">
+        <div class="game-arena">
+          <div class="game-stats-bar">
+            <span>✍️ 拼写闯关 · 第 02/08 词</span>
+            <span>⏱️ 倒计时: <strong style="color:var(--amber)">12.0s</strong></span>
+          </div>
+          <div class="timer-track"><div class="timer-fill" style="width: 90%;"></div></div>
+
+          <div class="prompt-box">
+            <div style="font-size: 12px; color: var(--muted); margin-bottom: 8px;">SPELL WHAT YOU HEAR // 听发音拼单词</div>
+            <button class="sound-wave-btn" onclick="playAudio('ancient')">
+              <span>🔊</span> <span>播放目标词发音</span>
+            </button>
+
+            <!-- 单词拼写插槽 -->
+            <div class="spelling-slots">
+              <div class="letter-slot filled">a</div>
+              <div class="letter-slot filled">n</div>
+              <div class="letter-slot filled">c</div>
+              <div class="letter-slot">_</div>
+              <div class="letter-slot">_</div>
+              <div class="letter-slot">_</div>
+              <div class="letter-slot">_</div>
+            </div>
+
+            <!-- iPad 软键盘呼出输入框 -->
+            <input
+              type="text"
+              class="spelling-input-ipad"
+              placeholder="轻触在此输入单词 (键盘已禁用自动更正)"
+              autocomplete="off"
+              autocorrect="off"
+              autocapitalize="off"
+              spellcheck="false"
+              value="anc"
+              oninput="handleSpellingInput(this)"
+            />
+            <div class="ipad-notice">
+              💡 针对 iPad 视口优化：核心插槽与音频保持在屏幕上方，呼出系统软键盘不遮挡核心题目。
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+
+    <!-- =========================================
+         VIEW 2: Admin 管理后台 (Word Import & AI)
+         ========================================= -->
+    <div id="view-admin" style="display: none;">
+      <section class="admin-card">
+        <div class="admin-header">
+          <div class="admin-title">
+            <span>📥</span> <span>生词批量导入与 AI 全自动赋能 (AI Synthesis Studio)</span>
+          </div>
+          <div style="font-size: 12px; color: var(--muted);">支持直接粘贴 20~50 个单词，一键补齐例句、反义词、词源</div>
+        </div>
+
+        <label style="font-size: 13px; font-weight: 700; color: var(--muted); display: block; margin-bottom: 8px;">
+          选择目标词单 (Word Book):
+        </label>
+        <div style="display: flex; gap: 12px; margin-bottom: 16px;">
+          <select style="background: rgba(15,23,42,0.8); border: 1px solid var(--line); color:#fff; padding:8px 14px; border-radius:8px; font-size:14px;">
+            <option>📖 RAZ Level E 拓展冒险词单 (15词)</option>
+            <option>🚀 三年级上学期核心高频词 (30词)</option>
+            <option>➕ [新建独立词单分类...]</option>
+          </select>
+        </div>
+
+        <label style="font-size: 13px; font-weight: 700; color: var(--muted); display: block; margin-bottom: 8px;">
+          粘贴单词列表（以逗号、换行或空格分隔）：
+        </label>
+        <textarea class="word-textarea" id="admin-raw-words" placeholder="例如：curious, ancient, resilient, mysterious, courageous, fragile">curious, ancient, resilient, mysterious, courageous</textarea>
+
+        <div class="admin-actions">
+          <button class="btn-ai" onclick="runAiEnrichment()">
+            <span>🤖</span> <span>一键启动 AI 智能词条解析与润色</span>
+          </button>
+          <button class="btn-secondary" onclick="showToast('已加载标准 CSV 模板')">
+            <span>📄</span> <span>导入 CSV 文件</span>
+          </button>
+        </div>
+
+        <!-- AI 解析完成后的表格校对 -->
+        <div class="table-container">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin: 18px 0 10px;">
+            <strong style="font-size: 14px; color: var(--emerald);">✅ AI 解析草稿 (已生成 5 词，可在入库前手动微调)：</strong>
+            <button class="btn-secondary" style="border-color: var(--emerald); color: var(--emerald);" onclick="showToast('🎉 词单已成功入库并同步至离线数据库！')">
+              💾 确认保存入库 (Commit to Database)
+            </button>
+          </div>
+
+          <table class="review-table">
+            <thead>
+              <tr>
+                <th style="width: 120px;">单词</th>
+                <th style="width: 110px;">音标</th>
+                <th style="width: 130px;">核心释义</th>
+                <th>生动语境例句</th>
+                <th style="width: 130px;">反义词</th>
+                <th style="width: 150px;">词根/构词</th>
+                <th style="width: 160px;">词源故事</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><input class="editable-input" value="curious" /></td>
+                <td><input class="editable-input" value="/ˈkjʊəriəs/" /></td>
+                <td><input class="editable-input" value="好奇的" /></td>
+                <td><input class="editable-input" value="The curious kitten pressed the red button." /></td>
+                <td><input class="editable-input" value="indifferent" /></td>
+                <td><input class="editable-input" value="cur- (关心) + -ious" /></td>
+                <td><input class="editable-input" value="来自拉丁语 cura (照料)" /></td>
+              </tr>
+              <tr>
+                <td><input class="editable-input" value="ancient" /></td>
+                <td><input class="editable-input" value="/ˈeɪnʃənt/" /></td>
+                <td><input class="editable-input" value="古老的" /></td>
+                <td><input class="editable-input" value="We discovered an ancient golden dragon coin." /></td>
+                <td><input class="editable-input" value="modern, fresh" /></td>
+                <td><input class="editable-input" value="ante- (前面、早先)" /></td>
+                <td><input class="editable-input" value="源自拉丁语 ante 前方的时光" /></td>
+              </tr>
+              <tr>
+                <td><input class="editable-input" value="resilient" /></td>
+                <td><input class="editable-input" value="/rɪˈzɪliənt/" /></td>
+                <td><input class="editable-input" value="有韧性的" /></td>
+                <td><input class="editable-input" value="The little rubber ball is super resilient." /></td>
+                <td><input class="editable-input" value="fragile, weak" /></td>
+                <td><input class="editable-input" value="re- (回) + salire (跳跃)" /></td>
+                <td><input class="editable-input" value="字面意为‘反弹跳回’" /></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+
+  </main>
+
+  <div class="toast" id="toast"></div>
+
+  <script>
+    // Audio Speech Synthesis
+    function playAudio(word) {
+      if ('speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+        const utter = new SpeechSynthesisUtterance(word);
+        utter.lang = 'en-US';
+        utter.rate = 0.9;
+        window.speechSynthesis.speak(utter);
+        showToast(`🔊 播放发音: "${word}"`);
+      } else {
+        showToast(`🔊 [模拟音频] 发音: "${word}"`);
+      }
+    }
+
+    // Toast utility
+    function showToast(msg) {
+      const t = document.getElementById('toast');
+      t.textContent = msg;
+      t.classList.add('show');
+      clearTimeout(window._t);
+      window._t = setTimeout(() => t.classList.remove('show'), 2000);
+    }
+
+    // Switch between Student and Admin
+    function switchMainView(view) {
+      document.getElementById('view-student').style.display = view === 'student' ? 'block' : 'none';
+      document.getElementById('view-admin').style.display = view === 'admin' ? 'block' : 'none';
+      document.getElementById('btn-view-student').classList.toggle('active', view === 'student');
+      document.getElementById('btn-view-admin').classList.toggle('active', view === 'admin');
+      showToast(view === 'student' ? '切换至学员 iPad 交互视口' : '切换至 Admin 导入与管理后台');
+    }
+
+    // Switch Sub Modes in Student View
+    function switchSubMode(mode, btn) {
+      document.querySelectorAll('.sub-tab-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      document.querySelectorAll('.mode-panel').forEach(p => p.classList.remove('active'));
+      document.getElementById('panel-' + mode).classList.add('active');
+    }
+
+    // Handle Option Pick in Games
+    function handlePick(btn, isCorrect) {
+      if (isCorrect) {
+        btn.classList.add('correct');
+        showToast('🎯 正确！Combo +1, 奖励 +20 金币');
+        playAudio('Correct');
+      } else {
+        btn.classList.add('wrong');
+        showToast('❌ 选错了，记录进错题本，稍后复习！');
+      }
+    }
+
+    // Handle Spelling input
+    function handleSpellingInput(input) {
+      const val = input.value.trim().toLowerCase();
+      const target = 'ancient';
+      const slots = document.querySelectorAll('.spelling-slots .letter-slot');
+      for (let i = 0; i < slots.length; i++) {
+        if (i < val.length) {
+          slots[i].textContent = val[i];
+          slots[i].classList.add('filled');
+        } else {
+          slots[i].textContent = '_';
+          slots[i].classList.remove('filled');
+        }
+      }
+      if (val === target) {
+        showToast('🎉 拼写完全正确！全字母通关！');
+        playAudio('ancient');
+      }
+    }
+
+    // AI Enrichment simulation
+    function runAiEnrichment() {
+      showToast('🤖 AI 正在调用 Gemini 深度解析例句、词源与词根...');
+      setTimeout(() => {
+        showToast('✨ AI 解析生成完毕！请在下方表格复核后入库');
+      }, 1000);
+    }
+
+    function prevWord() {
+      showToast('切换到上一个单词');
+    }
+    function nextWord() {
+      showToast('切换到下一个单词: "ancient"');
+      document.getElementById('learn-word').textContent = 'ancient';
+      document.getElementById('learn-phonetic').textContent = '/ˈeɪnʃənt/';
+      playAudio('ancient');
+    }
+  </script>
+</body>
+</html>

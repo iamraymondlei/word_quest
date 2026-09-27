@@ -1,5 +1,7 @@
 # HTTP API
 
+歌曲管理还提供 `POST /api/songs/:id/translate`：将 LRC 句子和目标单词发送到内部 `ai_agent`，生成并缓存整句中文、中文释义、音标和例句。请求体可选 `sentences`、`words`、`model`、`cli`；省略时使用歌曲当前内容。`ai_agent` 对应接口为 `POST /translate-song`。
+
 ## 1. 通用约定
 
 - 后端基础路径为 `/api`，返回 JSON；CSV 导出除外。
@@ -91,6 +93,19 @@
 | GET | `/api/illustrations/:filename` | 从 MinIO 代理故事插图，并返回长期缓存响应头 |
 | GET | `/api/roadmap` | 返回项目路线图任务；空表时写入并返回代码内置种子 |
 | PUT | `/api/roadmap/:id` | 更新路线图任务状态、优先级、说明等可编辑字段 |
+
+### 歌曲歌词学习
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| GET | `/api/songs` | 返回歌曲、歌词来源、状态和解析后的句子区间 |
+| POST | `/api/songs` | 以 `multipart/form-data` 上传 MP3；可附带 LRC，缺省时后端用歌曲元数据查询 LRCLIB，并返回候选版本 |
+| GET | `/api/songs/:id` | 返回单首歌曲及其歌词句子 |
+| PUT | `/api/songs/:id` | 保存管理员确认后的歌曲元数据、LRC 和句子边界 |
+| DELETE | `/api/songs/:id` | 删除歌曲记录及上传的 MP3 |
+| GET | `/api/songs/audio/:filename` | 流式播放受控的 MP3 文件 |
+
+`POST /api/songs` 的 `audio` 最大 25 MB；`title`、`artist`、`duration` 必填，`album`、`target_words` 和 `lrc`/`lrc_text` 可选。返回的 `syncedLyrics` 会被解析为 `segments`，没有精确匹配时由管理员选择候选或上传自有 LRC。`POST /api/songs/parse-lrc` 可预览解析结果。
 
 ## 3. AI service API
 

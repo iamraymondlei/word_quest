@@ -14,6 +14,7 @@ import groupRoutes from './routes/groupRoutes';
 import settingRoutes from './routes/settingRoutes';
 import illustrationRoutes from './routes/illustrationRoutes';
 import roadmapRoutes from './routes/roadmapRoutes';
+import songRoutes from './routes/songRoutes';
 import { DEFAULT_GAME_SETTINGS } from './controllers/settingController';
 
 const app = express();
@@ -157,6 +158,43 @@ export async function initializeDatabaseSchema() {
     `);
     console.log('Migration: Ensured project_roadmap_tasks table');
 
+    // 11. Ensure song learning content table exists
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS songs (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        title VARCHAR(200) NOT NULL,
+        artist VARCHAR(200) NOT NULL,
+        album VARCHAR(200) DEFAULT '',
+        duration_seconds DECIMAL(10,3) NULL,
+        audio_url VARCHAR(500) NOT NULL,
+        lrc_text MEDIUMTEXT NULL,
+        lrc_source VARCHAR(50) NULL,
+        lrclib_id INT NULL,
+        match_duration_seconds DECIMAL(10,3) NULL,
+        status VARCHAR(30) NOT NULL DEFAULT 'NEEDS_LYRICS',
+        segments_json JSON NULL,
+        translation_json JSON NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        INDEX idx_songs_title_artist (title, artist)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `);
+    const [songTargetWordCols]: any = await pool.query(
+      "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'songs' AND COLUMN_NAME = 'target_words_json'"
+    );
+    if (songTargetWordCols.length === 0) {
+      await pool.query('ALTER TABLE songs ADD COLUMN target_words_json JSON NULL');
+      console.log('Migration: Added target_words_json column to songs table');
+    }
+    const [songTranslationCols]: any = await pool.query(
+      "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'songs' AND COLUMN_NAME = 'translation_json'"
+    );
+    if (songTranslationCols.length === 0) {
+      await pool.query('ALTER TABLE songs ADD COLUMN translation_json JSON NULL');
+      console.log('Migration: Added translation_json column to songs table');
+    }
+    console.log('Migration: Ensured songs table');
+
     // Recalculate historical stars based on completed subtasks
     const { recalculateAllUsersStars } = await import('./controllers/progressController');
     await recalculateAllUsersStars();
@@ -202,6 +240,7 @@ app.use('/api/game-settings', settingRoutes);
 app.use('/api/versions', versionRoutes);
 app.use('/api/illustrations', illustrationRoutes);
 app.use('/api/roadmap', roadmapRoutes);
+app.use('/api/songs', songRoutes);
 
 import multer from 'multer';
 
@@ -264,6 +303,3 @@ process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 
 export { app };
 export default app;
-
-
-

@@ -15,6 +15,7 @@ export interface SyncAction {
 }
 
 export interface OfflineMetadata {
+  userId?: number;
   lastSyncTime: number;
   storyCount: number;
   wordCount: number;
@@ -187,19 +188,6 @@ class OfflineStorageEngine {
           data: island,
         });
       }
-
-      // Also update metadata
-      let totalWords = 0;
-      islands.forEach((i) => {
-        if (i.words && Array.isArray(i.words)) {
-          totalWords += i.words.length;
-        }
-      });
-      await this.saveMetadata({
-        lastSyncTime: Date.now(),
-        storyCount: islands.length,
-        wordCount: totalWords,
-      });
 
       // Simple backup in localStorage for quick synchronous check
       try {

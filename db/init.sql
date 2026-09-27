@@ -75,6 +75,26 @@ CREATE TABLE IF NOT EXISTS version_history (
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE IF NOT EXISTS songs (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  title VARCHAR(200) NOT NULL,
+  artist VARCHAR(200) NOT NULL,
+  album VARCHAR(200) DEFAULT '',
+  duration_seconds DECIMAL(10,3) NULL,
+  audio_url VARCHAR(500) NOT NULL,
+  lrc_text MEDIUMTEXT NULL,
+  lrc_source VARCHAR(50) NULL,
+  lrclib_id INT NULL,
+  match_duration_seconds DECIMAL(10,3) NULL,
+  status VARCHAR(30) NOT NULL DEFAULT 'NEEDS_LYRICS',
+  segments_json JSON NULL,
+  target_words_json JSON NULL,
+  translation_json JSON NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX idx_songs_title_artist (title, artist)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 INSERT INTO version_history (version, release_date, features) VALUES
 ('v1.0.0', '2026-07-11', '["Core WordQuest system architecture with User Profiles, Star Map Navigation, and 3 gameplay terminals.", "Passage Decryption: hover translation tooltips with TTS speaker feedback.", "Acoustic Dictation: listening write-up challenges.", "Matrix Hack: space matrix falling speed typing game.", "Database schema for progress tracking and vocabulary records."]'),
 ('v1.1.0', '2026-07-18', '["Upgraded to Tailwind CSS v4.0 and customized global futuristic style theme.", "Refactored login portal (UserSelect) to futuristic theme with user card profiles and avatar selection.", "Refactored Star Map (AdventureMap) to dark neon capsules with orbital traces.", "Refactored Admin Console (ParentDashboard) with Gemini AI Multimodal Synthesis Engine (picture build) and CSV bulk imports.", "Decoupled local dev ports (5174/8010/8020) and production Docker ports (5173/8000/8080) to support concurrent execution."]'),

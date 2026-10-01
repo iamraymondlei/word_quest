@@ -39,6 +39,7 @@ export interface Song {
   segments: SongSegment[];
   targetWords: string[];
   translations: { sentences: Array<{ en: string; zh: string }>; words: Array<{ word: string; meaning: string; phonetic?: string; example?: string }> } | null;
+  assigned_user_ids?: number[];
 }
 
 class ApiService {
@@ -305,11 +306,23 @@ class ApiService {
     );
   }
 
-  async getSongs(): Promise<Song[]> {
+  async getSongs(userId?: number): Promise<Song[]> {
     if (isForcedOffline()) throw new Error('歌曲尚未支持离线播放，请切换到在线模式。');
-    const response = await fetch('/api/songs');
+    const url = userId ? `/api/songs?user_id=${userId}` : '/api/songs';
+    const response = await fetch(url);
     if (!response.ok) throw new Error('无法加载歌曲列表');
     return response.json();
+  }
+
+  async updateSongAccess(songId: number, userIds: number[]): Promise<{ song_id: number; assigned_user_ids: number[] }> {
+    const response = await fetch(`/api/songs/${songId}/access`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user_ids: userIds }),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || '更新歌曲归属用户失败');
+    return data;
   }
 
   async uploadSong(formData: FormData): Promise<{ song: Song; candidates: Array<Record<string, unknown>> }> {
@@ -377,6 +390,24 @@ class ApiService {
       if (settingsRes.ok) {
         const settings = await settingsRes.json();
         await offlineStorage.saveCachedSettings(settings);
+      }
+
+      // 4. Fetch and cache word books & vocabulary words
+      try {
+        const booksRes = await fetch(`/api/word-books?userId=${userId}`);
+        if (booksRes.ok) {
+          const books = await booksRes.json();
+          await offlineStorage.saveCachedWordBooks(books);
+          for (const b of books) {
+            const wordsRes = await fetch(`/api/word-books/${b.id}/words?userId=${userId}`);
+            if (wordsRes.ok) {
+              const bWords = await wordsRes.json();
+              await offlineStorage.saveCachedBookWords(b.id, bWords);
+            }
+          }
+        }
+      } catch (vocabErr) {
+        console.warn('Non-fatal: failed to download word books offline package:', vocabErr);
       }
 
       let totalWords = 0;
@@ -491,6 +522,13 @@ class ApiService {
               body: JSON.stringify(action.payload),
             });
             ok = res.ok;
+          } else if (action.type === 'vocab_progress') {
+            const res = await fetch(`/api/vocabulary-words/${action.payload.vocabId}/progress`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(action.payload),
+            });
+            ok = res.ok;
           }
 
           if (ok && action.id !== undefined) {
@@ -515,6 +553,223 @@ class ApiService {
       syncedCount: successfulIds.length,
       remainingCount: remaining.length,
     };
+  }
+
+  // ── Word Books & Vocabulary Lab ───────────────────────────────────────
+  async getWordBooks(userId?: number): Promise<any[]> {
+    if (isForcedOffline()) {
+      return offlineStorage.getCachedWordBooks();
+    }
+    try {
+      const url = userId ? `/api/word-books?userId=${userId}` : '/api/word-books';
+      const res = await fetch(url);
+      if (res.ok) {
+        const data = await res.json();
+        await offlineStorage.saveCachedWordBooks(data);
+        return data;
+      }
+    } catch (e) {
+      console.warn('Failed to fetch word books from network, falling back to cache:', e);
+    }
+    return offlineStorage.getCachedWordBooks();
+  }
+
+  async createWordBook(data: { category?: string; title: string; description?: string; tags?: string; sort_order?: number; user_ids?: number[] }): Promise<any> {
+    const res = await fetch('/api/word-books', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to create word book');
+    }
+    return res.json();
+  }
+
+  async updateWordBook(id: number, data: { category?: string; title?: string; description?: string; tags?: string; sort_order?: number; user_ids?: number[] }): Promise<any> {
+    const res = await fetch(`/api/word-books/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to update word book');
+    }
+    return res.json();
+  }
+
+  async getWordBookAccess(bookId: number): Promise<number[]> {
+    const res = await fetch(`/api/word-books/${bookId}/access`);
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to fetch word book access');
+    }
+    const data = await res.json();
+    return data.user_ids || [];
+  }
+
+  async updateWordBookAccess(bookId: number, userIds: number[]): Promise<any> {
+    const res = await fetch(`/api/word-books/${bookId}/access`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user_ids: userIds })
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to update word book access');
+    }
+    return res.json();
+  }
+
+  async deleteWordBook(id: number): Promise<any> {
+    const res = await fetch(`/api/word-books/${id}`, { method: 'DELETE' });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to delete word book');
+    }
+    return res.json();
+  }
+
+  async getBookWords(bookId: number, userId?: number): Promise<any[]> {
+    if (isForcedOffline()) {
+      return offlineStorage.getCachedBookWords(bookId);
+    }
+    try {
+      const url = userId ? `/api/word-books/${bookId}/words?userId=${userId}` : `/api/word-books/${bookId}/words`;
+      const res = await fetch(url);
+      if (res.ok) {
+        const data = await res.json();
+        await offlineStorage.saveCachedBookWords(bookId, data);
+        return data;
+      }
+    } catch (e) {
+      console.warn('Failed to fetch book words from network, falling back to cache:', e);
+    }
+    return offlineStorage.getCachedBookWords(bookId);
+  }
+
+  async addWordsToBook(bookId: number, words: any[]): Promise<any> {
+    const res = await fetch(`/api/word-books/${bookId}/words`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ words })
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to import words');
+    }
+    return res.json();
+  }
+
+  async updateVocabularyWord(id: number, data: any): Promise<any> {
+    const res = await fetch(`/api/vocabulary-words/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to update word');
+    }
+    return res.json();
+  }
+
+  async deleteVocabularyWord(id: number): Promise<any> {
+    const res = await fetch(`/api/vocabulary-words/${id}`, { method: 'DELETE' });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to delete word');
+    }
+    return res.json();
+  }
+
+  async batchMoveVocabularyWords(wordIds: number[], targetBookId: number): Promise<any> {
+    const res = await fetch('/api/vocabulary-words/batch-move', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ word_ids: wordIds, target_book_id: targetBookId })
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to batch move words');
+    }
+    return res.json();
+  }
+
+  async batchDeleteVocabularyWords(wordIds: number[]): Promise<any> {
+    const res = await fetch('/api/vocabulary-words/batch-delete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ word_ids: wordIds })
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to batch delete words');
+    }
+    return res.json();
+  }
+
+  async recordVocabularyProgress(vocabId: number, userId: number, mode: 'reading' | 'listening' | 'spelling', passed: boolean): Promise<any> {
+    // 1. Update offline cache immediately
+    await offlineStorage.updateCachedWordProgress(vocabId, mode, passed);
+
+    // 2. If offline, enqueue action
+    if (isForcedOffline()) {
+      await offlineStorage.enqueueSyncAction({
+        type: 'vocab_progress',
+        payload: { vocabId, userId, mode, passed }
+      });
+      return {
+        success: true,
+        offline: true,
+        vocab_id: vocabId,
+        user_id: userId,
+        mode,
+        passed
+      };
+    }
+
+    // 3. If online, send directly
+    try {
+      const res = await fetch(`/api/vocabulary-words/${vocabId}/progress`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId, mode, passed })
+      });
+      if (res.ok) {
+        return res.json();
+      }
+    } catch (e) {
+      console.warn('Failed to record word progress online, enqueuing for offline sync:', e);
+    }
+
+    await offlineStorage.enqueueSyncAction({
+      type: 'vocab_progress',
+      payload: { vocabId, userId, mode, passed }
+    });
+    return {
+      success: true,
+      offline: true,
+      vocab_id: vocabId,
+      user_id: userId,
+      mode,
+      passed
+    };
+  }
+
+  async aiEnrichWords(words: string[], model?: string, cli?: string): Promise<any> {
+    const res = await fetch('/api/word-books/ai-enrich', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ words, model, cli })
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to enrich words via AI');
+    }
+    return res.json();
   }
 }
 

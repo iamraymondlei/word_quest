@@ -13,6 +13,7 @@ import {
 import { StoryIllustration } from './StoryIllustration';
 import { ProjectRoadmap } from './ProjectRoadmap';
 import { SongManager } from './SongManager';
+import { WordBankManager } from './WordBankManager';
 import './ParentDashboard.css';
 
 export interface WordItem {
@@ -201,7 +202,7 @@ export const ParentDashboard: React.FC<Props> = ({ onBack }) => {
   const [aiStatus, setAiStatus] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   // Tab & User & Group Management States
-  const [activeTab, setActiveTab] = useState<'users' | 'stories' | 'groups' | 'songs' | 'ai_import' | 'game_settings' | 'roadmap'>('stories');
+  const [activeTab, setActiveTab] = useState<'users' | 'stories' | 'groups' | 'songs' | 'word_books' | 'ai_import' | 'game_settings' | 'roadmap'>('stories');
   const [isEditingStory, setIsEditingStory] = useState<boolean>(false);
   const [storySearchQuery, setStorySearchQuery] = useState<string>('');
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(() => {
@@ -1171,6 +1172,26 @@ export const ParentDashboard: React.FC<Props> = ({ onBack }) => {
               )}
             </button>
 
+            {/* Nav: 单词宝库与导入 */}
+            <button
+              type="button"
+              onClick={() => { setActiveTab('word_books'); setIsEditingStory(false); }}
+              className={`admin-nav-item w-full p-2.5 rounded-xl border flex items-center gap-3 cursor-pointer text-left ${
+                activeTab === 'word_books' && !isEditingStory
+                  ? 'active'
+                  : 'bg-slate-900/40 border-transparent text-slate-400 hover:text-slate-200'
+              }`}
+              title="单词宝库与导入 (WORD BANK & AI)"
+            >
+              <span className="text-lg shrink-0">📚</span>
+              {!isSidebarCollapsed && (
+                <div className="min-w-0">
+                  <div className="text-xs font-bold font-mono tracking-wide truncate">单词宝库</div>
+                  <div className="text-[10px] text-slate-500 font-mono truncate">Word Bank & AI Lab</div>
+                </div>
+              )}
+            </button>
+
             {/* Nav 5: AI 绘本导入 */}
             <button
               type="button"
@@ -1261,6 +1282,7 @@ export const ParentDashboard: React.FC<Props> = ({ onBack }) => {
                   {activeTab === 'stories' && '📚 故事关卡库 (STORY & SECTOR LIBRARY)'}
                   {activeTab === 'groups' && '📁 故事分组管理 (STORY GROUPS DIRECTORY)'}
                   {activeTab === 'songs' && '🎵 歌曲歌词学习管理 (SONG LEARNING LIBRARY)'}
+                  {activeTab === 'word_books' && '📚 单词宝库与生词导入 (WORD BANK & AI LAB)'}
                   {activeTab === 'ai_import' && '🤖 AI 智能绘本导入工作室 (AI SYNTHESIS STUDIO)'}
                   {activeTab === 'game_settings' && '🎮 游戏玩法与难度参数配置 (GAME SETTINGS)'}
                   {activeTab === 'roadmap' && '📋 任务与改动追踪看板 (PROJECT ROADMAP & CHANGELOG)'}
@@ -1270,6 +1292,7 @@ export const ParentDashboard: React.FC<Props> = ({ onBack }) => {
                   {activeTab === 'stories' && '管理全站英语故事关卡，支持独立多功能故事编辑器'}
                   {activeTab === 'groups' && '管理故事所属分类与关卡分组，支持增删改查及故事自动归并'}
                   {activeTab === 'songs' && '上传 MP3，通过 LRCLIB 匹配同步歌词，确认版本并校对逐句播放边界'}
+                  {activeTab === 'word_books' && '维护独立词单体系，支持多行生词批量粘贴与 AI 自动解析例句/反义词/词根/词源'}
                   {activeTab === 'ai_import' && '通过 Agent CLI 与多模态大模型一键提取绘本中英文与问答'}
                   {activeTab === 'game_settings' && '调整 Story Chase 打字追逐游戏的怪兽移动速度、退后距离、等待冷却时间及可用怪兽 Emoji 池'}
                   {activeTab === 'roadmap' && '追踪全站各版本技术演进、已上线改动步骤、涉及代码文件与待开发规划'}
@@ -1301,9 +1324,14 @@ export const ParentDashboard: React.FC<Props> = ({ onBack }) => {
           </div>
         )}
 
-      {/* View 0: 👥 Player & User Accounts Management */}
+      {/* View: 🎵 Song Learning Management */}
       {activeTab === 'songs' && !isEditingStory && (
         <SongManager />
+      )}
+
+      {/* View: 📚 Word Bank Management */}
+      {activeTab === 'word_books' && !isEditingStory && (
+        <WordBankManager />
       )}
 
       {/* View 1: 👥 Player & User Accounts Management */}

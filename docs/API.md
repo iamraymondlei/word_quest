@@ -97,15 +97,39 @@
 ### 歌曲歌词学习
 
 | 方法 | 路径 | 说明 |
+| 方法 | 路径 | 说明 |
 |---|---|---|
-| GET | `/api/songs` | 返回歌曲、歌词来源、状态和解析后的句子区间 |
-| POST | `/api/songs` | 以 `multipart/form-data` 上传 MP3；可附带 LRC，缺省时后端用歌曲元数据查询 LRCLIB，并返回候选版本 |
-| GET | `/api/songs/:id` | 返回单首歌曲及其歌词句子 |
-| PUT | `/api/songs/:id` | 保存管理员确认后的歌曲元数据、LRC 和句子边界 |
-| DELETE | `/api/songs/:id` | 删除歌曲记录及上传的 MP3 |
+| GET | `/api/songs` | 返回歌曲列表、歌词来源、状态、解析后的句子区间及 `assigned_user_ids`；支持 `?user_id=...` 过滤（普通学员仅可见已授权或公开歌曲，管理员可见全量） |
+| POST | `/api/songs` | 以 `multipart/form-data` 上传 MP3；可附带 LRC，缺省时后端用歌曲元数据查询 LRCLIB，并返回候选版本；支持 `user_ids` 初始分配 |
+| GET | `/api/songs/:id` | 返回单首歌曲及其歌词句子与 `assigned_user_ids` |
+| PUT | `/api/songs/:id` | 保存管理员确认后的歌曲元数据、LRC、句子边界与分配学员 |
+| DELETE | `/api/songs/:id` | 删除歌曲记录、上传的 MP3 及其学员权限关联记录 |
+| GET | `/api/songs/:id/access` | 获取该歌曲的授权学员列表 `{ song_id, assigned_user_ids: number[] }` |
+| PUT | `/api/songs/:id/access` | 更新该歌曲的授权学员列表 `{ user_ids: number[] }`（空数组表示向全员公开） |
 | GET | `/api/songs/audio/:filename` | 流式播放受控的 MP3 文件 |
 
-`POST /api/songs` 的 `audio` 最大 25 MB；`title`、`artist`、`duration` 必填，`album`、`target_words` 和 `lrc`/`lrc_text` 可选。返回的 `syncedLyrics` 会被解析为 `segments`，没有精确匹配时由管理员选择候选或上传自有 LRC。`POST /api/songs/parse-lrc` 可预览解析结果。
+`POST /api/songs` 的 `audio` 最大 25 MB；`title`、`artist`、`duration` 必填，`album`、`target_words`、`user_ids` 和 `lrc`/`lrc_text` 可选。返回的 `syncedLyrics` 会被解析为 `segments`，没有精确匹配时由管理员选择候选或上传自有 LRC。`POST /api/songs/parse-lrc` 可预览解析结果。
+
+### 单词宝库与独立词汇库 (Phase 9)
+
+| 方法 | 路径 | 主要输入 | 说明 |
+|---|---|---|---|
+| GET | `/api/word-books` | Query: `userId?` | 获取词单列表（含单词数量、已关联用户 ID 列表 `assigned_user_ids`；普通学员过滤仅可见授权章节或公开章节，管理员可见全部） |
+| POST | `/api/word-books` | `{ category?, title, description?, tags?, sort_order?, user_ids? }` | 创建新词单章节，支持指定书本系列分类与初始归属学员 |
+| GET | `/api/word-books/:id` | 路径 ID | 获取指定词单详情 |
+| PUT | `/api/word-books/:id` | `{ category?, title?, description?, tags?, sort_order?, user_ids? }` | 更新词单元数据及归属学员权限 |
+| DELETE | `/api/word-books/:id` | 路径 ID | 删除词单及其所有单词、学员学习进度与学员权限关联 |
+| GET | `/api/word-books/:id/access` | 路径 ID | 获取该词单章节的归属学员 ID 列表 `{ book_id, user_ids: number[] }` |
+| PUT | `/api/word-books/:id/access` | `{ user_ids: number[] }` | 更新词单章节的归属学员权限列表（空数组表示向全体公开） |
+| GET | `/api/word-books/:id/words` | 路径 ID, Query: `userId?` | 获取该词单下所有单词及生动趣味扩展详情 |
+| POST | `/api/word-books/:id/words` | `{ words: [...] }` | 批量保存/导入词单下的单词集合 |
+| PUT | `/api/vocabulary-words/:id` | `{ book_id?, word?, phonetic?, translation?, fun_sentences?, ... }` | 更新单个单词信息，支持修改所属章节 `book_id` 实现单词换章节 |
+| DELETE | `/api/vocabulary-words/:id` | 路径 ID | 从词单中删除单个单词及其学员练习进度 |
+| POST | `/api/vocabulary-words/batch-move` | `{ word_ids: number[], target_book_id: number }` | 批量调整单词所属章节，自动迁移到目标章节并保留学员发音/拼写进度 |
+| POST | `/api/vocabulary-words/batch-delete` | `{ word_ids: number[] }` | 批量删除单词及其学员练习进度 |
+| GET | `/api/word-books/:id/offline-package` | 路径 ID | 离线包下载端点（包含词单元数据与全量单词，前端存入 IndexedDB 供 PWA 离线使用） |
+| POST | `/api/vocabulary-words/:id/progress` | `{ userId, mode, passed }` | 上报学员在特定模式（`reading` / `listening` / `spelling`）下的答题结果与掌握度 |
+| POST | `/api/word-books/enrich-words` | `{ words: string[], model?, cli? }` | 调用内部 AI Agent 对生词列表进行儿童化扩展（音标、生动例句、反义词、同义词、词根、趣味词源） |
 
 ## 3. AI service API
 
@@ -115,6 +139,7 @@
 | GET | `/health` | 返回服务状态、默认模型和 parser 是否就绪 |
 | GET | `/models?cli=agy\|codex` | 返回指定 CLI 的模型列表和默认模型 |
 | POST | `/parse` | 解析绘本图片并返回 `APIResponse` |
+| POST | `/enrich-vocabulary` | 对单词列表进行批量儿童化趣味扩展，返回结构化 JSON（释义、音标、趣味例句、反义词、同义词、词根拆解、趣味词源故事） |
 
 `/parse` 表单字段：
 

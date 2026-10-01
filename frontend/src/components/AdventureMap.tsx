@@ -9,6 +9,7 @@ import {
   normalizeBuddyKey,
   RunnerSprite
 } from './StoryChaseAssets';
+import { WordBankMap } from './WordBankMap';
 
 export interface Island {
   id: number;
@@ -40,6 +41,8 @@ interface AdventureMapProps {
   onStartGame: (island: Island, mode: 'story' | 'listening' | 'translation' | 'falling') => void;
   onLogout: () => void;
   onUpdateUser?: (updatedUser: any) => void;
+  onOpenWordBank?: () => void;
+  onOpenSongs?: () => void;
 }
 
 export const AdventureMap: React.FC<AdventureMapProps> = ({
@@ -51,9 +54,12 @@ export const AdventureMap: React.FC<AdventureMapProps> = ({
   onFontScaleChange,
   onStartGame,
   onLogout,
-  onUpdateUser
+  onUpdateUser,
+  onOpenWordBank,
+  onOpenSongs
 }) => {
   const [isBuddyModalOpen, setIsBuddyModalOpen] = useState(false);
+  const [isWordBankModalOpen, setIsWordBankModalOpen] = useState(false);
   const [savingBuddy, setSavingBuddy] = useState(false);
 
   const currentBuddy = useMemo(() => {
@@ -222,6 +228,21 @@ export const AdventureMap: React.FC<AdventureMapProps> = ({
     return displayedIslands[0]?.id;
   }, [displayedIslands]);
 
+  if (isWordBankModalOpen) {
+    return (
+      <WordBankMap
+        currentUser={currentUser}
+        theme={theme}
+        fontScale={fontScale}
+        onThemeChange={onThemeChange}
+        onFontScaleChange={onFontScaleChange}
+        onBackToStories={() => setIsWordBankModalOpen(false)}
+        onLogout={onLogout}
+        onUpdateUser={onUpdateUser}
+      />
+    );
+  }
+
   return (
     <div className="min-h-screen w-full theme-bg theme-text font-mono p-4 sm:p-6 transition-colors duration-300">
       {/* Redesigned Modern Adventure Command Bar */}
@@ -274,6 +295,36 @@ export const AdventureMap: React.FC<AdventureMapProps> = ({
               <span>👤</span>
               <span className="hidden sm:inline">切换档案</span>
             </button>
+
+            {/* Word Bank & Exploration Lab Button */}
+            <button
+              type="button"
+              onClick={() => {
+                if (onOpenWordBank) {
+                  onOpenWordBank();
+                } else {
+                  setIsWordBankModalOpen(true);
+                }
+              }}
+              className="px-3.5 py-2 text-xs rounded-xl font-black transition-all cursor-pointer bg-gradient-to-r from-cyan-600/30 to-indigo-600/30 hover:from-cyan-600/50 hover:to-indigo-600/50 border border-cyan-400/50 text-cyan-300 hover:text-white flex items-center gap-1.5 font-mono shadow-md active:scale-95 shrink-0"
+              title="打开单词宝库与章节关卡 (学单词、看句选义、听音拼写)"
+            >
+              <span className="text-sm">📚</span>
+              <span>单词宝库</span>
+            </button>
+
+            {/* Song Adventure Map Button */}
+            {onOpenSongs && (
+              <button
+                type="button"
+                onClick={onOpenSongs}
+                className="px-3.5 py-2 text-xs rounded-xl font-black transition-all cursor-pointer bg-gradient-to-r from-purple-600/30 to-pink-600/30 hover:from-purple-600/50 hover:to-pink-600/50 border border-purple-400/50 text-purple-300 hover:text-white flex items-center gap-1.5 font-mono shadow-md active:scale-95 shrink-0"
+                title="进入歌曲乐园探险 (原声儿歌学唱与律动)"
+              >
+                <span className="text-sm">🎵</span>
+                <span>歌曲乐园</span>
+              </button>
+            )}
           </div>
 
           {/* Center: Treasury & Stars Mastery Stats */}

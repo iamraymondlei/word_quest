@@ -4,12 +4,14 @@ import './SongLearning.css';
 
 interface Props {
   songId?: number;
+  userId?: number;
+  isAdmin?: boolean;
   onBack?: () => void;
 }
 
 const formatTime = (seconds: number) => `${Math.floor(seconds / 60)}:${String(Math.floor(seconds % 60)).padStart(2, '0')}`;
 
-export const SongLearning: React.FC<Props> = ({ songId, onBack }) => {
+export const SongLearning: React.FC<Props> = ({ songId, userId, isAdmin, onBack }) => {
   const [songs, setSongs] = useState<Song[]>([]);
   const [selectedSong, setSelectedSong] = useState<Song | null>(null);
   const [activeSegment, setActiveSegment] = useState<number>(-1);
@@ -26,14 +28,14 @@ export const SongLearning: React.FC<Props> = ({ songId, onBack }) => {
 
   useEffect(() => {
     let cancelled = false;
-    apiService.getSongs().then((items) => {
+    apiService.getSongs(userId).then((items) => {
       if (cancelled) return;
       setSongs(items.filter((item) => item.status === 'READY' && item.segments.length > 0));
       const initial = songId ? items.find((item) => item.id === songId) : items[0];
       setSelectedSong(initial || null);
     }).catch((err) => !cancelled && setError(err.message)).finally(() => !cancelled && setLoading(false));
     return () => { cancelled = true; };
-  }, [songId]);
+  }, [songId, userId]);
 
   useEffect(() => {
     const audio = audioRef.current;
@@ -124,10 +126,27 @@ export const SongLearning: React.FC<Props> = ({ songId, onBack }) => {
     <div className="song-lab">
       <main className="song-shell">
         <header className="song-topbar">
-          <button type="button" onClick={onBack} className="song-brand" aria-label="返回管理后台"><span className="song-brand-mark">♫</span><span>WORDQUEST / SONG LAB</span></button>
+          <button type="button" onClick={onBack} className="song-brand" aria-label="返回歌曲乐园">
+            <span className="song-brand-mark">‹</span>
+            <span>返回歌曲乐园 · SONG LAB</span>
+          </button>
           <div className="song-top-actions">
-            {songs.length > 1 && <select value={selectedSong.id} onChange={(event) => { setSelectedSong(songs.find((item) => item.id === Number(event.target.value)) || selectedSong); setActiveSegment(-1); }}><option value={selectedSong.id}>{selectedSong.title}</option>{songs.filter((item) => item.id !== selectedSong.id).map((item) => <option key={item.id} value={item.id}>{item.title} · {item.artist}</option>)}</select>}
-            <span>管理员预览</span><span>原声速度 1.0×</span>
+            {songs.length > 1 && (
+              <select
+                value={selectedSong.id}
+                onChange={(event) => {
+                  setSelectedSong(songs.find((item) => item.id === Number(event.target.value)) || selectedSong);
+                  setActiveSegment(-1);
+                }}
+              >
+                <option value={selectedSong.id}>{selectedSong.title}</option>
+                {songs.filter((item) => item.id !== selectedSong.id).map((item) => (
+                  <option key={item.id} value={item.id}>{item.title} · {item.artist}</option>
+                ))}
+              </select>
+            )}
+            <span>{isAdmin ? '管理员预览' : '🎵 原声乐园'}</span>
+            <span>原声速度 1.0×</span>
           </div>
         </header>
 

@@ -15,6 +15,7 @@ import settingRoutes from './routes/settingRoutes';
 import illustrationRoutes from './routes/illustrationRoutes';
 import roadmapRoutes from './routes/roadmapRoutes';
 import songRoutes from './routes/songRoutes';
+import wordBookRoutes from './routes/wordBookRoutes';
 import { DEFAULT_GAME_SETTINGS } from './controllers/settingController';
 
 const app = express();
@@ -195,6 +196,175 @@ export async function initializeDatabaseSchema() {
     }
     console.log('Migration: Ensured songs table');
 
+    // 11.1 Ensure user_song_access table exists (Song ownership/access)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS user_song_access (
+        user_id INT NOT NULL,
+        song_id INT NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (user_id, song_id),
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+        FOREIGN KEY (song_id) REFERENCES songs(id) ON DELETE CASCADE
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `);
+    console.log('Migration: Ensured user_song_access table');
+
+    // 12. Ensure word_books and vocabulary_words tables exist (Phase 9)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS word_books (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        category VARCHAR(100) NOT NULL DEFAULT 'General',
+        title VARCHAR(200) NOT NULL,
+        description TEXT NULL,
+        tags VARCHAR(255) NULL,
+        sort_order INT DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        INDEX idx_word_books_category (category)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `);
+
+    // Ensure category column exists in existing word_books
+    try {
+      await pool.query("ALTER TABLE word_books ADD COLUMN category VARCHAR(100) NOT NULL DEFAULT 'General' AFTER id, ADD INDEX idx_word_books_category (category)");
+      console.log('Migration: Added category column to word_books');
+    } catch (e: any) {
+      if (!e.message.includes('Duplicate column') && !e.message.includes('already exists')) {
+        // column already exists
+      }
+    }
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS vocabulary_words (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        book_id INT NOT NULL,
+        word VARCHAR(100) NOT NULL,
+        phonetic VARCHAR(100) NULL,
+        translation VARCHAR(255) NOT NULL,
+        fun_sentences_json JSON NULL,
+        antonyms VARCHAR(255) NULL,
+        synonyms VARCHAR(255) NULL,
+        root_affixes TEXT NULL,
+        etymology TEXT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        FOREIGN KEY (book_id) REFERENCES word_books(id) ON DELETE CASCADE,
+        INDEX idx_vocab_book_word (book_id, word)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `);
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS user_vocabulary_progress (
+        user_id INT NOT NULL,
+        vocab_id INT NOT NULL,
+        error_count INT DEFAULT 0,
+        mastered TINYINT(1) DEFAULT 0,
+        reading_passed TINYINT(1) DEFAULT 0,
+        listening_passed TINYINT(1) DEFAULT 0,
+        spelling_passed TINYINT(1) DEFAULT 0,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        PRIMARY KEY (user_id, vocab_id),
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+        FOREIGN KEY (vocab_id) REFERENCES vocabulary_words(id) ON DELETE CASCADE
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `);
+
+    // 13. Ensure user_word_book_access table exists (Word Book ownership)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS user_word_book_access (
+        user_id INT NOT NULL,
+        book_id INT NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (user_id, book_id),
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+        FOREIGN KEY (book_id) REFERENCES word_books(id) ON DELETE CASCADE
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `);
+
+    // Seed initial word book if empty
+    const [bookRows]: any = await pool.query('SELECT COUNT(*) as cnt FROM word_books');
+    if (bookRows[0]?.cnt === 0) {
+      const [insertBookRes]: any = await pool.query(
+        'INSERT INTO word_books (category, title, description, tags, sort_order) VALUES (?, ?, ?, ?, ?)',
+        ['General', 'RAZ Level E 冒险核心词', '精选适读探险词汇，搭配生动生活与奇幻例句、构词拆解及词源故事', 'RAZ,自然拼读,高频词', 1]
+      );
+      const bookId = insertBookRes.insertId;
+
+      const sampleWords = [
+        {
+          word: 'curious',
+          phonetic: '/ˈkjʊəriəs/',
+          translation: '好奇的；奇妙的',
+          fun_sentences_json: JSON.stringify([
+            { en: 'The curious kitten pressed the big red button and vanished!', zh: '那只充满好奇心的小猫按下了大红按钮，然后瞬间消失了！' },
+            { en: 'Scientists are always curious about what aliens eat for breakfast.', zh: '科学家总是对“外星人早餐吃什么”充满好奇。' }
+          ]),
+          antonyms: 'indifferent, unconcerned',
+          synonyms: 'inquisitive, eager to know',
+          root_affixes: 'cur- / cure (关心、在意) + -ious (形容词后缀: 充满...的)',
+          etymology: '来自拉丁语 cura（关怀、照料）。古时候指“对事物极度上心想要探究明白”。'
+        },
+        {
+          word: 'ancient',
+          phonetic: '/ˈeɪnʃənt/',
+          translation: '古老的；古代的',
+          fun_sentences_json: JSON.stringify([
+            { en: 'We discovered an ancient golden dragon coin in the dark cave!', zh: '我们在幽暗的山洞里发现了一枚古老的金龙硬币！' }
+          ]),
+          antonyms: 'modern, fresh',
+          synonyms: 'antique, primitive',
+          root_affixes: 'ante- (前面、早先)',
+          etymology: '源自拉丁语 ante 前方的时光。'
+        },
+        {
+          word: 'resilient',
+          phonetic: '/rɪˈzɪliənt/',
+          translation: '有韧性的；迅速恢复的',
+          fun_sentences_json: JSON.stringify([
+            { en: 'The little rubber ball is super resilient and bounced over the moon!', zh: '那个小橡胶球超有韧性，直接弹过了月亮！' }
+          ]),
+          antonyms: 'fragile, brittle',
+          synonyms: 'flexible, tough',
+          root_affixes: 're- (回) + salire (跳跃)',
+          etymology: '字面意为‘反弹跳回’，形容物体或心态极具韧性。'
+        },
+        {
+          word: 'mysterious',
+          phonetic: '/mɪˈstɪəriəs/',
+          translation: '神秘莫测的；难以理解的',
+          fun_sentences_json: JSON.stringify([
+            { en: 'A mysterious whisper echoed in the foggy forest.', zh: '神秘的低语在迷雾森林中久久回荡。' }
+          ]),
+          antonyms: 'obvious, familiar',
+          synonyms: 'secretive, puzzling',
+          root_affixes: 'mystery (秘密) + -ous (形容词后缀)',
+          etymology: '源于希腊语 mystērion（秘密仪式）。'
+        },
+        {
+          word: 'courageous',
+          phonetic: '/kəˈreɪdʒəs/',
+          translation: '勇敢的；有胆量的',
+          fun_sentences_json: JSON.stringify([
+            { en: 'The courageous knight faced the giant dragon with a wooden spoon!', zh: '勇敢的骑士拿着一把木勺勇敢地面对巨龙！' }
+          ]),
+          antonyms: 'cowardly, fearful',
+          synonyms: 'brave, fearless',
+          root_affixes: 'cour- / cor (心) + -age + -ous',
+          etymology: '古人认为勇气发端自纯粹的心灵（Cor）。'
+        }
+      ];
+
+      for (const w of sampleWords) {
+        await pool.query(
+          `INSERT INTO vocabulary_words (book_id, word, phonetic, translation, fun_sentences_json, antonyms, synonyms, root_affixes, etymology)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [bookId, w.word, w.phonetic, w.translation, w.fun_sentences_json, w.antonyms, w.synonyms, w.root_affixes, w.etymology]
+        );
+      }
+      console.log('Migration: Seeded default word book with sample vocabulary');
+    }
+    console.log('Migration: Ensured word_books and vocabulary_words tables');
+
     // Recalculate historical stars based on completed subtasks
     const { recalculateAllUsersStars } = await import('./controllers/progressController');
     await recalculateAllUsersStars();
@@ -241,6 +411,7 @@ app.use('/api/versions', versionRoutes);
 app.use('/api/illustrations', illustrationRoutes);
 app.use('/api/roadmap', roadmapRoutes);
 app.use('/api/songs', songRoutes);
+app.use('/api', wordBookRoutes);
 
 import multer from 'multer';
 

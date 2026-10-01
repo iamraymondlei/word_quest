@@ -6,9 +6,10 @@ import re
 import shutil
 import tempfile
 import time
+from typing import Any
 
 from app.config import settings
-from app.schemas import DEFAULT_SYSTEM_PROMPT, SongTranslationResult, StoryParseResult
+from app.schemas import DEFAULT_SYSTEM_PROMPT, EnrichedWord, SongTranslationResult, StoryParseResult
 
 logger = logging.getLogger(__name__)
 
@@ -132,8 +133,8 @@ async def get_available_models(cli: str = "agy") -> list[dict]:
     return get_cli_config(cli).get("models", [])
 
 
-def _clean_and_parse_json(out_text: str) -> dict:
-    """Extract, clean, auto-repair, and parse JSON string from LLM / agy / codex CLI output."""
+def _clean_and_parse_json(out_text: str, fallback_to_story: bool = False) -> Any:
+    """Extract, clean, auto-repair, and parse JSON string (object or array) from LLM / agy / codex CLI output."""
     if not out_text:
         raise ValueError("Empty output text from CLI response.")
 
@@ -146,17 +147,26 @@ def _clean_and_parse_json(out_text: str) -> dict:
             b_clean = b.strip()
             if b_clean.startswith("json"):
                 b_clean = b_clean[4:].strip()
-            if "{" in b_clean and "}" in b_clean:
+            if ("{" in b_clean and "}" in b_clean) or ("[" in b_clean and "]" in b_clean):
                 text = b_clean
                 break
 
-    # 2. Extract substring from first '{' to last '}'
-    start_idx = text.find("{")
-    end_idx = text.rfind("}")
-    if start_idx == -1 or end_idx == -1:
-        raise ValueError(f"Could not find valid JSON object boundaries in response text: {out_text[:200]}")
+    # 2. Extract substring from outermost JSON boundary: either '[' ... ']' or '{' ... '}'
+    start_brace = text.find("{")
+    start_bracket = text.find("[")
 
-    json_str = text[start_idx:end_idx + 1]
+    if start_bracket != -1 and (start_brace == -1 or start_bracket < start_brace):
+        end_bracket = text.rfind("]")
+        if end_bracket == -1 or end_bracket < start_bracket:
+            raise ValueError(f"Could not find valid JSON array boundaries in response text: {out_text[:200]}")
+        json_str = text[start_bracket:end_bracket + 1]
+    elif start_brace != -1:
+        end_brace = text.rfind("}")
+        if end_brace == -1 or end_brace < start_brace:
+            raise ValueError(f"Could not find valid JSON object boundaries in response text: {out_text[:200]}")
+        json_str = text[start_brace:end_brace + 1]
+    else:
+        raise ValueError(f"Could not find valid JSON boundaries in response text: {out_text[:200]}")
 
     # Attempt 1: Direct standard JSON loads
     try:
@@ -192,36 +202,38 @@ def _clean_and_parse_json(out_text: str) -> dict:
     except json.JSONDecodeError:
         pass
 
-    # Attempt 5: Fallback regex extraction of en/zh sentence pairs if whole JSON is malformed
-    logger.warning("JSON structure malformed. Attempting fallback regex extraction...")
-    fallback_data = {
-        "title": "Picture Book Story",
-        "theme": "英文绘本故事阅读",
-        "vocabulary": [],
-        "pages": [],
-        "questions": []
-    }
+    # Attempt 5: Fallback regex extraction of en/zh sentence pairs if whole JSON is malformed (ONLY for picture books)
+    if fallback_to_story:
+        logger.warning("JSON structure malformed. Attempting fallback regex extraction...")
+        fallback_data = {
+            "title": "Picture Book Story",
+            "theme": "英文绘本故事阅读",
+            "vocabulary": [],
+            "pages": [],
+            "questions": []
+        }
 
-    title_match = re.search(r'"title"\s*:\s*"([^"]+)"', json_str)
-    if title_match:
-        fallback_data["title"] = title_match.group(1)
+        title_match = re.search(r'"title"\s*:\s*"([^"]+)"', json_str)
+        if title_match:
+            fallback_data["title"] = title_match.group(1)
 
-    theme_match = re.search(r'"theme"\s*:\s*"([^"]+)"', json_str)
-    if theme_match:
-        fallback_data["theme"] = theme_match.group(1)
+        theme_match = re.search(r'"theme"\s*:\s*"([^"]+)"', json_str)
+        if theme_match:
+            fallback_data["theme"] = theme_match.group(1)
 
-    sentence_pairs = re.findall(r'\{\s*"en"\s*:\s*"([^"]+)"\s*,\s*"zh"\s*:\s*"([^"]+)"\s*\}', json_str)
-    if sentence_pairs:
-        page_sentences = [{"en": en, "zh": zh} for en, zh in sentence_pairs]
-        fallback_data["pages"] = [{"page": 1, "sentences": page_sentences}]
-        return fallback_data
+        sentence_pairs = re.findall(r'\{\s*"en"\s*:\s*"([^"]+)"\s*,\s*"zh"\s*:\s*"([^"]+)"\s*\}', json_str)
+        if sentence_pairs:
+            page_sentences = [{"en": en, "zh": zh} for en, zh in sentence_pairs]
+            fallback_data["pages"] = [{"page": 1, "sentences": page_sentences}]
+            return fallback_data
 
-    raise ValueError(f"JSON 格式解析失败 (Expecting ',' or syntax error). Raw snippet: {json_str[:300]}")
+    raise ValueError(f"JSON 格式解析失败 (Expecting valid JSON). Raw snippet: {json_str[:300]}")
 
 
 # ── Prompt template ──────────────────────────────────────────────────
 
 SYSTEM_PROMPT = DEFAULT_SYSTEM_PROMPT
+
 
 
 def resolve_effective_prompt(custom_prompt: str | None = None, prompt: str | None = None) -> str:
@@ -283,6 +295,98 @@ class GeminiParser:
             return SongTranslationResult.model_validate(_clean_and_parse_json(stdout.decode().strip()))
         except Exception as exc:
             raise ValueError(f"翻译结果不是有效 JSON: {exc}") from exc
+
+    async def enrich_vocabulary_content(
+        self,
+        words: list[str],
+        model: str | None = None,
+        cli: str = "agy"
+    ) -> list[EnrichedWord]:
+        cli_type = (cli or "agy").lower().strip()
+        if cli_type not in {"agy", "codex"}:
+            raise ValueError("cli must be 'agy' or 'codex'.")
+
+        # Fast model selection for vocabulary enrichment (avoid high reasoning stalls)
+        selected_model = model
+        if cli_type == "agy" and (not selected_model or selected_model in ("gemini-3.7-flash-high", "default")):
+            selected_model = "gemini-3.7-flash-low"
+
+        effective_model = normalize_agy_model(selected_model) if cli_type == "agy" else normalize_codex_model(selected_model)
+
+        # If more than 5 words, chunk into smaller sub-batches to ensure fast, reliable responses
+        if len(words) > 5:
+            enriched_all: list[EnrichedWord] = []
+            chunk_size = 5
+            for i in range(0, len(words), chunk_size):
+                chunk = words[i:i + chunk_size]
+                chunk_res = await self._enrich_single_batch(chunk, effective_model=effective_model, cli_type=cli_type)
+                enriched_all.extend(chunk_res)
+            return enriched_all
+
+        return await self._enrich_single_batch(words, effective_model=effective_model, cli_type=cli_type)
+
+    async def _enrich_single_batch(
+        self,
+        words: list[str],
+        effective_model: str,
+        cli_type: str = "agy"
+    ) -> list[EnrichedWord]:
+        prompt = (
+            "You are an English linguistic and etymological tutor for children. Enrich the following English words. "
+            "For EACH word, generate: "
+            "1. 'word': lowercase English word or phrase. "
+            "2. 'phonetic': accurate IPA phonetic transcription (e.g. /ˈkjʊəriəs/). "
+            "3. 'translation': child-friendly concise Chinese core meaning. "
+            "4. 'fun_sentences': array of 1-2 humorous/imaginative story or life sentences with English 'en' and Chinese 'zh'. "
+            "IMPORTANT: Every sentence must be unique, vivid, and contextualized to that specific word's meaning. NEVER use repetitive boilerplate phrases like 'Look at the amazing...'. "
+            "5. 'antonyms': comma-separated antonyms. "
+            "6. 'synonyms': comma-separated synonyms. "
+            "7. 'root_affixes': breakdown of root and affixes explaining word structure. "
+            "8. 'etymology': fun concise 1-2 sentence origin story for kids. "
+            "Return ONLY valid JSON with shape: {\"words\": [...]}, no markdown formatting. Do not use unescaped double quotes inside values. "
+            f"Words: {json.dumps(words, ensure_ascii=False)}"
+        )
+
+        for attempt in range(2):
+            try:
+                if cli_type == "codex":
+                    if not shutil.which("codex"):
+                        raise ValueError("系统未找到 codex 命令。")
+                    cmd = ["codex", "exec", "--dangerously-bypass-approvals-and-sandbox", "--ephemeral"]
+                    if effective_model and effective_model.lower() not in ("default", "none"):
+                        cmd.extend(["-m", effective_model])
+                    cmd.append("-")
+                    proc = await asyncio.create_subprocess_exec(*cmd, stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+                    stdout, stderr = await asyncio.wait_for(proc.communicate(input=prompt.encode("utf-8")), timeout=120)
+                else:
+                    if not shutil.which("agy"):
+                        raise ValueError("系统未找到 agy 命令。")
+                    cmd = ["agy", "--dangerously-skip-permissions", "--disable-slash-commands"]
+                    if effective_model:
+                        cmd.extend(["--model", effective_model])
+                    cmd.extend(["-p", prompt])
+                    proc = await asyncio.create_subprocess_exec(*cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+                    stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=120)
+
+                if len(stdout) + len(stderr) > settings.MAX_CLI_OUTPUT_BYTES:
+                    raise ValueError("CLI 输出超过允许大小。")
+                if proc.returncode != 0:
+                    raise ValueError(f"{cli_type} CLI Error: {stderr.decode().strip()}")
+
+                parsed = _clean_and_parse_json(stdout.decode().strip(), fallback_to_story=False)
+                if isinstance(parsed, dict) and "words" in parsed:
+                    parsed = parsed["words"]
+                elif isinstance(parsed, dict) and "data" in parsed:
+                    parsed = parsed["data"]
+                if not isinstance(parsed, list):
+                    parsed = [parsed]
+                return [EnrichedWord.model_validate(item) for item in parsed]
+            except Exception as exc:
+                if attempt == 0:
+                    logger.warning("Vocabulary enrichment attempt 1 failed for words %s: %s. Retrying...", words, exc)
+                    await asyncio.sleep(1.5)
+                    continue
+                raise ValueError(f"词汇丰富结果解析失败: {exc}") from exc
 
     async def parse_images(
         self,
@@ -428,7 +532,7 @@ class GeminiParser:
                     raise ValueError(f"{cli_type} CLI Error: {err_text}")
 
             out_text = stdout.decode().strip()
-            data = _clean_and_parse_json(out_text)
+            data = _clean_and_parse_json(out_text, fallback_to_story=True)
 
             # Crop illustrations and upload to MinIO
             import uuid

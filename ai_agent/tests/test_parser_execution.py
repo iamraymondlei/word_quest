@@ -48,6 +48,66 @@ def test_clean_and_parse_json_with_little_loon_data():
     assert len(result["questions"]) == 1
 
 
+def test_clean_and_parse_json_with_array():
+    sample_array_json = """
+    Here is the requested vocabulary list:
+    [
+      {
+        "word": "curious",
+        "phonetic": "/ˈkjʊəriəs/",
+        "translation": "好奇的",
+        "fun_sentences": [{"en": "The curious cat opened the box.", "zh": "好奇的猫打开了盒子。"}],
+        "antonyms": "indifferent",
+        "synonyms": "inquisitive",
+        "root_affixes": "cur- (care)",
+        "etymology": "From Latin cura."
+      },
+      {
+        "word": "brave",
+        "phonetic": "/breɪv/",
+        "translation": "勇敢的",
+        "fun_sentences": [{"en": "The brave knight saved the village.", "zh": "勇敢的骑士拯救了村庄。"}],
+        "antonyms": "cowardly",
+        "synonyms": "courageous",
+        "root_affixes": "brave",
+        "etymology": "From Italian bravo."
+      }
+    ]
+    Hope this helps!
+    """
+    result = _clean_and_parse_json(sample_array_json)
+    assert isinstance(result, list)
+    assert len(result) == 2
+    assert result[0]["word"] == "curious"
+    assert result[1]["word"] == "brave"
+
+
+def test_clean_and_parse_json_with_words_dict():
+    sample_dict_json = """
+    ```json
+    {
+      "words": [
+        {
+          "word": "curious",
+          "phonetic": "/ˈkjʊəriəs/",
+          "translation": "好奇的",
+          "fun_sentences": [{"en": "The curious cat opened the box.", "zh": "好奇的猫打开了盒子。"}],
+          "antonyms": "indifferent",
+          "synonyms": "inquisitive",
+          "root_affixes": "cur- (care)",
+          "etymology": "From Latin cura."
+        }
+      ]
+    }
+    ```
+    """
+    result = _clean_and_parse_json(sample_dict_json)
+    assert isinstance(result, dict)
+    assert "words" in result
+    assert result["words"][0]["word"] == "curious"
+
+
+
 @pytest.mark.asyncio
 async def test_parse_images_builds_correct_agy_command():
     parser = GeminiParser()

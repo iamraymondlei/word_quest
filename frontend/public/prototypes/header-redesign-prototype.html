@@ -1,0 +1,691 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="dark">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+  <title>WordQuest · Global Header Redesign Prototype (三维探险控制台)</title>
+  <!-- Google Fonts: Plus Jakarta Sans & JetBrains Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['"Plus Jakarta Sans"', '-apple-system', 'BlinkMacSystemFont', '"Segoe UI"', 'sans-serif'],
+            mono: ['"JetBrains Mono"', 'ui-monospace', 'monospace']
+          },
+          colors: {
+            canvas: '#070b14',
+            surface: '#0d1424',
+            card: '#121a2f',
+            borderDim: 'rgba(255, 255, 255, 0.08)',
+            neonCyan: '#00f0ff',
+            neonEmerald: '#10b981',
+            neonPink: '#ec4899',
+            neonPurple: '#a855f7',
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    :root {
+      color-scheme: dark;
+    }
+    body {
+      background-color: #070b14;
+      background-image: 
+        radial-gradient(ellipse 80% 50% at 50% -20%, rgba(0, 240, 255, 0.08), transparent),
+        radial-gradient(ellipse 60% 40% at 85% 90%, rgba(168, 85, 247, 0.07), transparent);
+      min-height: 100vh;
+      font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      overflow-x: hidden;
+      margin: 0;
+      padding: 0;
+      transition: background-color 0.3s ease;
+    }
+
+    /* Light Theme Overrides */
+    html:not(.dark) body {
+      background-color: #f1f5f9;
+      background-image: 
+        radial-gradient(ellipse 80% 50% at 50% -20%, rgba(14, 165, 233, 0.1), transparent),
+        radial-gradient(ellipse 60% 40% at 85% 90%, rgba(168, 85, 247, 0.08), transparent);
+      color: #0f172a;
+    }
+
+    /* Glow utilities */
+    .glow-cyan {
+      border-color: rgba(0, 240, 255, 0.6) !important;
+      box-shadow: 0 0 25px rgba(0, 240, 255, 0.35), inset 0 0 10px rgba(0, 240, 255, 0.15);
+    }
+    .glow-emerald {
+      border-color: rgba(16, 185, 129, 0.6) !important;
+      box-shadow: 0 0 25px rgba(16, 185, 129, 0.35), inset 0 0 10px rgba(16, 185, 129, 0.15);
+    }
+    .glow-pink {
+      border-color: rgba(236, 72, 153, 0.6) !important;
+      box-shadow: 0 0 25px rgba(236, 72, 153, 0.35), inset 0 0 10px rgba(236, 72, 153, 0.15);
+    }
+
+    /* Glassmorphism */
+    .glass-dock {
+      background: rgba(13, 20, 36, 0.85);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+    html:not(.dark) .glass-dock {
+      background: rgba(255, 255, 255, 0.9);
+      border: 1px solid rgba(0, 0, 0, 0.08);
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.06);
+    }
+
+    .glass-popover {
+      background: rgba(10, 15, 29, 0.94);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border: 1.5px solid rgba(0, 240, 255, 0.3);
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6), 0 0 30px rgba(0, 240, 255, 0.15);
+    }
+    html:not(.dark) .glass-popover {
+      background: rgba(255, 255, 255, 0.98);
+      border: 1.5px solid rgba(14, 165, 233, 0.3);
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.15), 0 0 30px rgba(14, 165, 233, 0.1);
+      color: #0f172a;
+    }
+
+    /* Pulse animation */
+    @keyframes subtle-breath {
+      0%, 100% { transform: scale(1); opacity: 0.9; }
+      50% { transform: scale(1.04); opacity: 1; }
+    }
+    .anim-breathe {
+      animation: subtle-breath 3s ease-in-out infinite;
+    }
+  </style>
+</head>
+<body class="text-slate-100 flex flex-col min-h-screen">
+
+  <!-- ════════════════════════════════════════════════════════════════════════ -->
+  <!-- 0. TOP PREVIEW TOOLBAR (Helper for Reviewing Viewport & Concepts)          -->
+  <!-- ════════════════════════════════════════════════════════════════════════ -->
+  <aside class="w-full bg-slate-950 border-b border-slate-800 text-[11px] font-mono py-2 px-4 flex flex-wrap items-center justify-between gap-3 text-slate-400 select-none z-50">
+    <div class="flex items-center gap-2">
+      <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+      <span class="text-emerald-400 font-bold">PROTOTYPE V2</span>
+      <span class="text-slate-600">|</span>
+      <span>WordQuest Header 架构优化验证</span>
+    </div>
+
+    <!-- Responsive Frame Switcher Simulator -->
+    <div class="flex items-center gap-1.5 bg-slate-900 p-1 rounded-lg border border-slate-800">
+      <span class="px-2 text-slate-500 font-bold">视口模拟:</span>
+      <button type="button" onclick="setDeviceView('full')" id="dev-full" class="px-2.5 py-0.5 rounded bg-cyan-500/20 text-cyan-300 font-bold">🖥️ 桌面全屏 (100%)</button>
+      <button type="button" onclick="setDeviceView('ipad-l')" id="dev-ipad-l" class="px-2.5 py-0.5 rounded hover:bg-slate-800 text-slate-400">📱 iPad 横屏 (1024px)</button>
+      <button type="button" onclick="setDeviceView('ipad-p')" id="dev-ipad-p" class="px-2.5 py-0.5 rounded hover:bg-slate-800 text-slate-400">📱 iPad 竖屏 (768px)</button>
+    </div>
+
+    <!-- Quick State Switcher -->
+    <div class="flex items-center gap-2">
+      <span class="text-slate-500">快速切模块:</span>
+      <button type="button" onclick="switchAdventureMode('story')" class="px-2 py-0.5 rounded bg-cyan-950 text-cyan-400 border border-cyan-800">故事</button>
+      <button type="button" onclick="switchAdventureMode('vocab')" class="px-2 py-0.5 rounded bg-emerald-950 text-emerald-400 border border-emerald-800">单词</button>
+      <button type="button" onclick="switchAdventureMode('song')" class="px-2 py-0.5 rounded bg-purple-950 text-purple-400 border border-purple-800">歌曲</button>
+    </div>
+  </aside>
+
+  <!-- Container for simulated viewports -->
+  <div id="viewportContainer" class="w-full flex-1 flex flex-col transition-all duration-300 mx-auto">
+
+    <!-- ════════════════════════════════════════════════════════════════════════ -->
+    <!-- 1. REDESIGNED GLOBAL COMMAND HEADER (The Main Subject)                   -->
+    <!-- ════════════════════════════════════════════════════════════════════════ -->
+    <header class="w-full sticky top-0 z-40 px-3 sm:px-6 py-3 transition-all duration-300 glass-dock shadow-2xl">
+      <div class="max-w-7xl mx-auto flex items-center justify-between gap-3 sm:gap-6">
+        
+        <!-- ── ZONE 1: BRAND LOGO & STUDENT IDENTITY (LEFT) ─────────────────────── -->
+        <div class="flex items-center gap-3 shrink-0">
+          <!-- WordQuest Brand Mark -->
+          <div class="flex items-center gap-2.5 cursor-pointer group" onclick="switchAdventureMode('story')" title="返回主探险地图">
+            <div class="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-gradient-to-tr from-cyan-500 to-indigo-600 flex items-center justify-center text-slate-950 shadow-[0_0_18px_rgba(0,240,255,0.45)] group-hover:scale-105 transition-transform duration-300">
+              <span class="text-lg">🧭</span>
+            </div>
+            <div class="hidden xl:flex flex-col">
+              <span class="text-lg font-black tracking-tight text-white dark:text-white flex items-center gap-0.5">
+                Word<span class="text-[#00f0ff] drop-shadow-[0_0_10px_rgba(0,240,255,0.5)]">Quest</span>
+              </span>
+              <span class="text-[9px] font-mono text-cyan-400/80 -mt-1 tracking-widest uppercase">Kids English Adventure</span>
+            </div>
+          </div>
+
+          <!-- Divider -->
+          <div class="hidden sm:block w-px h-6 bg-white/10 dark:bg-white/10"></div>
+
+          <!-- Integrated Interactive Learner Identity Capsule (Replaces clumsy extra buttons) -->
+          <div 
+            id="userProfileTrigger"
+            onclick="toggleUserPopover(event)"
+            role="button"
+            tabindex="0"
+            title="轻触查看伙伴等级、更换角色或切换档案"
+            class="group relative flex items-center gap-2.5 p-1.5 pr-3 rounded-2xl bg-slate-900/80 dark:bg-slate-900/80 border border-cyan-500/30 hover:border-cyan-400 cursor-pointer shadow-md transition-all hover:scale-[1.02] active:scale-[0.98]"
+          >
+            <!-- Animated Buddy Sprite Platform -->
+            <div class="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-slate-950 border border-cyan-500/40 flex items-center justify-center relative shrink-0 shadow-inner group-hover:border-cyan-300">
+              <span id="currentBuddyEmoji" class="text-lg anim-breathe">🧑‍🚀</span>
+              <span class="absolute -bottom-1 -right-1 w-2.5 h-2.5 rounded-full bg-emerald-400 border border-slate-950"></span>
+            </div>
+
+            <!-- Learner Meta & Dropdown Caret -->
+            <div class="min-w-0 flex flex-col text-left">
+              <div class="flex items-center gap-1.5">
+                <span id="headerUsername" class="text-xs sm:text-sm font-black text-white font-mono tracking-tight truncate max-w-[80px] sm:max-w-[120px]">
+                  Alex
+                </span>
+                <span class="text-[9px] bg-cyan-500/20 text-cyan-300 border border-cyan-400/40 px-1 py-0.2 rounded font-black font-mono">
+                  LV.12
+                </span>
+                <span class="text-[10px] text-cyan-400/70 group-hover:text-cyan-300 transition-transform group-hover:translate-y-0.5">▼</span>
+              </div>
+              <span id="currentBuddyName" class="text-[10px] text-cyan-400 font-bold font-mono -mt-0.5 hidden sm:inline">
+                Astro Hero
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <!-- ── ZONE 2: PRIMARY 3-DIMENSION SEGMENTED DOCK (CENTER) ──────────────── -->
+        <nav class="flex-1 max-w-xl mx-auto flex items-center justify-center">
+          <div class="w-full flex items-center p-1.5 rounded-2xl bg-slate-950/80 dark:bg-slate-950/80 border border-white/10 shadow-inner gap-1 sm:gap-2">
+            
+            <!-- 1. 故事地图 (Story Map Tab) -->
+            <button
+              id="tab-story"
+              type="button"
+              onclick="switchAdventureMode('story')"
+              class="flex-1 py-2 px-2.5 sm:px-4 rounded-xl text-xs font-mono font-black transition-all duration-300 flex items-center justify-center gap-2 cursor-pointer border glow-cyan bg-cyan-500/20 text-[#00f0ff]"
+            >
+              <span class="text-base leading-none">🗺️</span>
+              <div class="flex flex-col text-left leading-tight">
+                <span class="tracking-wide">故事地图</span>
+                <span class="text-[9px] opacity-70 hidden md:inline font-normal">STORY MAP</span>
+              </div>
+            </button>
+
+            <!-- 2. 单词宝库 (Vocab Vault Tab) -->
+            <button
+              id="tab-vocab"
+              type="button"
+              onclick="switchAdventureMode('vocab')"
+              class="flex-1 py-2 px-2.5 sm:px-4 rounded-xl text-xs font-mono font-bold transition-all duration-300 flex items-center justify-center gap-2 cursor-pointer border border-transparent text-slate-400 hover:text-white hover:bg-slate-900/60"
+            >
+              <span class="text-base leading-none">📚</span>
+              <div class="flex flex-col text-left leading-tight">
+                <span class="tracking-wide">单词宝库</span>
+                <span class="text-[9px] opacity-70 hidden md:inline font-normal">VOCAB VAULT</span>
+              </div>
+            </button>
+
+            <!-- 3. 歌曲乐园 (Song Lab Tab) -->
+            <button
+              id="tab-song"
+              type="button"
+              onclick="switchAdventureMode('song')"
+              class="flex-1 py-2 px-2.5 sm:px-4 rounded-xl text-xs font-mono font-bold transition-all duration-300 flex items-center justify-center gap-2 cursor-pointer border border-transparent text-slate-400 hover:text-white hover:bg-slate-900/60"
+            >
+              <span class="text-base leading-none">🎵</span>
+              <div class="flex flex-col text-left leading-tight">
+                <span class="tracking-wide">歌曲乐园</span>
+                <span class="text-[9px] opacity-70 hidden md:inline font-normal">SONG LAB</span>
+              </div>
+            </button>
+
+          </div>
+        </nav>
+
+        <!-- ── ZONE 3: TREASURY CAPSULES & SYSTEM UTILITIES (RIGHT) ─────────────── -->
+        <div class="flex items-center gap-2 sm:gap-3 shrink-0">
+          
+          <!-- Consolidated Dual-Rewards Capsule (Stars + Coins in one clean unit) -->
+          <div class="flex items-center p-1 rounded-xl bg-slate-950/80 dark:bg-slate-950/80 border border-white/10 shadow-inner font-mono text-xs">
+            <!-- Stars -->
+            <div class="flex items-center gap-1.5 px-2.5 py-1 text-amber-300 rounded-lg hover:bg-amber-500/10 transition-colors" title="可用星星">
+              <span class="text-sm">⭐</span>
+              <span class="font-black tabular-nums">24</span>
+            </div>
+            <!-- Separator -->
+            <div class="w-px h-4 bg-white/10"></div>
+            <!-- Coins -->
+            <div class="flex items-center gap-1.5 px-2.5 py-1 text-amber-200 rounded-lg hover:bg-yellow-500/10 transition-colors" title="金币奖励">
+              <span class="text-sm">🪙</span>
+              <span class="font-black tabular-nums">1,280</span>
+            </div>
+          </div>
+
+          <!-- Compact System Utility Cluster -->
+          <div class="flex items-center gap-1.5">
+            <!-- Theme Toggle Button -->
+            <button
+              id="btnThemeToggle"
+              type="button"
+              onclick="toggleThemeMode()"
+              class="w-8 h-8 rounded-xl bg-slate-900/80 hover:bg-slate-800 border border-slate-700/80 text-slate-300 hover:text-white flex items-center justify-center text-xs transition-all cursor-pointer shadow-sm"
+              title="切换 深色/浅色 模式"
+            >
+              <span id="themeIcon">🌙</span>
+            </button>
+
+            <!-- Font Scale Selector -->
+            <div class="hidden lg:flex items-center p-0.5 rounded-xl bg-slate-950/80 border border-slate-800 font-mono text-[10px]">
+              <button type="button" onclick="setFontScale('100')" id="font-100" class="px-1.5 py-1 rounded text-slate-400 hover:text-white">100%</button>
+              <button type="button" onclick="setFontScale('115')" id="font-115" class="px-1.5 py-1 rounded text-slate-400 hover:text-white">115%</button>
+              <button type="button" onclick="setFontScale('130')" id="font-130" class="px-1.5 py-1 rounded bg-cyan-500/20 text-cyan-300 font-bold border border-cyan-500/40">130%</button>
+            </div>
+
+            <!-- Offline PWA Synced Badge (Compact) -->
+            <div class="hidden md:flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-emerald-950/40 border border-emerald-500/30 text-emerald-400 font-mono text-[10px] font-bold" title="PWA 离线资源已就绪">
+              <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+              <span>已同步</span>
+            </div>
+
+            <!-- Quick Logout Action -->
+            <button
+              type="button"
+              onclick="alert('退出当前档案')"
+              class="w-8 h-8 rounded-xl bg-rose-950/30 hover:bg-rose-950/60 border border-rose-500/30 text-rose-400 hover:text-rose-300 flex items-center justify-center text-xs transition-all cursor-pointer shadow-sm"
+              title="退出登录"
+            >
+              🚪
+            </button>
+          </div>
+
+        </div>
+
+      </div>
+    </header>
+
+    <!-- ════════════════════════════════════════════════════════════════════════ -->
+    <!-- 2. INTERACTIVE USER & BUDDY SHELF POPOVER (Opened when Avatar clicked)    -->
+    <!-- ════════════════════════════════════════════════════════════════════════ -->
+    <div 
+      id="userPopoverModal" 
+      class="fixed inset-0 z-50 flex items-start justify-center pt-20 px-4 backdrop-blur-sm bg-black/40 hidden"
+      onclick="closeUserPopover(event)"
+    >
+      <div 
+        class="glass-popover w-full max-w-sm rounded-3xl p-6 shadow-2xl relative border border-cyan-400/40 text-slate-100 font-mono"
+        onclick="event.stopPropagation()"
+      >
+        <!-- Modal Header -->
+        <div class="flex items-center justify-between border-b border-white/10 pb-4 mb-4">
+          <div class="flex items-center gap-2">
+            <span class="text-base">🚀</span>
+            <h3 class="text-sm font-black text-cyan-300 uppercase tracking-wider">探险伙伴与档案 (Buddy Center)</h3>
+          </div>
+          <button type="button" onclick="closeUserPopover(null)" class="text-slate-400 hover:text-white text-xs">✕</button>
+        </div>
+
+        <!-- Current Character & Level Progress -->
+        <div class="flex items-center gap-3 bg-slate-900/80 p-3 rounded-2xl border border-cyan-500/30 mb-4">
+          <div class="w-12 h-12 rounded-xl bg-slate-950 border border-cyan-400/40 flex items-center justify-center text-2xl">
+            <span id="popoverCurrentEmoji">🧑‍🚀</span>
+          </div>
+          <div class="flex-1">
+            <div class="flex items-center justify-between">
+              <span class="text-sm font-black text-white">Alex</span>
+              <span class="text-[10px] text-cyan-300 bg-cyan-950 px-1.5 py-0.5 rounded border border-cyan-500/30">LEVEL 12 HERO</span>
+            </div>
+            <!-- Progress Bar -->
+            <div class="w-full bg-slate-950 h-2 rounded-full overflow-hidden mt-1.5 border border-slate-800">
+              <div class="h-full bg-gradient-to-r from-cyan-400 to-indigo-500 rounded-full" style="width: 72%;"></div>
+            </div>
+            <div class="flex justify-between text-[9px] text-slate-400 mt-1">
+              <span>经验值: 720 / 1000 KP</span>
+              <span class="text-emerald-400">+280 升级</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Choose Your Buddy Shelf -->
+        <div class="mb-5">
+          <div class="text-[11px] text-slate-400 font-bold mb-2 flex items-center justify-between">
+            <span>选择出战伙伴 (SIDEKICK):</span>
+            <span class="text-[10px] text-cyan-400">已解锁 4/4</span>
+          </div>
+          <div class="grid grid-cols-4 gap-2">
+            <!-- Buddy 1: Astro -->
+            <button 
+              type="button" 
+              onclick="selectBuddy('runner_astro', '🧑‍🚀', 'Astro Hero')"
+              class="buddy-btn p-2 rounded-xl bg-cyan-950/60 border-2 border-cyan-400 flex flex-col items-center gap-1 cursor-pointer transition-all hover:scale-105"
+            >
+              <span class="text-xl">🧑‍🚀</span>
+              <span class="text-[10px] font-black text-cyan-300">Astro</span>
+            </button>
+            <!-- Buddy 2: Dino -->
+            <button 
+              type="button" 
+              onclick="selectBuddy('runner_dino', '🦖', 'Dino Rex')"
+              class="buddy-btn p-2 rounded-xl bg-slate-900 border border-slate-700 hover:border-emerald-400 flex flex-col items-center gap-1 cursor-pointer transition-all hover:scale-105"
+            >
+              <span class="text-xl">🦖</span>
+              <span class="text-[10px] font-bold text-slate-300">Dino</span>
+            </button>
+            <!-- Buddy 3: Fox -->
+            <button 
+              type="button" 
+              onclick="selectBuddy('runner_fox', '🦊', 'Foxy Swift')"
+              class="buddy-btn p-2 rounded-xl bg-slate-900 border border-slate-700 hover:border-amber-400 flex flex-col items-center gap-1 cursor-pointer transition-all hover:scale-105"
+            >
+              <span class="text-xl">🦊</span>
+              <span class="text-[10px] font-bold text-slate-300">Foxy</span>
+            </button>
+            <!-- Buddy 4: Robot -->
+            <button 
+              type="button" 
+              onclick="selectBuddy('runner_bot', '🤖', 'Sparky Bot')"
+              class="buddy-btn p-2 rounded-xl bg-slate-900 border border-slate-700 hover:border-purple-400 flex flex-col items-center gap-1 cursor-pointer transition-all hover:scale-105"
+            >
+              <span class="text-xl">🤖</span>
+              <span class="text-[10px] font-bold text-slate-300">Sparky</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Quick Switch Profile / Parent Dashboard Actions -->
+        <div class="space-y-2 pt-2 border-t border-white/10">
+          <button
+            type="button"
+            onclick="alert('正在打开切换玩家档案弹窗...')"
+            class="w-full py-2.5 rounded-xl bg-gradient-to-r from-cyan-600/30 to-indigo-600/30 hover:from-cyan-600/50 hover:to-indigo-600/50 border border-cyan-400/50 text-cyan-200 text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer shadow-md"
+          >
+            <span>👤</span>
+            <span>切换学员玩家档案 (Switch Profile)</span>
+          </button>
+
+          <button
+            type="button"
+            onclick="alert('进入家长与教师管理控制台...')"
+            class="w-full py-2 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-300 text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer"
+          >
+            <span>⚙️</span>
+            <span>家长与教研管理后台 (Admin Console)</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ════════════════════════════════════════════════════════════════════════ -->
+    <!-- 3. LIVE SIMULATOR CANVAS (Demonstrating Content Under the New Header)   -->
+    <!-- ════════════════════════════════════════════════════════════════════════ -->
+    <main class="w-full max-w-7xl mx-auto px-4 sm:px-6 py-8 flex-1 flex flex-col justify-start">
+      
+      <!-- Banner Indicator of Current Active Mode -->
+      <section id="banner-story" class="mode-view transition-all duration-300 space-y-6">
+        <div class="flex items-center justify-between border-b border-white/10 pb-4">
+          <div>
+            <h1 class="text-2xl sm:text-3xl font-black text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 via-sky-300 to-indigo-400 uppercase font-mono">
+              Story Adventure Map 🗺️ 故事探险主航道
+            </h1>
+            <p class="text-xs text-slate-400 mt-1 font-mono">
+              当前展示：故事地图模式。在中心导航栏轻触【单词宝库】或【歌曲乐园】进行丝滑切换。
+            </p>
+          </div>
+          <span class="px-3 py-1 rounded-full bg-cyan-500/10 border border-cyan-400/30 text-cyan-300 text-xs font-mono font-black">
+            DIMENSION 01 · 故事阅读
+          </span>
+        </div>
+
+        <!-- Simulated Story Island Cards -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div class="p-6 rounded-2xl bg-slate-900/60 border border-cyan-500/30 space-y-3">
+            <span class="text-2xl">🏝️</span>
+            <h3 class="text-base font-bold text-white">ISLAND 01: The Magic Seed</h3>
+            <p class="text-xs text-slate-400">4 个关卡已解锁 · 获得 4 颗星星</p>
+            <div class="w-full bg-cyan-950 h-1.5 rounded-full overflow-hidden">
+              <div class="bg-cyan-400 h-full w-full"></div>
+            </div>
+          </div>
+          <div class="p-6 rounded-2xl bg-slate-900/60 border border-slate-800 space-y-3">
+            <span class="text-2xl">🌋</span>
+            <h3 class="text-base font-bold text-white">ISLAND 02: Whispering Volcano</h3>
+            <p class="text-xs text-slate-400">进行至 Stage 3 (看句选义)</p>
+            <div class="w-full bg-cyan-950 h-1.5 rounded-full overflow-hidden">
+              <div class="bg-cyan-400 h-full w-2/3"></div>
+            </div>
+          </div>
+          <div class="p-6 rounded-2xl bg-slate-900/60 border border-slate-800 space-y-3">
+            <span class="text-2xl">🏰</span>
+            <h3 class="text-base font-bold text-white">ISLAND 03: The Crystal Castle</h3>
+            <p class="text-xs text-slate-400">待解锁探索</p>
+            <div class="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden">
+              <div class="bg-cyan-400 h-full w-0"></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="banner-vocab" class="mode-view hidden transition-all duration-300 space-y-6">
+        <div class="flex items-center justify-between border-b border-white/10 pb-4">
+          <div>
+            <h1 class="text-2xl sm:text-3xl font-black text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 via-teal-300 to-cyan-400 uppercase font-mono">
+              Vocab Adventure Map 📚 单词宝库探险
+            </h1>
+            <p class="text-xs text-slate-400 mt-1 font-mono">
+              当前展示：单词宝库模式。中心导航栏自动激活高亮 Emerald 翠绿能量光环！
+            </p>
+          </div>
+          <span class="px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-400/30 text-emerald-300 text-xs font-mono font-black">
+            DIMENSION 02 · 词汇精研
+          </span>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div class="p-6 rounded-2xl bg-slate-900/60 border border-emerald-500/30 space-y-3">
+            <span class="text-2xl">📖</span>
+            <h3 class="text-base font-bold text-white">Chapter 1: Forest Creatures</h3>
+            <p class="text-xs text-slate-400">12 核心词 · 已掌握 8 词</p>
+            <div class="w-full bg-emerald-950 h-1.5 rounded-full overflow-hidden">
+              <div class="bg-emerald-400 h-full w-3/4"></div>
+            </div>
+          </div>
+          <div class="p-6 rounded-2xl bg-slate-900/60 border border-slate-800 space-y-3">
+            <span class="text-2xl">🧪</span>
+            <h3 class="text-base font-bold text-white">Chapter 2: Space Mysteries</h3>
+            <p class="text-xs text-slate-400">16 核心词 · 已掌握 4 词</p>
+            <div class="w-full bg-emerald-950 h-1.5 rounded-full overflow-hidden">
+              <div class="bg-emerald-400 h-full w-1/4"></div>
+            </div>
+          </div>
+          <div class="p-6 rounded-2xl bg-slate-900/60 border border-slate-800 space-y-3">
+            <span class="text-2xl">🌊</span>
+            <h3 class="text-base font-bold text-white">Chapter 3: Deep Ocean Quest</h3>
+            <p class="text-xs text-slate-400">14 核心词 · 未开始</p>
+            <div class="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden">
+              <div class="bg-emerald-400 h-full w-0"></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="banner-song" class="mode-view hidden transition-all duration-300 space-y-6">
+        <div class="flex items-center justify-between border-b border-white/10 pb-4">
+          <div>
+            <h1 class="text-2xl sm:text-3xl font-black text-transparent bg-clip-text bg-gradient-to-r from-pink-400 via-purple-300 to-indigo-400 uppercase font-mono">
+              Song Adventure Map 🎵 歌曲乐园探险
+            </h1>
+            <p class="text-xs text-slate-400 mt-1 font-mono">
+              当前展示：歌曲乐园模式。一首歌一张卡片，中心导航栏自动激活 Electric Pink 霓虹荧光！
+            </p>
+          </div>
+          <span class="px-3 py-1 rounded-full bg-pink-500/10 border border-pink-400/30 text-pink-300 text-xs font-mono font-black">
+            DIMENSION 03 · 原声律动
+          </span>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div class="p-6 rounded-2xl bg-slate-900/60 border border-pink-500/40 space-y-4 hover:shadow-[0_0_30px_rgba(236,72,153,0.3)] transition-all cursor-pointer">
+            <div class="flex items-center justify-between text-xs font-mono">
+              <span class="px-2 py-0.5 rounded bg-pink-950 text-pink-300 font-bold border border-pink-500/30">TRACK #01</span>
+              <span class="text-slate-400">⏱️ 3:12</span>
+            </div>
+            <div class="flex items-center gap-3">
+              <div class="w-12 h-12 rounded-full bg-slate-950 border border-slate-700 flex items-center justify-center text-lg text-pink-400">
+                ♫
+              </div>
+              <div>
+                <h3 class="text-base font-black text-white">Twinkle Little Star</h3>
+                <p class="text-xs text-slate-400">Original Soundtrack</p>
+              </div>
+            </div>
+            <button class="w-full py-2 rounded-xl bg-gradient-to-r from-pink-500 to-purple-600 text-white font-black text-xs uppercase tracking-wider">
+              ▶ 进入原声学唱
+            </button>
+          </div>
+
+          <div class="p-6 rounded-2xl bg-slate-900/60 border border-slate-800 space-y-4 hover:border-pink-400 transition-all cursor-pointer">
+            <div class="flex items-center justify-between text-xs font-mono">
+              <span class="px-2 py-0.5 rounded bg-slate-800 text-slate-300 font-bold">TRACK #02</span>
+              <span class="text-slate-400">⏱️ 2:45</span>
+            </div>
+            <div class="flex items-center gap-3">
+              <div class="w-12 h-12 rounded-full bg-slate-950 border border-slate-700 flex items-center justify-center text-lg text-purple-400">
+                ♫
+              </div>
+              <div>
+                <h3 class="text-base font-black text-white">Shake Shake Shake</h3>
+                <p class="text-xs text-slate-400">Kids Rhythm Pop</p>
+              </div>
+            </div>
+            <button class="w-full py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs uppercase tracking-wider">
+              ▶ 进入原声学唱
+            </button>
+          </div>
+        </div>
+      </section>
+
+    </main>
+
+  </div>
+
+  <!-- ════════════════════════════════════════════════════════════════════════ -->
+  <!-- 4. INTERACTION SCRIPT                                                    -->
+  <!-- ════════════════════════════════════════════════════════════════════════ -->
+  <script>
+    let currentMode = 'story';
+    let currentTheme = 'dark';
+
+    function switchAdventureMode(mode) {
+      currentMode = mode;
+      
+      const tabStory = document.getElementById('tab-story');
+      const tabVocab = document.getElementById('tab-vocab');
+      const tabSong = document.getElementById('tab-song');
+
+      const viewStory = document.getElementById('banner-story');
+      const viewVocab = document.getElementById('banner-vocab');
+      const viewSong = document.getElementById('banner-song');
+
+      // Reset all tabs to neutral
+      [tabStory, tabVocab, tabSong].forEach(tab => {
+        tab.className = "flex-1 py-2 px-2.5 sm:px-4 rounded-xl text-xs font-mono font-bold transition-all duration-300 flex items-center justify-center gap-2 cursor-pointer border border-transparent text-slate-400 hover:text-white hover:bg-slate-900/60";
+      });
+
+      // Hide all banner views
+      [viewStory, viewVocab, viewSong].forEach(v => v.classList.add('hidden'));
+
+      if (mode === 'story') {
+        tabStory.className = "flex-1 py-2 px-2.5 sm:px-4 rounded-xl text-xs font-mono font-black transition-all duration-300 flex items-center justify-center gap-2 cursor-pointer border glow-cyan bg-cyan-500/20 text-[#00f0ff]";
+        viewStory.classList.remove('hidden');
+      } else if (mode === 'vocab') {
+        tabVocab.className = "flex-1 py-2 px-2.5 sm:px-4 rounded-xl text-xs font-mono font-black transition-all duration-300 flex items-center justify-center gap-2 cursor-pointer border glow-emerald bg-emerald-500/20 text-emerald-400";
+        viewVocab.classList.remove('hidden');
+      } else if (mode === 'song') {
+        tabSong.className = "flex-1 py-2 px-2.5 sm:px-4 rounded-xl text-xs font-mono font-black transition-all duration-300 flex items-center justify-center gap-2 cursor-pointer border glow-pink bg-pink-500/20 text-pink-400";
+        viewSong.classList.remove('hidden');
+      }
+    }
+
+    function toggleUserPopover(event) {
+      if (event) event.stopPropagation();
+      const modal = document.getElementById('userPopoverModal');
+      modal.classList.toggle('hidden');
+    }
+
+    function closeUserPopover(event) {
+      if (event && event.target !== document.getElementById('userPopoverModal')) return;
+      document.getElementById('userPopoverModal').classList.add('hidden');
+    }
+
+    function selectBuddy(key, emoji, name) {
+      document.getElementById('currentBuddyEmoji').innerText = emoji;
+      document.getElementById('currentBuddyName').innerText = name;
+      document.getElementById('popoverCurrentEmoji').innerText = emoji;
+      
+      // Update UI selection buttons
+      document.querySelectorAll('.buddy-btn').forEach(btn => {
+        btn.classList.remove('border-cyan-400', 'bg-cyan-950/60', 'border-2');
+        btn.classList.add('border-slate-700', 'bg-slate-900', 'border');
+      });
+      event.currentTarget.classList.add('border-cyan-400', 'bg-cyan-950/60', 'border-2');
+      event.currentTarget.classList.remove('border-slate-700', 'bg-slate-900');
+    }
+
+    function toggleThemeMode() {
+      const html = document.documentElement;
+      const themeIcon = document.getElementById('themeIcon');
+      if (html.classList.contains('dark')) {
+        html.classList.remove('dark');
+        themeIcon.innerText = '☀️';
+        currentTheme = 'bright';
+      } else {
+        html.classList.add('dark');
+        themeIcon.innerText = '🌙';
+        currentTheme = 'dark';
+      }
+    }
+
+    function setFontScale(scale) {
+      ['100', '115', '130'].forEach(s => {
+        const btn = document.getElementById(`font-${s}`);
+        if (s === scale) {
+          btn.className = "px-1.5 py-1 rounded bg-cyan-500/20 text-cyan-300 font-bold border border-cyan-500/40";
+        } else {
+          btn.className = "px-1.5 py-1 rounded text-slate-400 hover:text-white";
+        }
+      });
+    }
+
+    function setDeviceView(type) {
+      const container = document.getElementById('viewportContainer');
+      const btnFull = document.getElementById('dev-full');
+      const btnIpadL = document.getElementById('dev-ipad-l');
+      const btnIpadP = document.getElementById('dev-ipad-p');
+
+      [btnFull, btnIpadL, btnIpadP].forEach(btn => {
+        btn.className = "px-2.5 py-0.5 rounded hover:bg-slate-800 text-slate-400";
+      });
+
+      if (type === 'full') {
+        container.style.maxWidth = '100%';
+        container.style.border = 'none';
+        btnFull.className = "px-2.5 py-0.5 rounded bg-cyan-500/20 text-cyan-300 font-bold";
+      } else if (type === 'ipad-l') {
+        container.style.maxWidth = '1024px';
+        container.style.border = '2px dashed rgba(0, 240, 255, 0.3)';
+        btnIpadL.className = "px-2.5 py-0.5 rounded bg-cyan-500/20 text-cyan-300 font-bold";
+      } else if (type === 'ipad-p') {
+        container.style.maxWidth = '768px';
+        container.style.border = '2px dashed rgba(0, 240, 255, 0.3)';
+        btnIpadP.className = "px-2.5 py-0.5 rounded bg-cyan-500/20 text-cyan-300 font-bold";
+      }
+    }
+  </script>
+</body>
+</html>

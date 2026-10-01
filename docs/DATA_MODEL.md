@@ -118,11 +118,22 @@
 | 字段 | 含义 |
 |---|---|
 | `id` | 自增主键 |
-| `title` | 词单名称（如“RAZ Level E 冒险核心词”） |
+| `category` | 所属书本/第一层分类（如“Think”、“RAZ”、“General”） |
+| `title` | 章节/词单名称（如“Class 1”、“Unit 2”） |
 | `description` | 词单简介/适读年级说明 |
 | `tags` | 标签/分类（如自然拼读、高频词） |
 | `sort_order` | 排序权重 |
 | `created_at` | 创建时间 |
+
+### `user_word_book_access` (学员词单章节访问权限与归属 - Phase 9)
+
+| 字段 | 含义 |
+|---|---|
+| `user_id` | 学员用户 ID，外键关联 `users.id`，级联删除 |
+| `book_id` | 词单章节 ID，外键关联 `word_books.id`，级联删除 |
+| `created_at` | 授权创建时间 |
+
+联合主键为 `(user_id, book_id)`。若某一词单章节未关联任何学员，则默认为向全体公开；若存在关联学员，则仅所选学员与管理员可见。
 
 ### `vocabulary_words` (独立词汇库 - Phase 9)
 
@@ -140,6 +151,50 @@
 | `etymology` | 趣味通俗词源背景小故事 |
 | `created_at` | 创建时间 |
 
+### `user_vocabulary_progress` (学员独立单词掌握与错词记录 - Phase 9)
+
+| 字段 | 含义 |
+|---|---|
+| `id` | 自增主键 |
+| `user_id` | 学员用户 ID，外键关联 `users.id` |
+| `word_id` | 单词 ID，外键关联 `vocabulary_words.id` |
+| `book_id` | 所属词单 ID，外键关联 `word_books.id` |
+| `mode` | 练习模式：`look_choose` (看句选义) / `listen_spell` (听音拼写) |
+| `correct_count` | 答对次数 |
+| `error_count` | 答错次数 |
+| `mastered` | 掌握状态 (0 或 1) |
+| `last_practiced_at` | 最近练习时间 |
+| `created_at` | 创建时间 |
+
+联合唯一约束为 `(user_id, word_id, mode)`。
+
+### `songs` (原声歌曲库)
+
+| 字段 | 含义 |
+|---|---|
+| `id` | 自增主键 |
+| `title` | 歌曲名称 |
+| `artist` | 歌手 / 艺术家 |
+| `album` | 专辑名称 |
+| `audio_url` | 音频访问 URL |
+| `duration_seconds` | 歌曲总时长（秒） |
+| `status` | 解析与就绪状态 (`READY` / `PROCESSING` / `DRAFT`) |
+| `segments_json` | 逐句 LRC / 时间轴对齐切片 JSON 数组 |
+| `target_words_json` | 歌曲重点核心生词 JSON 数组 |
+| `translations_json` | 逐句歌词与单词释义结构化 JSON |
+| `created_at` | 创建时间 |
+| `updated_at` | 更新时间 |
+
+### `user_song_access` (歌曲学员归属访问控制)
+
+| 字段 | 含义 |
+|---|---|
+| `user_id` | 学员用户 ID，外键关联 `users.id` |
+| `song_id` | 歌曲 ID，外键关联 `songs.id` |
+| `created_at` | 授权创建时间 |
+
+联合主键为 `(user_id, song_id)`。当歌曲未在 `user_song_access` 中配置任何用户时，默认为公开全员可见；若已配置则仅允许指定学员访问（Admin 始终可见全部）。
+
 ### 故事插图
 
 插图文件保存在外部 MinIO 的 `wordquest-stories` bucket 中，数据库不保存二进制。`story_passage_json` 的句子元素可包含 `illustration_url`，通常指向 `/api/illustrations/<filename>`；AI 解析结果还可临时包含页面级 `illustration_box`。
@@ -151,9 +206,13 @@ users ──< user_island_access >── islands ──< words
   │                                  │
   └──< user_island_progress >────────┘
   │
-  └──< user_word_progress >──────── words / vocabulary_words
-
-word_books ──< vocabulary_words (独立词单体系，解耦于绘本故事)
+  └──< user_word_progress >──────── words
+  │
+  └──< user_vocabulary_progress >── vocabulary_words
+  │
+  └──< user_word_book_access >──── word_books ──< vocabulary_words
+  │
+  └──< user_song_access >───────── songs
 
 story_groups.name ──(逻辑关联)── islands.group_name
 game_settings、version_history、project_roadmap_tasks 为全局表

@@ -19,6 +19,7 @@ export interface SongRow {
   segments_json: string | LrcLine[] | null;
   target_words_json?: string | string[] | null;
   translation_json?: string | Record<string, unknown> | null;
+  assigned_user_ids?: number[];
   created_at?: string;
   updated_at?: string;
 }
@@ -59,8 +60,14 @@ function parseTranslation(value: SongRow['translation_json']): Record<string, un
   return null;
 }
 
-function formatSong(row: SongRow): SongRow & { segments: LrcLine[]; targetWords: string[]; translations: Record<string, unknown> | null } {
-  return { ...row, segments: parseSegments(row.segments_json), targetWords: parseTargetWords(row.target_words_json), translations: parseTranslation(row.translation_json) };
+function formatSong(row: SongRow): SongRow & { segments: LrcLine[]; targetWords: string[]; translations: Record<string, unknown> | null; assigned_user_ids: number[] } {
+  return {
+    ...row,
+    segments: parseSegments(row.segments_json),
+    targetWords: parseTargetWords(row.target_words_json),
+    translations: parseTranslation(row.translation_json),
+    assigned_user_ids: Array.isArray(row.assigned_user_ids) ? row.assigned_user_ids : []
+  };
 }
 
 export const translateSong = async (req: Request, res: Response) => {
@@ -131,7 +138,48 @@ function getUpload(req: Request, name: string): Express.Multer.File | undefined 
 
 export const getSongs = async (req: Request, res: Response) => {
   try {
-    const [rows]: any = await pool.query('SELECT * FROM songs ORDER BY updated_at DESC, id DESC');
+    const userId = req.query.user_id ? Number(req.query.user_id) : null;
+    let isAdmin = false;
+    if (userId) {
+      const [userRows]: any = await pool.query('SELECT username, is_admin FROM users WHERE id = ?', [userId]);
+      if (userRows.length > 0 && (userRows[0].is_admin === 1 || userRows[0].username?.toLowerCase() === 'admin')) {
+        isAdmin = true;
+      }
+    }
+
+    let rows: any[] = [];
+    if (!userId || isAdmin) {
+      const [allRows]: any = await pool.query('SELECT * FROM songs ORDER BY updated_at DESC, id DESC');
+      rows = allRows;
+    } else {
+      const [filteredRows]: any = await pool.query(
+        `SELECT s.* FROM songs s
+         WHERE (
+           s.id NOT IN (SELECT song_id FROM user_song_access)
+           OR s.id IN (SELECT song_id FROM user_song_access WHERE user_id = ?)
+         )
+         ORDER BY s.updated_at DESC, s.id DESC`,
+        [userId]
+      );
+      rows = filteredRows;
+    }
+
+    if (rows.length > 0) {
+      const songIds = rows.map((s: any) => s.id);
+      const [accessRows]: any = await pool.query(
+        'SELECT song_id, user_id FROM user_song_access WHERE song_id IN (?)',
+        [songIds]
+      );
+      const accessMap: Record<number, number[]> = {};
+      for (const r of accessRows) {
+        if (!accessMap[r.song_id]) accessMap[r.song_id] = [];
+        accessMap[r.song_id].push(r.user_id);
+      }
+      for (const s of rows) {
+        s.assigned_user_ids = accessMap[s.id] || [];
+      }
+    }
+
     res.json(rows.map(formatSong));
   } catch (error: any) {
     res.status(500).json({ error: error.message || 'Failed to fetch songs' });
@@ -142,7 +190,10 @@ export const getSong = async (req: Request, res: Response) => {
   try {
     const [rows]: any = await pool.query('SELECT * FROM songs WHERE id = ?', [req.params.id]);
     if (rows.length === 0) return res.status(404).json({ error: 'Song not found' });
-    res.json(formatSong(rows[0]));
+    const [accessRows]: any = await pool.query('SELECT user_id FROM user_song_access WHERE song_id = ?', [req.params.id]);
+    const song = rows[0];
+    song.assigned_user_ids = accessRows.map((r: any) => r.user_id);
+    res.json(formatSong(song));
   } catch (error: any) {
     res.status(500).json({ error: error.message || 'Failed to fetch song' });
   }
@@ -222,10 +273,55 @@ export const updateSong = async (req: Request, res: Response) => {
       `UPDATE songs SET title = ?, artist = ?, album = ?, lrc_text = ?, lrc_source = ?, lrclib_id = ?, match_duration_seconds = ?, status = 'READY', segments_json = ?, target_words_json = ? WHERE id = ?`,
       [title, artist, album, lrcText, req.body.lrc_source || existing.lrc_source || 'manual', lrclibId, matchDuration, JSON.stringify(segments), JSON.stringify(targetWords), req.params.id]
     );
+
+    if (Array.isArray(req.body.user_ids)) {
+      await pool.query('DELETE FROM user_song_access WHERE song_id = ?', [req.params.id]);
+      for (const uid of req.body.user_ids) {
+        await pool.query('INSERT IGNORE INTO user_song_access (user_id, song_id) VALUES (?, ?)', [uid, req.params.id]);
+      }
+    }
+
     const [rows]: any = await pool.query('SELECT * FROM songs WHERE id = ?', [req.params.id]);
-    res.json(formatSong(rows[0]));
+    const [accessRows]: any = await pool.query('SELECT user_id FROM user_song_access WHERE song_id = ?', [req.params.id]);
+    const song = rows[0];
+    song.assigned_user_ids = accessRows.map((r: any) => r.user_id);
+    res.json(formatSong(song));
   } catch (error: any) {
     res.status(500).json({ error: error.message || 'Failed to update song' });
+  }
+};
+
+export const updateSongAccess = async (req: Request, res: Response) => {
+  const connection = await pool.getConnection();
+  try {
+    const songId = Number(req.params.id);
+    const { user_ids } = req.body;
+    if (!Array.isArray(user_ids)) {
+      connection.release();
+      return res.status(400).json({ error: 'user_ids must be an array of user IDs' });
+    }
+    await connection.beginTransaction();
+    await connection.query('DELETE FROM user_song_access WHERE song_id = ?', [songId]);
+    for (const uid of user_ids) {
+      await connection.query('INSERT IGNORE INTO user_song_access (user_id, song_id) VALUES (?, ?)', [uid, songId]);
+    }
+    await connection.commit();
+    res.json({ song_id: songId, assigned_user_ids: user_ids });
+  } catch (err: any) {
+    await connection.rollback();
+    res.status(500).json({ error: err.message || 'Failed to update song access' });
+  } finally {
+    connection.release();
+  }
+};
+
+export const getSongAccess = async (req: Request, res: Response) => {
+  try {
+    const songId = Number(req.params.id);
+    const [accessRows]: any = await pool.query('SELECT user_id FROM user_song_access WHERE song_id = ?', [songId]);
+    res.json({ song_id: songId, assigned_user_ids: accessRows.map((r: any) => r.user_id) });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || 'Failed to fetch song access' });
   }
 };
 
@@ -234,6 +330,7 @@ export const deleteSong = async (req: Request, res: Response) => {
     const [rows]: any = await pool.query('SELECT audio_url FROM songs WHERE id = ?', [req.params.id]);
     if (rows.length === 0) return res.status(404).json({ error: 'Song not found' });
     const filename = path.basename(decodeURIComponent(String(rows[0].audio_url).split('/').pop() || ''));
+    await pool.query('DELETE FROM user_song_access WHERE song_id = ?', [req.params.id]);
     await pool.query('DELETE FROM songs WHERE id = ?', [req.params.id]);
     if (filename) {
       try { fs.unlinkSync(path.join(SONG_UPLOAD_DIR, filename)); } catch { /* already removed */ }

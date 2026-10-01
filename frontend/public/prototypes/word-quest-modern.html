@@ -1,0 +1,846 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="dark">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+  <title>WordQuest · Modern High-Legibility Flashcard & Directory Showcase</title>
+  <!-- Google Fonts: Plus Jakarta Sans & JetBrains Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['"Plus Jakarta Sans"', '-apple-system', 'BlinkMacSystemFont', '"Segoe UI"', 'sans-serif'],
+            mono: ['"JetBrains Mono"', 'ui-monospace', 'monospace']
+          },
+          colors: {
+            canvas: '#070b14',
+            surface: '#0d1424',
+            card: '#121a2f',
+            cardHover: '#18233e',
+            borderDim: 'rgba(255, 255, 255, 0.08)',
+            borderActive: 'rgba(0, 240, 255, 0.55)',
+            neonCyan: '#00f0ff',
+            neonCyanSoft: 'rgba(0, 240, 255, 0.15)',
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    :root {
+      color-scheme: dark;
+    }
+    body {
+      background-color: #070b14;
+      background-image: 
+        radial-gradient(ellipse 80% 50% at 50% -20%, rgba(0, 240, 255, 0.09), transparent),
+        radial-gradient(ellipse 60% 40% at 90% 80%, rgba(99, 102, 241, 0.08), transparent);
+      min-height: 100vh;
+      font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      overflow-x: hidden;
+      margin: 0;
+      padding: 0;
+    }
+
+    /* Custom Scrollbars */
+    ::-webkit-scrollbar {
+      height: 6px;
+      width: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: rgba(0, 240, 255, 0.25);
+      border-radius: 9999px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: rgba(0, 240, 255, 0.5);
+    }
+
+    /* Glow utilities */
+    .glow-cyan-box {
+      border: 1.5px solid rgba(0, 240, 255, 0.45);
+      box-shadow: 0 0 35px rgba(0, 240, 255, 0.14), inset 0 0 15px rgba(0, 240, 255, 0.04);
+    }
+    .glow-cyan-box:hover {
+      border-color: rgba(0, 240, 255, 0.7);
+      box-shadow: 0 0 45px rgba(0, 240, 255, 0.22), inset 0 0 20px rgba(0, 240, 255, 0.06);
+    }
+
+    .active-pill-glow {
+      border: 1.5px solid #00f0ff !important;
+      box-shadow: 0 0 16px rgba(0, 240, 255, 0.5), inset 0 0 10px rgba(0, 240, 255, 0.2);
+    }
+
+    .active-card-glow {
+      border: 2px solid #00f0ff !important;
+      box-shadow: 0 0 25px rgba(0, 240, 255, 0.38), inset 0 0 12px rgba(0, 240, 255, 0.15);
+    }
+
+    .fab-speaker-glow {
+      box-shadow: 0 0 28px rgba(0, 240, 255, 0.65), 0 8px 20px rgba(0, 0, 0, 0.6);
+    }
+    .fab-speaker-glow:hover {
+      box-shadow: 0 0 38px rgba(0, 240, 255, 0.9), 0 8px 24px rgba(0, 0, 0, 0.7);
+      transform: scale(1.08);
+    }
+
+    /* Audio wave animation */
+    @keyframes pulse-ring {
+      0% { transform: scale(0.95); opacity: 0.8; }
+      50% { transform: scale(1.15); opacity: 0; }
+      100% { transform: scale(0.95); opacity: 0; }
+    }
+    .audio-pulse::before {
+      content: '';
+      position: absolute;
+      inset: -6px;
+      border-radius: 9999px;
+      border: 2px solid #00f0ff;
+      animation: pulse-ring 2s infinite ease-out;
+    }
+
+    /* Modal Fade & Scale */
+    .modal-backdrop {
+      background-color: rgba(7, 11, 20, 0.82);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+    }
+  </style>
+</head>
+<body class="text-slate-100 flex flex-col justify-between min-h-screen selection:bg-cyan-500 selection:text-black">
+
+  <!-- ════════════════════════════════════════════════════════════════════════ -->
+  <!-- 1. TOP GLOBAL NAVIGATION BAR (Header from Mockup)                        -->
+  <!-- ════════════════════════════════════════════════════════════════════════ -->
+  <header class="w-full bg-[#0a0f1d]/90 border-b border-white/10 backdrop-blur-md sticky top-0 z-40 px-4 sm:px-8 py-3.5">
+    <div class="max-w-6xl mx-auto flex items-center justify-between gap-4">
+      
+      <!-- Brand Logo -->
+      <div class="flex items-center gap-3 cursor-pointer group">
+        <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-cyan-500 to-blue-600 flex items-center justify-center text-slate-950 shadow-[0_0_20px_rgba(0,240,255,0.4)] group-hover:scale-105 transition-transform">
+          <svg class="w-6 h-6 fill-current" viewBox="0 0 24 24">
+            <path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z" opacity="0"/>
+            <path d="M18 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zM6 4h5v8l-2.5-1.5L6 12V4z"/>
+          </svg>
+        </div>
+        <div class="flex flex-col">
+          <span class="text-xl font-black tracking-tight text-white flex items-center gap-1">
+            Word<span class="text-[#00f0ff] drop-shadow-[0_0_10px_rgba(0,240,255,0.5)]">Quest</span>
+          </span>
+          <span class="text-[10px] font-mono text-cyan-400/80 -mt-1 tracking-widest uppercase">Vocab Adventure</span>
+        </div>
+      </div>
+
+      <!-- Navigation Tabs -->
+      <nav class="hidden md:flex items-center gap-8 text-sm font-semibold">
+        <a href="#home" class="text-slate-400 hover:text-white transition-colors">Home</a>
+        <a href="#chapters" class="text-[#00f0ff] relative py-1 transition-colors flex flex-col items-center">
+          <span>Chapters</span>
+          <span class="w-full h-0.5 bg-[#00f0ff] rounded-full shadow-[0_0_8px_#00f0ff] mt-1"></span>
+        </a>
+        <a href="#mastery" class="text-slate-400 hover:text-white transition-colors">Mastery</a>
+      </nav>
+
+      <!-- Right Profile & Stats Controls -->
+      <div class="flex items-center gap-3">
+        <!-- Coin Counter -->
+        <div class="flex items-center gap-2 px-3 py-1.5 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-300 font-mono text-xs font-bold shadow-sm">
+          <span>🪙</span>
+          <span id="headerCoins">1,280</span>
+        </div>
+
+        <!-- User Avatar Circle -->
+        <div class="flex items-center gap-2 p-1 pl-1.5 pr-2.5 rounded-full bg-slate-800/80 border border-slate-700 hover:border-cyan-400/50 transition-colors cursor-pointer">
+          <div class="w-7 h-7 rounded-full bg-gradient-to-tr from-cyan-400 to-indigo-500 flex items-center justify-center text-xs font-black text-slate-950">
+            A
+          </div>
+          <span class="text-xs font-bold text-slate-200 hidden sm:inline">Alex</span>
+        </div>
+      </div>
+
+    </div>
+  </header>
+
+  <!-- ════════════════════════════════════════════════════════════════════════ -->
+  <!-- 2. MAIN WORKSPACE (Flashcard View + Controls)                             -->
+  <!-- ════════════════════════════════════════════════════════════════════════ -->
+  <main class="max-w-6xl w-full mx-auto px-4 sm:px-6 py-6 sm:py-8 flex flex-col gap-6">
+
+    <!-- ── Chapter Word Navigation Bar ──────────────────────────────────────── -->
+    <section class="flex items-center gap-2 sm:gap-3 bg-[#0d1424]/90 border border-white/10 p-2 sm:p-2.5 rounded-2xl shadow-xl backdrop-blur-md">
+      <!-- Prev Arrow -->
+      <button
+        id="btnNavPillPrev"
+        type="button"
+        class="w-8 h-8 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white flex items-center justify-center text-sm font-bold shrink-0 transition-all cursor-pointer active:scale-95"
+        title="向左滚动单词列表"
+      >
+        ‹
+      </button>
+
+      <!-- Scrollable Word Pills -->
+      <div
+        id="wordPillsContainer"
+        class="flex-1 flex items-center gap-2 overflow-x-auto py-1 scroll-smooth select-none no-scrollbar"
+        style="scrollbar-width: none; -ms-overflow-style: none;"
+      >
+        <!-- Injected via JavaScript -->
+      </div>
+
+      <!-- Next Arrow -->
+      <button
+        id="btnNavPillNext"
+        type="button"
+        class="w-8 h-8 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white flex items-center justify-center text-sm font-bold shrink-0 transition-all cursor-pointer active:scale-95"
+        title="向右滚动单词列表"
+      >
+        ›
+      </button>
+
+      <!-- Open All Words Directory Button -->
+      <button
+        id="btnOpenDirectoryTop"
+        type="button"
+        class="shrink-0 px-3.5 py-1.5 rounded-xl bg-indigo-500/20 hover:bg-indigo-500/30 border border-indigo-400/40 text-indigo-300 hover:text-white text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer active:scale-95"
+      >
+        <span>📋</span>
+        <span class="hidden sm:inline">全词目录</span>
+      </button>
+    </section>
+
+    <!-- ── High-Legibility Hero Word Card (with Floating Speaker FAB) ───────── -->
+    <section class="relative mb-8 sm:mb-10">
+      <div class="glow-cyan-box bg-gradient-to-b from-[#0f172a]/95 to-[#0b101d]/95 rounded-3xl p-8 sm:p-12 text-center relative transition-all duration-300">
+        
+        <!-- Subtle Top Accent Beam -->
+        <div class="absolute top-0 left-1/4 right-1/4 h-[2px] bg-gradient-to-r from-transparent via-[#00f0ff] to-transparent shadow-[0_0_12px_#00f0ff]"></div>
+
+        <!-- Mastery Badge (Top Right) -->
+        <div id="heroMasteryBadge" class="absolute top-4 right-5 sm:top-6 sm:right-7 flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold font-mono transition-all">
+          <!-- Injected via JS -->
+        </div>
+
+        <!-- Word Index Tag (Top Left) -->
+        <div id="heroIndexTag" class="absolute top-4 left-5 sm:top-6 sm:left-7 text-xs font-mono font-bold text-slate-500">
+          #02 / 12
+        </div>
+
+        <!-- Main Word Title -->
+        <div class="pt-2 sm:pt-4 pb-2">
+          <h1
+            id="heroWord"
+            class="text-5xl sm:text-7xl md:text-8xl font-black text-white tracking-tight cursor-pointer hover:text-cyan-200 transition-colors drop-shadow-md"
+            title="点击播放标准发音"
+          >
+            resilient
+          </h1>
+        </div>
+
+        <!-- Phonetic Badge -->
+        <div class="my-3 flex items-center justify-center gap-2">
+          <span
+            id="heroPhonetic"
+            class="px-4 py-1.5 rounded-xl bg-[#00f0ff]/15 border border-[#00f0ff]/40 text-[#00f0ff] text-base sm:text-xl font-mono font-semibold tracking-wider shadow-[0_0_15px_rgba(0,240,255,0.2)]"
+          >
+            /rɪˈzɪl.i.ənt/
+          </span>
+          <span
+            id="heroPartOfSpeech"
+            class="px-2.5 py-1 rounded-lg bg-indigo-500/20 border border-indigo-400/30 text-indigo-300 text-xs sm:text-sm font-mono font-bold"
+          >
+            adj.
+          </span>
+        </div>
+
+        <!-- Chinese Translation (Large & High Legibility) -->
+        <div class="mt-4 pb-4 sm:pb-6">
+          <p
+            id="heroTranslation"
+            class="text-2xl sm:text-4xl md:text-5xl font-extrabold text-slate-100 tracking-wide"
+          >
+            有弹力的；适应力强的
+          </p>
+        </div>
+
+        <!-- Overlapping Floating Action Speaker Button (Centered on bottom border, unclipped) -->
+        <div class="absolute top-full left-1/2 -translate-x-1/2 -translate-y-1/2 z-30">
+          <button
+            id="btnPlaySpeech"
+            type="button"
+            class="fab-speaker-glow audio-pulse w-14 h-14 sm:w-16 sm:h-16 rounded-full bg-gradient-to-tr from-[#00f0ff] to-[#38bdf8] text-slate-950 flex items-center justify-center text-2xl sm:text-3xl transition-transform duration-200 cursor-pointer active:scale-90"
+            title="播放标准真人发音 (快捷键: 空格 Space)"
+          >
+            <svg class="w-7 h-7 sm:w-8 sm:h-8 fill-current translate-x-0.5" viewBox="0 0 24 24">
+              <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/>
+            </svg>
+          </button>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- ── 2-Column Knowledge Panels (Sentences & Roots) ────────────────────── -->
+    <section class="grid grid-cols-1 md:grid-cols-2 gap-5 pt-3">
+      
+      <!-- Left: Fun Sentences Panel -->
+      <div class="bg-[#0d1424]/90 border border-white/10 hover:border-white/20 rounded-3xl p-6 sm:p-7 shadow-xl backdrop-blur-md flex flex-col justify-between transition-colors">
+        <div>
+          <div class="flex items-center justify-between pb-4 border-b border-white/10">
+            <h3 class="text-sm font-extrabold uppercase tracking-wider text-amber-400 flex items-center gap-2">
+              <span class="text-lg">✨</span>
+              <span>生动情境例句 (Sentences)</span>
+            </h3>
+            <button
+              id="btnPlaySentenceAudio"
+              type="button"
+              class="w-8 h-8 rounded-full bg-cyan-500/10 hover:bg-cyan-500/20 text-[#00f0ff] flex items-center justify-center text-sm transition-colors cursor-pointer"
+              title="朗读当前例句"
+            >
+              🔊
+            </button>
+          </div>
+
+          <div id="sentenceList" class="space-y-4 pt-4">
+            <!-- Injected via JS -->
+          </div>
+        </div>
+      </div>
+
+      <!-- Right: Roots & Etymology Panel -->
+      <div class="bg-[#0d1424]/90 border border-white/10 hover:border-white/20 rounded-3xl p-6 sm:p-7 shadow-xl backdrop-blur-md space-y-6 transition-colors">
+        
+        <!-- Roots & Affixes -->
+        <div class="space-y-2.5">
+          <h3 class="text-sm font-extrabold uppercase tracking-wider text-emerald-400 flex items-center gap-2">
+            <span class="text-lg">🧩</span>
+            <span>构词奥秘 (Roots & Affixes)</span>
+          </h3>
+          <div class="bg-[#121a2f]/80 p-4 rounded-2xl border border-white/5 text-sm sm:text-base text-slate-200 leading-relaxed">
+            <p id="panelRoots">
+              <!-- Injected via JS -->
+            </p>
+          </div>
+        </div>
+
+        <!-- Etymology Story -->
+        <div class="space-y-2.5">
+          <h3 class="text-sm font-extrabold uppercase tracking-wider text-purple-400 flex items-center gap-2">
+            <span class="text-lg">📜</span>
+            <span>词源趣谈 (Etymology Story)</span>
+          </h3>
+          <div class="bg-[#121a2f]/80 p-4 rounded-2xl border border-white/5 text-sm sm:text-base text-slate-200 leading-relaxed">
+            <p id="panelEtymology">
+              <!-- Injected via JS -->
+            </p>
+          </div>
+        </div>
+
+      </div>
+
+    </section>
+
+    <!-- ── Bottom Navigation Control Bar ───────────────────────────────────── -->
+    <footer class="flex flex-wrap items-center justify-between gap-4 pt-4 pb-12 border-t border-white/10">
+      
+      <!-- Previous Button -->
+      <button
+        id="btnPrevWord"
+        type="button"
+        class="px-6 py-3 rounded-2xl bg-[#121a2f] hover:bg-[#18233e] border border-white/10 text-slate-200 text-sm font-bold flex items-center gap-2 cursor-pointer transition-all active:scale-95 disabled:opacity-30 disabled:pointer-events-none"
+      >
+        <span>‹</span>
+        <span>Previous</span>
+        <span class="text-[10px] font-mono text-slate-400 hidden sm:inline">(Left)</span>
+      </button>
+
+      <!-- Center Word Counter & Toggle Switch -->
+      <div class="flex items-center gap-3">
+        <span id="footerCounter" class="text-sm font-mono text-slate-400">
+          Word <strong class="text-[#00f0ff]">2</strong> of 12
+        </span>
+      </div>
+
+      <div class="flex items-center gap-3">
+        <!-- All Words Directory Button / Pill Switch -->
+        <button
+          id="btnOpenDirectoryBottom"
+          type="button"
+          class="px-4 py-3 rounded-2xl bg-[#121a2f] hover:bg-[#18233e] border border-cyan-500/40 text-cyan-300 text-sm font-bold flex items-center gap-2.5 cursor-pointer transition-all active:scale-95"
+        >
+          <span>All Words Directory</span>
+          <div class="w-8 h-4.5 rounded-full bg-cyan-950 border border-cyan-400 flex items-center px-0.5">
+            <div class="w-3.5 h-3.5 rounded-full bg-cyan-400"></div>
+          </div>
+        </button>
+
+        <!-- Next Button (Vibrant Solid Cyan) -->
+        <button
+          id="btnNextWord"
+          type="button"
+          class="px-7 py-3 rounded-2xl bg-[#00f0ff] hover:bg-[#38bdf8] text-slate-950 text-sm font-black flex items-center gap-2 cursor-pointer transition-all active:scale-95 shadow-[0_0_20px_rgba(0,240,255,0.4)] disabled:opacity-30 disabled:pointer-events-none"
+        >
+          <span>Next</span>
+          <span>›</span>
+          <span class="text-[10px] font-mono text-slate-900 hidden sm:inline">(Right)</span>
+        </button>
+      </div>
+
+    </footer>
+
+  </main>
+
+  <!-- ════════════════════════════════════════════════════════════════════════ -->
+  <!-- 3. ALL WORDS DIRECTORY GRID DRAWER MODAL (From Second Mockup)            -->
+  <!-- ════════════════════════════════════════════════════════════════════════ -->
+  <div
+    id="directoryModal"
+    class="fixed inset-0 z-50 modal-backdrop hidden items-center justify-center p-4 sm:p-6 transition-all duration-300"
+  >
+    <div
+      class="bg-[#0d1424] border border-[#1e2e4a] rounded-3xl w-full max-w-6xl max-h-[88vh] flex flex-col shadow-[0_20px_60px_rgba(0,0,0,0.8)] ring-1 ring-cyan-500/30 overflow-hidden"
+    >
+      
+      <!-- Modal Top Header -->
+      <div class="p-6 sm:p-7 border-b border-white/10 flex items-center justify-between gap-4 bg-[#0a0f1d]/80">
+        <div>
+          <h2 class="text-2xl sm:text-3xl font-black text-[#00f0ff] tracking-tight flex items-center gap-2">
+            <span>All Words Directory</span>
+          </h2>
+          <p id="modalSubTitle" class="text-xs sm:text-sm font-mono text-slate-400 mt-1">
+            Chapter 1: 12 Words · 点击任意单词卡片直接跳转
+          </p>
+        </div>
+
+        <button
+          id="btnCloseModal"
+          type="button"
+          class="px-4 py-2 rounded-xl bg-slate-800/80 hover:bg-slate-700 border border-white/10 text-slate-300 hover:text-white text-xs sm:text-sm font-bold flex items-center gap-1.5 transition-colors cursor-pointer active:scale-95"
+        >
+          <span>Back to Card</span>
+          <span>✕</span>
+        </button>
+      </div>
+
+      <!-- 5-Column Responsive Grid Container -->
+      <div
+        id="modalGridContainer"
+        class="flex-1 overflow-y-auto p-5 sm:p-7 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3.5"
+      >
+        <!-- Injected via JS -->
+      </div>
+
+      <!-- Modal Footer -->
+      <div class="p-4 sm:p-5 border-t border-white/10 bg-[#0a0f1d]/80 flex items-center justify-between text-xs text-slate-400">
+        <div>
+          键盘支持：<kbd class="px-2 py-0.5 rounded bg-slate-800 border border-slate-700 text-slate-300">Esc</kbd> 关闭目录 · <kbd class="px-2 py-0.5 rounded bg-slate-800 border border-slate-700 text-slate-300">Space</kbd> 听发音
+        </div>
+        <div id="modalSelectedIndicator" class="text-cyan-300 font-mono font-bold">
+          当前选中：#02 resilient
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ════════════════════════════════════════════════════════════════════════ -->
+  <!-- 4. JAVASCRIPT LOGIC & SAMPLE DATA                                        -->
+  <!-- ════════════════════════════════════════════════════════════════════════ -->
+  <script>
+    // Sample Chapter Word Dataset (Matching Mockup + Real WordQuest Content)
+    const CHAPTER_WORDS = [
+      {
+        id: 1,
+        word: "curious",
+        phonetic: "/ˈkjʊə.ri.əs/",
+        part_of_speech: "adj.",
+        translation: "好奇的；求知欲强的",
+        mastered: true,
+        sentences: [
+          { en: "Babies are curious about everything around them.", zh: "婴儿对周围的一切都充满了好奇心。" },
+          { en: "A curious mind is the first step to discovery.", zh: "充满求知欲的心灵是探索发现的第一步。" }
+        ],
+        root_affixes: "cur- (关照、留心) + -ious (多…的) → 对事物极为留心的，即好奇的。",
+        etymology: "源自拉丁语 curiosus，意为“精心照料的”，后来引申为对知识充满探究与好奇。"
+      },
+      {
+        id: 2,
+        word: "resilient",
+        phonetic: "/rɪˈzɪl.i.ənt/",
+        part_of_speech: "adj.",
+        translation: "有弹力的；适应力强的",
+        mastered: true,
+        sentences: [
+          { en: "The experience to become resilient made them stronger.", zh: "变得百折不挠的经历让他们更加坚强。" },
+          { en: "Children are often remarkably resilient to change.", zh: "孩子们对外界环境的变化通常展现出极强的适应力。" }
+        ],
+        root_affixes: "re- (回、向后) + salire (跳跃、跃起) + -ent → 弹跳回原状的，即有弹性的、百折不挠的。",
+        etymology: "最初在17世纪用于物理学描述受压后弹回的物体，后用于赞美人在困难中迅速复原的坚韧品格。"
+      },
+      {
+        id: 3,
+        word: "ancient",
+        phonetic: "/ˈeɪn.ʃənt/",
+        part_of_speech: "adj.",
+        translation: "古老的；古代的",
+        mastered: false,
+        sentences: [
+          { en: "The explorers discovered an ancient city in the jungle.", zh: "探险家在丛林中发现了一座古代城池。" }
+        ],
+        root_affixes: "ante (在前) + -ien (形容词后缀) → 在时间上走在最前面的，即古老的。",
+        etymology: "经古法语 ancien 源自拉丁语 ante（之前），指遥远过去的辉煌文明。"
+      },
+      {
+        id: 4,
+        word: "courageous",
+        phonetic: "/kəˈreɪ.dʒəs/",
+        part_of_speech: "adj.",
+        translation: "勇敢的；无畏的",
+        mastered: true,
+        sentences: [
+          { en: "It was courageous of her to challenge the unfair rule.", zh: "她勇敢地对不公正的规则提出了质疑。" }
+        ],
+        root_affixes: "cor (心) + -age (名物) + -ous (多…的) → 怀着一颗坚强之心的，即勇敢的。",
+        etymology: "在古法语中意指充满“心之力量”，真正的勇敢源于内心深处的坚定信念。"
+      },
+      {
+        id: 5,
+        word: "patient",
+        phonetic: "/ˈpeɪ.ʃənt/",
+        part_of_speech: "adj.",
+        translation: "有耐心的；能忍耐的",
+        mastered: true,
+        sentences: [
+          { en: "Teaching young kids requires a very patient attitude.", zh: "教导幼儿需要极其耐心的态度。" }
+        ],
+        root_affixes: "pati (忍受、承受) + -ent → 能承受漫长等待与艰难的。",
+        etymology: "与拉丁语 patiens 同源，最初指平静忍受苦难，后转化为面对琐事的持久耐心。"
+      },
+      {
+        id: 6,
+        word: "generous",
+        phonetic: "/ˈdʒen.ər.əs/",
+        part_of_speech: "adj.",
+        translation: "慷慨的；大方的",
+        mastered: false,
+        sentences: [
+          { en: "He was very generous in sharing his treasures.", zh: "他非常慷慨地分享自己的珍藏宝物。" }
+        ],
+        root_affixes: "genus (高贵的出身) + -ous → 出身良好而品格高尚仁慈的。",
+        etymology: "早期英文专指贵族血统，后来升华到指代无私馈赠、待人宽厚的高贵美德。"
+      },
+      {
+        id: 7,
+        word: "loyal",
+        phonetic: "/ˈlɔɪ.əl/",
+        part_of_speech: "adj.",
+        translation: "忠诚的；忠心的",
+        mastered: true,
+        sentences: [
+          { en: "Dogs are known as the most loyal companions.", zh: "狗狗被公认为人类最忠实的朋友。" }
+        ],
+        root_affixes: "lex / loi (法律、契约) + -al → 严守忠实契约者。",
+        etymology: "源于古法语 loial，最初指依法尽责，演变为对朋友、家庭和信念的至死不渝。"
+      },
+      {
+        id: 8,
+        word: "friendly",
+        phonetic: "/ˈfrend.li/",
+        part_of_speech: "adj.",
+        translation: "友好的；亲切的",
+        mastered: true,
+        sentences: [
+          { en: "Everyone in the village gave us a friendly welcome.", zh: "村子里的每一个人都热情友善地欢迎我们。" }
+        ],
+        root_affixes: "friend (朋友) + -ly (如…般的) → 待人如同好友一般温和的。",
+        etymology: "日耳曼古语 frijon（去爱、去珍惜），朋友就是被深深珍视之人。"
+      },
+      {
+        id: 9,
+        word: "helpful",
+        phonetic: "/ˈhelp.fəl/",
+        part_of_speech: "adj.",
+        translation: "有帮助的；乐于助人的",
+        mastered: false,
+        sentences: [
+          { en: "She gave some very helpful advice for our project.", zh: "她为我们的课题提供了非常实用的建议。" }
+        ],
+        root_affixes: "help (帮助) + -ful (充满的) → 乐于提供援助的。",
+        etymology: "古英语 helpan，本义为解救困境，-ful 强化了行动的主动性。"
+      },
+      {
+        id: 10,
+        word: "strict",
+        phonetic: "/strɪkt/",
+        part_of_speech: "adj.",
+        translation: "严格的；严厉的",
+        mastered: true,
+        sentences: [
+          { en: "Our coach has strict rules during sprint training.", zh: "我们的教练在冲刺训练期间有着严苛的纪律。" }
+        ],
+        root_affixes: "stringere (拉紧、绑紧) → 毫不松懈松弛的，即严密的。",
+        etymology: "与 string（绳子）同源，原指绷紧的琴弦，后喻指不可逾越的规章法则。"
+      },
+      {
+        id: 11,
+        word: "ambitious",
+        phonetic: "/æmˈbɪʃ.əs/",
+        part_of_speech: "adj.",
+        translation: "有雄心的；抱负远大的",
+        mastered: false,
+        sentences: [
+          { en: "They set an ambitious goal to reach the mountain peak.", zh: "他们立下了登顶雪山峰巅的雄心目标。" }
+        ],
+        root_affixes: "ambi- (四周) + ire (走动) + -ous → 四处奔走拉票，引申为满怀进取抱负。",
+        etymology: "源自罗马时代候选人四处拜访选民的行动，演变成追求更高远梦想的志向。"
+      },
+      {
+        id: 12,
+        word: "benevolent",
+        phonetic: "/bəˈnev.əl.ənt/",
+        part_of_speech: "adj.",
+        translation: "仁慈的；乐善好施的",
+        mastered: true,
+        sentences: [
+          { en: "The benevolent king was loved by all his people.", zh: "这位仁慈的国王受到了全体国民的深切爱戴。" }
+        ],
+        root_affixes: "bene (好、善) + velle (心愿) + -ent → 心怀善念并付诸行动的。",
+        etymology: "拉丁语 bene volens，发自内心地祝愿他人美好幸福，是纯粹仁爱的代表。"
+      }
+    ];
+
+    let currentIdx = 1; // Default to "resilient" (index 1 in array, #2)
+
+    // DOM Elements
+    const pillsContainer = document.getElementById('wordPillsContainer');
+    const heroWord = document.getElementById('heroWord');
+    const heroPhonetic = document.getElementById('heroPhonetic');
+    const heroPartOfSpeech = document.getElementById('heroPartOfSpeech');
+    const heroTranslation = document.getElementById('heroTranslation');
+    const heroMasteryBadge = document.getElementById('heroMasteryBadge');
+    const heroIndexTag = document.getElementById('heroIndexTag');
+    const sentenceList = document.getElementById('sentenceList');
+    const panelRoots = document.getElementById('panelRoots');
+    const panelEtymology = document.getElementById('panelEtymology');
+    const footerCounter = document.getElementById('footerCounter');
+    const btnPrevWord = document.getElementById('btnPrevWord');
+    const btnNextWord = document.getElementById('btnNextWord');
+    const btnPlaySpeech = document.getElementById('btnPlaySpeech');
+    const btnPlaySentenceAudio = document.getElementById('btnPlaySentenceAudio');
+
+    // Modal Elements
+    const directoryModal = document.getElementById('directoryModal');
+    const btnOpenDirectoryTop = document.getElementById('btnOpenDirectoryTop');
+    const btnOpenDirectoryBottom = document.getElementById('btnOpenDirectoryBottom');
+    const btnCloseModal = document.getElementById('btnCloseModal');
+    const modalGridContainer = document.getElementById('modalGridContainer');
+    const modalSubTitle = document.getElementById('modalSubTitle');
+    const modalSelectedIndicator = document.getElementById('modalSelectedIndicator');
+
+    // Speech Audio Function
+    function speakText(text) {
+      if (!('speechSynthesis' in window)) return;
+      window.speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.lang = 'en-US';
+      utterance.rate = 0.9;
+      window.speechSynthesis.speak(utterance);
+    }
+
+    // Render Pills Bar
+    function renderPills() {
+      pillsContainer.innerHTML = '';
+      CHAPTER_WORDS.forEach((item, idx) => {
+        const isActive = idx === currentIdx;
+        const pill = document.createElement('button');
+        pill.type = 'button';
+        pill.className = `shrink-0 px-3.5 py-1.5 rounded-xl text-xs sm:text-sm font-bold font-mono transition-all flex items-center gap-1.5 cursor-pointer border ${
+          isActive
+            ? 'active-pill-glow bg-[#00f0ff]/15 text-[#00f0ff]'
+            : 'bg-slate-900/80 hover:bg-slate-800 text-slate-300 border-white/10 hover:border-slate-500 hover:text-white'
+        }`;
+        pill.innerHTML = `
+          <span class="text-[10px] font-black ${isActive ? 'text-[#00f0ff]' : 'text-slate-500'}">#${idx + 1}.</span>
+          <span class="tracking-tight">${item.word}</span>
+          ${item.mastered ? '<span class="text-emerald-400 text-xs ml-0.5">✓</span>' : ''}
+        `;
+        pill.onclick = () => selectWord(idx);
+        pillsContainer.appendChild(pill);
+
+        if (isActive) {
+          pill.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+        }
+      });
+    }
+
+    // Render Active Word Details
+    function renderWordDetail() {
+      const data = CHAPTER_WORDS[currentIdx];
+      if (!data) return;
+
+      heroWord.textContent = data.word;
+      heroPhonetic.textContent = data.phonetic || '';
+      heroPartOfSpeech.textContent = data.part_of_speech || 'adj.';
+      heroTranslation.textContent = data.translation;
+      heroIndexTag.textContent = `#${String(currentIdx + 1).padStart(2, '0')} / ${CHAPTER_WORDS.length}`;
+
+      // Mastery Badge
+      if (data.mastered) {
+        heroMasteryBadge.className = 'absolute top-4 right-5 sm:top-6 sm:right-7 flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold font-mono bg-emerald-500/20 border border-emerald-400/40 text-emerald-300 shadow-sm';
+        heroMasteryBadge.innerHTML = '<span>✓</span><span>已掌握</span>';
+      } else {
+        heroMasteryBadge.className = 'absolute top-4 right-5 sm:top-6 sm:right-7 flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold font-mono bg-slate-800/80 border border-slate-700 text-slate-400';
+        heroMasteryBadge.innerHTML = '<span>🌱</span><span>探索中</span>';
+      }
+
+      // Sentences
+      sentenceList.innerHTML = '';
+      if (data.sentences && data.sentences.length > 0) {
+        data.sentences.forEach(s => {
+          const regex = new RegExp(`(${data.word})`, 'gi');
+          const highlightedEn = s.en.replace(regex, '<span class="text-[#00f0ff] font-bold">$1</span>');
+
+          const div = document.createElement('div');
+          div.className = 'bg-[#121a2f]/80 p-4 rounded-2xl border border-white/5 space-y-1.5';
+          div.innerHTML = `
+            <p class="text-base sm:text-lg text-slate-100 font-semibold leading-relaxed">${highlightedEn}</p>
+            <p class="text-xs sm:text-sm text-slate-400 leading-normal">${s.zh}</p>
+          `;
+          sentenceList.appendChild(div);
+        });
+      }
+
+      // Roots & Etymology
+      panelRoots.textContent = data.root_affixes || '构词拆解已录入，正在生成深度联想。';
+      panelEtymology.textContent = data.etymology || '古语流变丰富，赋予词语深刻文化印记。';
+
+      // Footer counter & button states
+      footerCounter.innerHTML = `Word <strong class="text-[#00f0ff]">${currentIdx + 1}</strong> of ${CHAPTER_WORDS.length}`;
+      btnPrevWord.disabled = currentIdx === 0;
+      btnNextWord.disabled = currentIdx === CHAPTER_WORDS.length - 1;
+
+      // Update Modal indicator
+      modalSelectedIndicator.textContent = `当前选中：#${String(currentIdx + 1).padStart(2, '0')} ${data.word}`;
+    }
+
+    // Select Word
+    function selectWord(idx) {
+      if (idx < 0 || idx >= CHAPTER_WORDS.length) return;
+      currentIdx = idx;
+      renderPills();
+      renderWordDetail();
+      speakText(CHAPTER_WORDS[currentIdx].word);
+    }
+
+    // Render Modal Grid Cards
+    function renderModalGrid() {
+      modalGridContainer.innerHTML = '';
+      modalSubTitle.textContent = `Chapter 1: ${CHAPTER_WORDS.length} Words · 点击任意单词卡片直接跳转`;
+
+      CHAPTER_WORDS.forEach((item, idx) => {
+        const isActive = idx === currentIdx;
+        const card = document.createElement('button');
+        card.type = 'button';
+        card.className = `p-4 rounded-2xl border text-left transition-all cursor-pointer flex flex-col justify-between gap-3 group relative ${
+          isActive
+            ? 'active-card-glow bg-[#131d31] text-cyan-200'
+            : 'bg-[#101728] hover:bg-[#152038] border-white/10 hover:border-cyan-500/40'
+        }`;
+
+        card.innerHTML = `
+          <div class="flex items-center justify-between w-full">
+            <span class="text-xs font-mono font-bold ${isActive ? 'text-[#00f0ff]' : 'text-slate-500'}">
+              #${String(idx + 1).padStart(2, '0')}
+            </span>
+            ${isActive ? '<span class="text-[#00f0ff] text-xs">✦</span>' : ''}
+          </div>
+
+          <div>
+            <h4 class="text-lg font-black tracking-tight ${isActive ? 'text-[#00f0ff]' : 'text-white group-hover:text-cyan-200'}">
+              ${item.word}
+            </h4>
+            <p class="text-xs font-mono text-cyan-400/80 truncate">
+              ${item.phonetic || ''}
+            </p>
+          </div>
+
+          <div class="flex items-center justify-between text-xs pt-1 border-t border-white/5">
+            <span class="text-slate-300 font-medium truncate max-w-[80%]">${item.translation}</span>
+            ${item.mastered 
+              ? '<span class="text-emerald-400 font-bold">✓</span>' 
+              : '<span class="text-slate-600">○</span>'}
+          </div>
+        `;
+
+        card.onclick = () => {
+          selectWord(idx);
+          closeModal();
+        };
+
+        modalGridContainer.appendChild(card);
+      });
+    }
+
+    // Modal Show / Hide
+    function openModal() {
+      renderModalGrid();
+      directoryModal.classList.remove('hidden');
+      directoryModal.classList.add('flex');
+    }
+
+    function closeModal() {
+      directoryModal.classList.add('hidden');
+      directoryModal.classList.remove('flex');
+    }
+
+    // Event Listeners
+    btnPrevWord.onclick = () => selectWord(currentIdx - 1);
+    btnNextWord.onclick = () => selectWord(currentIdx + 1);
+    btnNavPillPrev.onclick = () => pillsContainer.scrollBy({ left: -200, behavior: 'smooth' });
+    btnNavPillNext.onclick = () => pillsContainer.scrollBy({ left: 200, behavior: 'smooth' });
+
+    btnPlaySpeech.onclick = () => speakText(CHAPTER_WORDS[currentIdx].word);
+    heroWord.onclick = () => speakText(CHAPTER_WORDS[currentIdx].word);
+    btnPlaySentenceAudio.onclick = () => {
+      const sentences = CHAPTER_WORDS[currentIdx].sentences;
+      if (sentences && sentences.length > 0) speakText(sentences[0].en);
+    };
+
+    btnOpenDirectoryTop.onclick = openModal;
+    btnOpenDirectoryBottom.onclick = openModal;
+    btnCloseModal.onclick = closeModal;
+
+    // Keyboard Shortcuts
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        closeModal();
+      } else if (e.key === 'ArrowLeft') {
+        selectWord(currentIdx - 1);
+      } else if (e.key === 'ArrowRight') {
+        selectWord(currentIdx + 1);
+      } else if (e.code === 'Space' || e.key === ' ') {
+        e.preventDefault();
+        speakText(CHAPTER_WORDS[currentIdx].word);
+      }
+    });
+
+    // Close modal on background click
+    directoryModal.addEventListener('click', (e) => {
+      if (e.target === directoryModal) closeModal();
+    });
+
+    // Initial Launch
+    renderPills();
+    renderWordDetail();
+  </script>
+
+</body>
+</html>

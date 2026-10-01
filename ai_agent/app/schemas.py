@@ -49,6 +49,29 @@ class TranslationResponse(BaseModel):
     error: str | None = None
 
 
+class EnrichedWord(BaseModel):
+    word: str
+    phonetic: str = ""
+    translation: str = ""
+    fun_sentences: list[SentencePair] = Field(default_factory=list)
+    antonyms: str = ""
+    synonyms: str = ""
+    root_affixes: str = ""
+    etymology: str = ""
+
+
+class VocabularyEnrichRequest(BaseModel):
+    words: list[str] = Field(..., min_length=1, max_length=50)
+    model: str | None = None
+    cli: str = "agy"
+
+
+class VocabularyEnrichResponse(BaseModel):
+    success: bool = True
+    data: list[EnrichedWord] = Field(default_factory=list)
+    error: str | None = None
+
+
 class PageContent(BaseModel):
     """Content extracted from a single page of the picture book."""
 

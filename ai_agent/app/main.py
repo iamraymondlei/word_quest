@@ -15,7 +15,7 @@ from fastapi.staticfiles import StaticFiles
 from PIL import Image, UnidentifiedImageError
 
 from app.config import settings
-from app.schemas import APIResponse, SongTranslationRequest, TranslationResponse
+from app.schemas import APIResponse, SongTranslationRequest, TranslationResponse, VocabularyEnrichRequest, VocabularyEnrichResponse
 from app.services.gemini_parser import GeminiParser, get_available_models, get_cli_config
 
 logger = logging.getLogger(__name__)
@@ -126,6 +126,26 @@ async def translate_song(request: SongTranslationRequest):
         return TranslationResponse(success=True, data=result)
     except ValueError as exc:
         logger.error("Song translation failed: %s", exc)
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@app.post("/enrich-vocabulary", response_model=VocabularyEnrichResponse)
+async def enrich_vocabulary(request: VocabularyEnrichRequest):
+    """Enrich a list of words with phonetic, sentences, antonyms, roots, and etymology."""
+    if parser is None:
+        raise HTTPException(status_code=503, detail="Story parser is not initialized.")
+    if not request.words:
+        raise HTTPException(status_code=400, detail="生词列表不能为空。")
+    if any(not word.strip() or len(word) > 80 for word in request.words):
+        raise HTTPException(status_code=400, detail="单词不能为空且每个单词不超过 80 个字符。")
+    cli = request.cli.lower().strip()
+    if cli not in {"agy", "codex"}:
+        raise HTTPException(status_code=400, detail="cli must be 'agy' or 'codex'.")
+    try:
+        enriched_list = await parser.enrich_vocabulary_content(request.words, request.model, cli)
+        return VocabularyEnrichResponse(success=True, data=enriched_list)
+    except ValueError as exc:
+        logger.error("Vocabulary enrichment failed: %s", exc)
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
 

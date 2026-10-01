@@ -5,11 +5,11 @@
  */
 
 const DB_NAME = 'WordQuestOfflineDB';
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 
 export interface SyncAction {
   id?: number;
-  type: 'update_stage' | 'add_coins' | 'update_avatar' | 'translation_stats';
+  type: 'update_stage' | 'add_coins' | 'update_avatar' | 'translation_stats' | 'vocab_progress';
   payload: any;
   timestamp: number;
 }
@@ -68,6 +68,17 @@ class OfflineStorageEngine {
         // 5. Illustrations binary store for 100% offline picture book rendering
         if (!db.objectStoreNames.contains('illustrations')) {
           db.createObjectStore('illustrations', { keyPath: 'url' });
+        }
+
+        // 6. Word books store
+        if (!db.objectStoreNames.contains('wordBooks')) {
+          db.createObjectStore('wordBooks', { keyPath: 'id' });
+        }
+
+        // 7. Vocabulary words store
+        if (!db.objectStoreNames.contains('vocabularyWords')) {
+          const vocabStore = db.createObjectStore('vocabularyWords', { keyPath: 'id' });
+          vocabStore.createIndex('by_book', 'book_id', { unique: false });
         }
       };
 
@@ -469,6 +480,110 @@ class OfflineStorageEngine {
       return URL.createObjectURL(blob);
     }
     return null;
+  }
+
+  // ── Word Books & Vocabulary Cache ─────────────────────────────────────
+  async saveCachedWordBooks(books: any[]): Promise<void> {
+    if (!books || !Array.isArray(books)) return;
+    try {
+      const db = await this.initDB();
+      const tx = db.transaction('wordBooks', 'readwrite');
+      const store = tx.objectStore('wordBooks');
+      store.clear();
+      for (const b of books) {
+        store.put(b);
+      }
+      localStorage.setItem('wordquest_cached_word_books', JSON.stringify(books));
+    } catch (e) {
+      console.warn('Failed to save word books to IndexedDB:', e);
+      localStorage.setItem('wordquest_cached_word_books', JSON.stringify(books));
+    }
+  }
+
+  async getCachedWordBooks(): Promise<any[]> {
+    try {
+      const db = await this.initDB();
+      return new Promise((resolve) => {
+        const tx = db.transaction('wordBooks', 'readonly');
+        const store = tx.objectStore('wordBooks');
+        const req = store.getAll();
+        req.onsuccess = () => resolve(req.result || []);
+        req.onerror = () => {
+          const raw = localStorage.getItem('wordquest_cached_word_books');
+          resolve(raw ? JSON.parse(raw) : []);
+        };
+      });
+    } catch {
+      const raw = localStorage.getItem('wordquest_cached_word_books');
+      return raw ? JSON.parse(raw) : [];
+    }
+  }
+
+  async saveCachedBookWords(bookId: number, words: any[]): Promise<void> {
+    if (!words || !Array.isArray(words)) return;
+    try {
+      const db = await this.initDB();
+      const tx = db.transaction('vocabularyWords', 'readwrite');
+      const store = tx.objectStore('vocabularyWords');
+      for (const w of words) {
+        store.put({ ...w, book_id: bookId });
+      }
+      localStorage.setItem(`wordquest_cached_words_${bookId}`, JSON.stringify(words));
+    } catch (e) {
+      console.warn('Failed to save vocabulary words to IndexedDB:', e);
+      localStorage.setItem(`wordquest_cached_words_${bookId}`, JSON.stringify(words));
+    }
+  }
+
+  async getCachedBookWords(bookId: number): Promise<any[]> {
+    try {
+      const db = await this.initDB();
+      return new Promise((resolve) => {
+        const tx = db.transaction('vocabularyWords', 'readonly');
+        const store = tx.objectStore('vocabularyWords');
+        const index = store.index('by_book');
+        const req = index.getAll(bookId);
+        req.onsuccess = () => {
+          const list = req.result || [];
+          if (list.length > 0) return resolve(list);
+          const raw = localStorage.getItem(`wordquest_cached_words_${bookId}`);
+          resolve(raw ? JSON.parse(raw) : []);
+        };
+        req.onerror = () => {
+          const raw = localStorage.getItem(`wordquest_cached_words_${bookId}`);
+          resolve(raw ? JSON.parse(raw) : []);
+        };
+      });
+    } catch {
+      const raw = localStorage.getItem(`wordquest_cached_words_${bookId}`);
+      return raw ? JSON.parse(raw) : [];
+    }
+  }
+
+  async updateCachedWordProgress(vocabId: number, mode: 'reading' | 'listening' | 'spelling', passed: boolean): Promise<void> {
+    try {
+      const db = await this.initDB();
+      const tx = db.transaction('vocabularyWords', 'readwrite');
+      const store = tx.objectStore('vocabularyWords');
+      const req = store.get(vocabId);
+      req.onsuccess = () => {
+        const word = req.result;
+        if (!word) return;
+        if (passed) {
+          if (mode === 'reading') word.reading_passed = 1;
+          if (mode === 'listening') word.listening_passed = 1;
+          if (mode === 'spelling') word.spelling_passed = 1;
+          if (word.reading_passed && word.listening_passed && word.spelling_passed) {
+            word.mastered = 1;
+          }
+        } else {
+          word.error_count = (word.error_count || 0) + 1;
+        }
+        store.put(word);
+      };
+    } catch (e) {
+      console.warn('Failed to update cached word progress:', e);
+    }
   }
 }
 

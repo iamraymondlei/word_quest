@@ -2,7 +2,19 @@ import { Router } from 'express';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
-import { createSong, deleteSong, ensureSongUploadDir, getSong, getSongAudio, getSongs, parseSongLrc, translateSong, updateSong } from '../controllers/songController';
+import {
+  createSong,
+  deleteSong,
+  ensureSongUploadDir,
+  getSong,
+  getSongAccess,
+  getSongAudio,
+  getSongs,
+  parseSongLrc,
+  translateSong,
+  updateSong,
+  updateSongAccess
+} from '../controllers/songController';
 
 ensureSongUploadDir();
 const uploadDir = path.resolve(process.env.SONG_UPLOAD_DIR || path.join(process.cwd(), 'uploads', 'songs'));
@@ -32,6 +44,8 @@ router.post('/', upload.fields([{ name: 'audio', maxCount: 1 }, { name: 'lrc', m
 router.post('/parse-lrc', expressJson(), parseSongLrc);
 router.post('/:id/translate', expressJson(), translateSong);
 router.get('/audio/:filename', getSongAudio);
+router.get('/:id/access', getSongAccess);
+router.put('/:id/access', expressJson(), updateSongAccess);
 router.get('/:id', getSong);
 router.put('/:id', expressJson(), updateSong);
 router.delete('/:id', deleteSong);

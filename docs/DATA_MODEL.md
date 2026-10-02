@@ -147,8 +147,8 @@
 | `fun_sentences_json` | 生动趣味例句 JSON 数组，包含英文与中文翻译 |
 | `antonyms` | 反义词（逗号分隔或字符串） |
 | `synonyms` | 同义词（逗号分隔或字符串） |
-| `root_affixes` | 词根词缀构词拆解说明（如 `cur-` 关心 + `-ious`） |
-| `etymology` | 趣味通俗词源背景小故事 |
+| `root_affixes` | 构词拆解说明，支持英文与生动童趣中文双语 JSON 结构：`{"en": "...", "zh": "..."}`（文字为规范童趣中文，前端发音时英文调用 en-US 英文发音，中文调用 zh-HK 粤语发音）或向下兼容纯文本 |
+| `etymology` | 趣味通俗词源背景小故事，支持英文与生动童趣中文双语 JSON 结构：`{"en": "...", "zh": "..."}`（文字为规范童趣中文，前端发音时英文调用 en-US 英文发音，中文调用 zh-HK 粤语发音）或向下兼容纯文本 |
 | `created_at` | 创建时间 |
 
 ### `user_vocabulary_progress` (学员独立单词掌握与错词记录 - Phase 9)

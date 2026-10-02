@@ -60,6 +60,11 @@ export interface GameSettings {
   coins_completion: number;
   coins_speed_bonus: number;
   coins_full_hearts_bonus: number;
+  coins_stage1_reading?: number;
+  coins_stage3_matching?: number;
+  coins_review_multiplier?: number;
+  coins_vocab_reading?: number;
+  coins_vocab_spelling?: number;
   monster_emojis: string[];
 }
 
@@ -75,6 +80,11 @@ export const DEFAULT_FRONTEND_GAME_SETTINGS: GameSettings = {
   coins_completion: 150,
   coins_speed_bonus: 50,
   coins_full_hearts_bonus: 30,
+  coins_stage1_reading: 100,
+  coins_stage3_matching: 100,
+  coins_review_multiplier: 0.2,
+  coins_vocab_reading: 10,
+  coins_vocab_spelling: 20,
   monster_emojis: ['dragon', 'ogre', 'goblin', 'wolf', 'mech', 'ghost', 'zombie', 'spider']
 };
 
@@ -98,6 +108,7 @@ export interface Island {
   }>;
   words: WordItem[];
   unlocked_stage: number;
+  completed_stages_mask?: number;
   assigned_user_ids?: number[];
 }
 
@@ -202,7 +213,22 @@ export const ParentDashboard: React.FC<Props> = ({ onBack }) => {
   const [aiStatus, setAiStatus] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   // Tab & User & Group Management States
-  const [activeTab, setActiveTab] = useState<'users' | 'stories' | 'groups' | 'songs' | 'word_books' | 'ai_import' | 'game_settings' | 'roadmap'>('stories');
+  const [activeTab, setActiveTab] = useState<'users' | 'stories' | 'groups' | 'songs' | 'word_books' | 'ai_import' | 'game_settings' | 'rewards' | 'roadmap'>(() => {
+    try {
+      const saved = localStorage.getItem('wordquest_admin_active_tab');
+      if (saved && ['users', 'stories', 'groups', 'songs', 'word_books', 'ai_import', 'game_settings', 'rewards', 'roadmap'].includes(saved)) {
+        return saved as any;
+      }
+    } catch {}
+    return 'stories';
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('wordquest_admin_active_tab', activeTab);
+    } catch {}
+  }, [activeTab]);
+
   const [isEditingStory, setIsEditingStory] = useState<boolean>(false);
   const [storySearchQuery, setStorySearchQuery] = useState<string>('');
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(() => {
@@ -1228,6 +1254,26 @@ export const ParentDashboard: React.FC<Props> = ({ onBack }) => {
                 <div className="min-w-0">
                   <div className="text-xs font-bold font-mono tracking-wide truncate">游戏参数设定</div>
                   <div className="text-[10px] text-slate-500 font-mono truncate">Story Chase & Rules</div>
+                </div>
+              )}
+            </button>
+
+            {/* Nav: 关卡奖励与经验机制控制 */}
+            <button
+              type="button"
+              onClick={() => { setActiveTab('rewards'); setIsEditingStory(false); setSettingStatus(null); fetchGameSettings(); }}
+              className={`admin-nav-item w-full p-2.5 rounded-xl border flex items-center gap-3 cursor-pointer text-left ${
+                activeTab === 'rewards' && !isEditingStory
+                  ? 'active'
+                  : 'bg-slate-900/40 border-transparent text-slate-400 hover:text-slate-200'
+              }`}
+              title="关卡奖励与经验控制 (REWARDS & EXP CONTROL)"
+            >
+              <span className="text-lg shrink-0">🪙</span>
+              {!isSidebarCollapsed && (
+                <div className="min-w-0">
+                  <div className="text-xs font-bold font-mono tracking-wide truncate">关卡奖励与经验控制</div>
+                  <div className="text-[10px] text-slate-500 font-mono truncate">Reward Rules & Rates</div>
                 </div>
               )}
             </button>
@@ -3334,6 +3380,42 @@ export const ParentDashboard: React.FC<Props> = ({ onBack }) => {
                         <span className="text-xs text-slate-500 font-mono shrink-0">Coins</span>
                       </div>
                     </div>
+
+                    {/* Word Bank Reading Coins */}
+                    <div className="bg-slate-900/60 border border-slate-800/80 rounded-xl p-4 flex flex-col justify-between">
+                      <label className="text-xs font-bold text-slate-300 uppercase tracking-wide font-mono flex items-center gap-1.5 mb-2">
+                        <span>📖 单词看句选义奖励</span>
+                      </label>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="number"
+                          min="0"
+                          max="500"
+                          value={gameSettings.coins_vocab_reading ?? 10}
+                          onChange={(e) => setGameSettings(prev => ({ ...prev, coins_vocab_reading: parseInt(e.target.value, 10) || 0 }))}
+                          className="w-full bg-[#0B0F19] border border-slate-700 rounded-lg px-3 py-2 text-sm text-amber-300 font-mono font-bold focus:border-amber-500 focus:outline-none"
+                        />
+                        <span className="text-xs text-slate-500 font-mono shrink-0">Coins</span>
+                      </div>
+                    </div>
+
+                    {/* Word Bank Spelling Coins */}
+                    <div className="bg-slate-900/60 border border-slate-800/80 rounded-xl p-4 flex flex-col justify-between">
+                      <label className="text-xs font-bold text-slate-300 uppercase tracking-wide font-mono flex items-center gap-1.5 mb-2">
+                        <span>✍️ 单词听音拼写奖励</span>
+                      </label>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="number"
+                          min="0"
+                          max="500"
+                          value={gameSettings.coins_vocab_spelling ?? 20}
+                          onChange={(e) => setGameSettings(prev => ({ ...prev, coins_vocab_spelling: parseInt(e.target.value, 10) || 0 }))}
+                          className="w-full bg-[#0B0F19] border border-slate-700 rounded-lg px-3 py-2 text-sm text-amber-300 font-mono font-bold focus:border-amber-500 focus:outline-none"
+                        />
+                        <span className="text-xs text-slate-500 font-mono shrink-0">Coins</span>
+                      </div>
+                    </div>
                   </div>
                 </div>
 
@@ -3446,10 +3528,386 @@ export const ParentDashboard: React.FC<Props> = ({ onBack }) => {
         </div>
       )}
 
+      {/* View: 🪙 关卡奖励与经验机制独立控制页 */}
+      {activeTab === 'rewards' && !isEditingStory && (
+        <div className="w-full max-w-6xl mx-auto space-y-8 animate-fade-in pb-12">
+          {/* Header Title Banner */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-[#1F2D4A] pb-6 gap-4">
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-2xl">🪙</span>
+                <h2 className="text-xl sm:text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-amber-400 via-yellow-300 to-cyan-400 font-mono tracking-wider">
+                  关卡经验（金币）与奖励机制控制台
+                </h2>
+              </div>
+              <p className="text-xs text-slate-400 mt-2 font-mono leading-relaxed">
+                集中配置全站所有故事关卡、单词宝库与挑战模式的金币发放参数、防刷复习衰减倍率与战败惩罚结算规则。
+              </p>
+            </div>
+
+            <div className="flex items-center gap-3 shrink-0">
+              <button
+                type="button"
+                onClick={fetchGameSettings}
+                className="px-3.5 py-2 rounded-xl bg-slate-900 border border-slate-700 hover:border-cyan-500/50 text-slate-300 hover:text-cyan-300 text-xs font-mono font-bold transition flex items-center gap-1.5 cursor-pointer"
+              >
+                <span>🔄</span> <span>重新加载</span>
+              </button>
+            </div>
+          </div>
+
+          {settingStatus && (
+            <div
+              className={`p-4 rounded-xl text-xs font-mono font-bold border transition-all ${
+                settingStatus.type === 'success'
+                  ? 'bg-emerald-950/40 border-emerald-500/40 text-emerald-300'
+                  : 'bg-rose-950/40 border-rose-500/40 text-rose-300'
+              }`}
+            >
+              {settingStatus.text}
+            </div>
+          )}
+
+          {/* Form Boundary for Saving Settings */}
+          <FormBoundary>
+            <SuspenseState isLoading={isSettingsLoading}>
+              <form onSubmit={handleSaveGameSettings} className="space-y-8">
+                {/* 1. Full Reward Overview & Dynamic Configuration Table */}
+                <div className="bg-[#131B2E] border border-[#1F2D4A] rounded-2xl p-6 sm:p-8 shadow-xl overflow-hidden">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-[#1F2D4A] pb-4 mb-6 gap-2">
+                    <div>
+                      <h3 className="text-base font-bold text-amber-400 uppercase tracking-widest font-mono flex items-center gap-2">
+                        📊 全关卡经验（金币）计算规则与实时调控矩阵
+                      </h3>
+                      <p className="text-xs text-slate-400 mt-1 font-mono">
+                        所有关卡当前生效的结算公式与参数。直接在输入框修改即可实时应用。
+                      </p>
+                    </div>
+                    <div className="text-[11px] font-mono text-cyan-300 bg-cyan-950/60 border border-cyan-500/30 px-3 py-1 rounded-lg shrink-0">
+                      全局复习折算率: <span className="font-extrabold text-amber-300">{((gameSettings.coins_review_multiplier ?? 0.2) * 100).toFixed(0)}%</span>
+                    </div>
+                  </div>
+
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left border-collapse text-xs font-mono">
+                      <thead>
+                        <tr className="border-b border-slate-800 text-slate-400 uppercase bg-slate-950/50">
+                          <th className="py-3 px-3">关卡 / 模块</th>
+                          <th className="py-3 px-3">玩法与代号</th>
+                          <th className="py-3 px-3">通关判定条件</th>
+                          <th className="py-3 px-3">首通全额奖励 (100%)</th>
+                          <th className="py-3 px-3">复习/重玩奖励 (防刷衰减)</th>
+                          <th className="py-3 px-3">战败 / 未通过</th>
+                          <th className="py-3 px-3 min-w-[150px]">实时可调参数</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-800/60 text-slate-300">
+                        {/* Stage 1 */}
+                        <tr className="hover:bg-slate-900/30 transition-colors">
+                          <td className="py-3.5 px-3 font-bold text-cyan-300">故事关卡 01</td>
+                          <td className="py-3.5 px-3">📖 Reading & Typing<br /><span className="text-[10px] text-slate-500">故事解码与填空</span></td>
+                          <td className="py-3.5 px-3 text-slate-400">完成全文填空并提交</td>
+                          <td className="py-3.5 px-3 font-bold text-amber-400">+{gameSettings.coins_stage1_reading ?? 100} 🪙</td>
+                          <td className="py-3.5 px-3 text-emerald-400">
+                            +{Math.round((gameSettings.coins_stage1_reading ?? 100) * (gameSettings.coins_review_multiplier ?? 0.2))} 🪙
+                            <span className="text-[10px] text-slate-500 block">({((gameSettings.coins_review_multiplier ?? 0.2) * 100).toFixed(0)}% 衰减)</span>
+                          </td>
+                          <td className="py-3.5 px-3 text-slate-500 font-mono">0 🪙</td>
+                          <td className="py-3.5 px-3">
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-[10px] text-slate-500">首通:</span>
+                              <input
+                                type="number"
+                                min="0"
+                                max="10000"
+                                value={gameSettings.coins_stage1_reading ?? 100}
+                                onChange={(e) => setGameSettings(prev => ({ ...prev, coins_stage1_reading: parseInt(e.target.value, 10) || 0 }))}
+                                className="w-20 bg-[#0B0F19] border border-slate-700 rounded px-2 py-1 text-xs text-amber-300 font-bold focus:border-cyan-500 outline-none"
+                              />
+                            </div>
+                          </td>
+                        </tr>
+
+                        {/* Stage 2 */}
+                        <tr className="hover:bg-slate-900/30 transition-colors">
+                          <td className="py-3.5 px-3 font-bold text-purple-300">故事关卡 02</td>
+                          <td className="py-3.5 px-3">🏃💨 Story Chase<br /><span className="text-[10px] text-slate-500">地牢打字追逐</span></td>
+                          <td className="py-3.5 px-3 text-slate-400">通过全部页面且生命 &gt; 0</td>
+                          <td className="py-3.5 px-3 font-bold text-amber-400">
+                            +{(gameSettings.coins_completion || 150)} ~ {(gameSettings.coins_completion || 150) + (gameSettings.coins_speed_bonus || 50) + (gameSettings.coins_full_hearts_bonus || 30)} 🪙
+                            <span className="text-[10px] text-slate-500 block">包含极速/满血加成</span>
+                          </td>
+                          <td className="py-3.5 px-3 text-emerald-400">
+                            +{Math.round((gameSettings.coins_completion || 150) * (gameSettings.coins_review_multiplier ?? 0.2))} ~ {Math.round(((gameSettings.coins_completion || 150) + (gameSettings.coins_speed_bonus || 50) + (gameSettings.coins_full_hearts_bonus || 30)) * (gameSettings.coins_review_multiplier ?? 0.2))} 🪙
+                            <span className="text-[10px] text-slate-500 block">总收益 × 衰减率</span>
+                          </td>
+                          <td className="py-3.5 px-3 text-rose-400 font-mono">0 🪙<span className="text-[10px] text-slate-500 block">扣光爱心 Game Over</span></td>
+                          <td className="py-3.5 px-3">
+                            <div className="flex flex-col gap-1">
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-[10px] text-slate-500">基础:</span>
+                                <input
+                                  type="number"
+                                  min="0"
+                                  max="10000"
+                                  value={gameSettings.coins_completion}
+                                  onChange={(e) => setGameSettings(prev => ({ ...prev, coins_completion: parseInt(e.target.value, 10) || 0 }))}
+                                  className="w-20 bg-[#0B0F19] border border-slate-700 rounded px-2 py-1 text-xs text-amber-300 font-bold focus:border-cyan-500 outline-none"
+                                />
+                              </div>
+                            </div>
+                          </td>
+                        </tr>
+
+                        {/* Stage 3 */}
+                        <tr className="hover:bg-slate-900/30 transition-colors">
+                          <td className="py-3.5 px-3 font-bold text-cyan-300">故事关卡 03</td>
+                          <td className="py-3.5 px-3">🔤 Word Matching<br /><span className="text-[10px] text-slate-500">朗读与中英匹配</span></td>
+                          <td className="py-3.5 px-3 text-slate-400">句子朗读达标全通</td>
+                          <td className="py-3.5 px-3 font-bold text-amber-400">+{gameSettings.coins_stage3_matching ?? 100} 🪙</td>
+                          <td className="py-3.5 px-3 text-emerald-400">
+                            +{Math.round((gameSettings.coins_stage3_matching ?? 100) * (gameSettings.coins_review_multiplier ?? 0.2))} 🪙
+                            <span className="text-[10px] text-slate-500 block">({((gameSettings.coins_review_multiplier ?? 0.2) * 100).toFixed(0)}% 衰减)</span>
+                          </td>
+                          <td className="py-3.5 px-3 text-slate-500 font-mono">0 🪙</td>
+                          <td className="py-3.5 px-3">
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-[10px] text-slate-500">首通:</span>
+                              <input
+                                type="number"
+                                min="0"
+                                max="10000"
+                                value={gameSettings.coins_stage3_matching ?? 100}
+                                onChange={(e) => setGameSettings(prev => ({ ...prev, coins_stage3_matching: parseInt(e.target.value, 10) || 0 }))}
+                                className="w-20 bg-[#0B0F19] border border-slate-700 rounded px-2 py-1 text-xs text-amber-300 font-bold focus:border-cyan-500 outline-none"
+                              />
+                            </div>
+                          </td>
+                        </tr>
+
+                        {/* Stage 4 */}
+                        <tr className="hover:bg-slate-900/30 transition-colors">
+                          <td className="py-3.5 px-3 font-bold text-rose-300">故事关卡 04</td>
+                          <td className="py-3.5 px-3">👾 Space Defender<br /><span className="text-[10px] text-slate-500">太空防卫下落打字</span></td>
+                          <td className="py-3.5 px-3 text-slate-400">击落全部单词且护盾 &gt; 0（胜利）</td>
+                          <td className="py-3.5 px-3 font-bold text-amber-400">
+                            得分 × 难度倍率
+                            <span className="text-[10px] text-slate-500 block">普:1.0x / 难:1.5x / 狱:2.0x</span>
+                          </td>
+                          <td className="py-3.5 px-3 text-emerald-400">
+                            全额得分 × {((gameSettings.coins_review_multiplier ?? 0.2) * 100).toFixed(0)}%
+                            <span className="text-[10px] text-slate-500 block">鼓励金币</span>
+                          </td>
+                          <td className="py-3.5 px-3 text-rose-400 font-bold">
+                            0 🪙
+                            <span className="text-[10px] text-rose-300/80 block">【选项 B】战败不发金币</span>
+                          </td>
+                          <td className="py-3.5 px-3 text-slate-400 text-[11px]">
+                            随得分动态结算<br /><span className="text-emerald-400">战败严格清零</span>
+                          </td>
+                        </tr>
+
+                        {/* Word Bank Reading */}
+                        <tr className="hover:bg-slate-900/30 transition-colors">
+                          <td className="py-3.5 px-3 font-bold text-amber-300">单词宝库 01</td>
+                          <td className="py-3.5 px-3">📖 看句选义<br /><span className="text-[10px] text-slate-500">Reading Choice</span></td>
+                          <td className="py-3.5 px-3 text-slate-400">选出单词在语境中的正确释义</td>
+                          <td className="py-3.5 px-3 font-bold text-amber-400">+{gameSettings.coins_vocab_reading ?? 10} 🪙</td>
+                          <td className="py-3.5 px-3 text-emerald-400">
+                            +{Math.max(1, Math.round((gameSettings.coins_vocab_reading ?? 10) * (gameSettings.coins_review_multiplier ?? 0.2)))} 🪙
+                            <span className="text-[10px] text-slate-500 block">复习巩固奖励</span>
+                          </td>
+                          <td className="py-3.5 px-3 text-slate-500 font-mono">0 🪙</td>
+                          <td className="py-3.5 px-3">
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-[10px] text-slate-500">首通:</span>
+                              <input
+                                type="number"
+                                min="0"
+                                max="1000"
+                                value={gameSettings.coins_vocab_reading ?? 10}
+                                onChange={(e) => setGameSettings(prev => ({ ...prev, coins_vocab_reading: parseInt(e.target.value, 10) || 0 }))}
+                                className="w-20 bg-[#0B0F19] border border-slate-700 rounded px-2 py-1 text-xs text-amber-300 font-bold focus:border-cyan-500 outline-none"
+                              />
+                            </div>
+                          </td>
+                        </tr>
+
+                        {/* Word Bank Spelling */}
+                        <tr className="hover:bg-slate-900/30 transition-colors">
+                          <td className="py-3.5 px-3 font-bold text-amber-300">单词宝库 02</td>
+                          <td className="py-3.5 px-3">✍️ 听音拼写<br /><span className="text-[10px] text-slate-500">Audio Spelling</span></td>
+                          <td className="py-3.5 px-3 text-slate-400">听发音完整拼写正确单词</td>
+                          <td className="py-3.5 px-3 font-bold text-amber-400">+{gameSettings.coins_vocab_spelling ?? 20} 🪙</td>
+                          <td className="py-3.5 px-3 text-emerald-400">
+                            +{Math.max(1, Math.round((gameSettings.coins_vocab_spelling ?? 20) * (gameSettings.coins_review_multiplier ?? 0.2)))} 🪙
+                            <span className="text-[10px] text-slate-500 block">复习巩固奖励</span>
+                          </td>
+                          <td className="py-3.5 px-3 text-slate-500 font-mono">0 🪙</td>
+                          <td className="py-3.5 px-3">
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-[10px] text-slate-500">首通:</span>
+                              <input
+                                type="number"
+                                min="0"
+                                max="1000"
+                                value={gameSettings.coins_vocab_spelling ?? 20}
+                                onChange={(e) => setGameSettings(prev => ({ ...prev, coins_vocab_spelling: parseInt(e.target.value, 10) || 0 }))}
+                                className="w-20 bg-[#0B0F19] border border-slate-700 rounded px-2 py-1 text-xs text-amber-300 font-bold focus:border-cyan-500 outline-none"
+                              />
+                            </div>
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                {/* 2. Global Anti-Farm & Additional Multipliers Card */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {/* Anti-Farm Decay Controller */}
+                  <div className="bg-[#131B2E] border border-[#1F2D4A] rounded-2xl p-6 shadow-xl space-y-4">
+                    <h3 className="text-sm font-bold text-cyan-400 uppercase tracking-wider font-mono flex items-center gap-2">
+                      🛡️ 防刷衰减倍率控制 (ANTI-FARM RATIO)
+                    </h3>
+                    <p className="text-xs text-slate-400 font-mono leading-relaxed">
+                      当学员重复挑战已通关的绘本故事关卡，或重复练习已掌握的单词宝库词汇时，系统将按此比例折算发放鼓励金币。
+                    </p>
+
+                    <div className="p-4 bg-slate-900/60 border border-slate-800 rounded-xl space-y-3">
+                      <div className="flex justify-between items-center text-xs font-mono">
+                        <span className="text-slate-300 font-bold">重复通关折算比例:</span>
+                        <span className="text-amber-300 font-black text-sm">{((gameSettings.coins_review_multiplier ?? 0.2) * 100).toFixed(0)}%</span>
+                      </div>
+                      <input
+                        type="range"
+                        min="0"
+                        max="1"
+                        step="0.05"
+                        value={gameSettings.coins_review_multiplier ?? 0.2}
+                        onChange={(e) => setGameSettings(prev => ({ ...prev, coins_review_multiplier: parseFloat(e.target.value) || 0 }))}
+                        className="w-full accent-cyan-400 cursor-pointer"
+                      />
+                      <div className="flex justify-between text-[10px] text-slate-500 font-mono">
+                        <span>0% (无重复奖励)</span>
+                        <span>20% (标准防刷推荐)</span>
+                        <span>50% (高奖励)</span>
+                        <span>100% (不衰减)</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Story Chase Bonuses */}
+                  <div className="bg-[#131B2E] border border-[#1F2D4A] rounded-2xl p-6 shadow-xl space-y-4">
+                    <h3 className="text-sm font-bold text-purple-400 uppercase tracking-wider font-mono flex items-center gap-2">
+                      ⚡ STORY CHASE 技能额外加成
+                    </h3>
+                    <p className="text-xs text-slate-400 font-mono leading-relaxed">
+                      鼓励学员在高难度极速模式下高速打字，或全程专注保持满血不被怪兽追上。
+                    </p>
+
+                    <div className="grid grid-cols-2 gap-4 pt-1">
+                      <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-3.5">
+                        <label className="text-[11px] font-bold text-slate-300 font-mono block mb-1.5">
+                          ⚡ 极速冲刺加成
+                        </label>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="number"
+                            min="0"
+                            max="1000"
+                            value={gameSettings.coins_speed_bonus}
+                            onChange={(e) => setGameSettings(prev => ({ ...prev, coins_speed_bonus: parseInt(e.target.value, 10) || 0 }))}
+                            className="w-full bg-[#0B0F19] border border-slate-700 rounded px-2.5 py-1.5 text-xs text-purple-300 font-bold focus:border-purple-500 outline-none"
+                          />
+                          <span className="text-[10px] text-slate-500 font-mono shrink-0">🪙</span>
+                        </div>
+                      </div>
+
+                      <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-3.5">
+                        <label className="text-[11px] font-bold text-slate-300 font-mono block mb-1.5">
+                          💖 满血无伤加成
+                        </label>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="number"
+                            min="0"
+                            max="1000"
+                            value={gameSettings.coins_full_hearts_bonus}
+                            onChange={(e) => setGameSettings(prev => ({ ...prev, coins_full_hearts_bonus: parseInt(e.target.value, 10) || 0 }))}
+                            className="w-full bg-[#0B0F19] border border-slate-700 rounded px-2.5 py-1.5 text-xs text-rose-300 font-bold focus:border-rose-500 outline-none"
+                          />
+                          <span className="text-[10px] text-slate-500 font-mono shrink-0">🪙</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 3. Security & Anti-Cheat Mechanism Indicators */}
+                <div className="bg-slate-900/40 border border-slate-800/80 rounded-2xl p-6 shadow-lg">
+                  <h4 className="text-xs font-bold text-emerald-400 uppercase tracking-widest font-mono mb-3 flex items-center gap-2">
+                    🔒 系统安全与防刷安全锁机制状态
+                  </h4>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs font-mono text-slate-300">
+                    <div className="p-3 bg-[#0B0F19] border border-slate-800 rounded-xl">
+                      <div className="font-bold text-cyan-300 mb-1">✅ 战败清零机制 (选项 B)</div>
+                      <div className="text-[11px] text-slate-500 leading-relaxed">
+                        太空防卫战基地护盾归零战败时，发放 0 金币，杜绝挂机自杀刷金币漏洞。
+                      </div>
+                    </div>
+
+                    <div className="p-3 bg-[#0B0F19] border border-slate-800 rounded-xl">
+                      <div className="font-bold text-cyan-300 mb-1">✅ 单次入账上限阀门</div>
+                      <div className="text-[11px] text-slate-500 leading-relaxed">
+                        服务端严格校验 `0 &lt;= coins &lt;= 50,000`，杜绝恶意负数扣减与数值溢出伪造。
+                      </div>
+                    </div>
+
+                    <div className="p-3 bg-[#0B0F19] border border-slate-800 rounded-xl">
+                      <div className="font-bold text-cyan-300 mb-1">✅ 幂等与离线防重放</div>
+                      <div className="text-[11px] text-slate-500 leading-relaxed">
+                        PWA 离线同步队列执行单条幂等校验，网络抖动重试不会引发金币重复累加。
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Bottom Submit Bar */}
+                <div className="flex flex-wrap items-center justify-between gap-4 pt-4 border-t border-[#1F2D4A]">
+                  <button
+                    type="button"
+                    onClick={fetchGameSettings}
+                    className="px-5 py-3 rounded-xl border border-slate-700 bg-slate-900/60 hover:bg-slate-800 text-slate-400 hover:text-slate-200 font-mono text-xs font-bold transition-all cursor-pointer"
+                  >
+                    🔄 放弃修改并还原
+                  </button>
+
+                  <button
+                    type="submit"
+                    disabled={isSavingSettings}
+                    className="px-8 py-3.5 rounded-xl bg-gradient-to-r from-amber-500 via-yellow-400 to-cyan-500 text-slate-950 font-mono text-xs font-black uppercase tracking-widest shadow-xl shadow-amber-500/20 hover:scale-[1.02] active:scale-[0.98] transition-all cursor-pointer disabled:opacity-50"
+                  >
+                    {isSavingSettings ? '💾 正在保存中...' : '💾 保存所有关卡奖励与经验参数'}
+                  </button>
+                </div>
+              </form>
+            </SuspenseState>
+          </FormBoundary>
+        </div>
+      )}
+
       {/* View 6: 📋 Project Roadmap & Changelog Tab */}
       {activeTab === 'roadmap' && !isEditingStory && (
         <div className="animate-fade-in">
-          <ProjectRoadmap />
+          <ProjectRoadmap onNavigateTab={(tab) => {
+            if (tab === 'rewards' || tab === 'game_settings' || tab === 'stories' || tab === 'users') {
+              setActiveTab(tab);
+              if (tab === 'rewards' || tab === 'game_settings') fetchGameSettings();
+              if (tab === 'stories') fetchIslands();
+              if (tab === 'users') fetchUsersList();
+            }
+          }} />
         </div>
       )}
       </main>

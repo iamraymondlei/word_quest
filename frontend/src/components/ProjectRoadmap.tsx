@@ -495,6 +495,146 @@ export const ROADMAP_ITEMS: RoadmapItem[] = [
     verification: '管理员上传 MP3 后能看到 LRCLIB 候选及匹配时长，确认正确版本或上传自有 LRC；系统能解析、试听、修正并保存歌词；学员点击任一句只播放该句区间，循环播放边界稳定；目标单词练习和学习进度可在刷新后恢复。'
   },
 
+  // ==========================================
+  // Phase 9: 单词宝库与深度词汇学习系统 (Word Bank & Vocabulary Exploration Lab)
+  // ==========================================
+  {
+    id: 'TASK-9.1',
+    title: '单词宝库与深度词汇学习系统 (Word Bank & Vocabulary Exploration Lab)',
+    category: 'gameplay',
+    categoryLabel: '学生端交互与游戏',
+    status: 'CONFIRMED',
+    version: 'v2.7',
+    date: '2026-Q4',
+    summary: '支持 Admin 后台批量导入生词并由 AI 自动生成例句/反义词/词根/词源；学员可在 iPad PWA 全屏离线环境下进行“学单词”深度卡片探索，及看词选义、听音选义、听音拼写三大限时闯关游戏。',
+    steps: [
+      '设计独立词单与词汇库数据模型：创建 word_books 表（词单分组：标题、描述、标签、排序）与 vocabulary_words 表（单词、音标、核心释义、趣味生动例句 JSON、反义词、同义词、词根词缀构词说明、词源故事），彻底解耦于单一绘本故事。',
+      '在 Admin 管理后台新增“单词宝库与导入 (Word Import)”独立模块：支持管理员多行粘贴生词（或上传 CSV），并结合现有 ai_agent / Gemini 服务一键批量解析补齐趣味例句、反义词、词根和词源，生成可编辑审查表格，确认后持久化入库。',
+      '适配 iPad PWA 全屏离线架构：扩展前端 IndexedDB 离线存储引擎（offlineStorage.ts），支持 word_books 与 vocabulary_words 本地离线快照打包与同步队列（syncQueue），确保断网全屏运行时流畅无阻。',
+      '实现原生离线语音发音：采用 iOS / Webkit 原生 window.speechSynthesis Web Speech API 方案，进入学习时提供轻触手势激活音频上下文，实现零流量占用且 100% 离线发音。',
+      '开发“📖 学单词”深度探索卡片：呈现生动幽默的生活与奇幻例句（重点词高亮）、成对反义词与同义词对比、词根词缀组件化拆解（如 cur- 关心 + -ious），以及通俗趣味的词源小故事，引导孩子在语境中内化词义。',
+      '开发“⚡ 看词选义”限时反应游戏：展示英文单词与音标，倒计时条（8~10s），动态从同词库抽取 3 个干扰释义生成 4 个单选按钮，支持连击 Combo 与金币星星即时结算。',
+      '开发“🎧 听音选义”限时辨音游戏：自动播放单词纯正发音，遮蔽拼写，限时倒计时内从 4 个选项中选出正确释义或辨析词形，支持限次点击重听。',
+      '开发“✍️ 听音拼写”限时拼词挑战：播放发音并提供下划线字母槽位；针对 iPad 全屏视口进行特别优化（题目与发音置于屏幕上半区），呼出系统软键盘时不遮挡试题，并设置 autocomplete="off" autocorrect="off" 防止系统联想泄露答案。',
+      '打通学员学习进度与错题本联动：学员在词汇游戏中的正误记录原子同步至 user_word_progress，对高频错词自动提高后续复习权重与错词本标记。'
+    ],
+    affectedFiles: [
+      'backend/src/controllers/roadmapController.ts',
+      'backend/src/controllers/wordController.ts',
+      'backend/src/routes/wordRoutes.ts',
+      'db/init.sql',
+      'frontend/src/utils/offlineStorage.ts',
+      'frontend/src/components/ParentDashboard.tsx',
+      'frontend/public/prototypes/word-bank.html',
+      'docs/prototypes/word-bank.html',
+      'docs/DATA_MODEL.md',
+      'docs/REQUIREMENTS.md'
+    ],
+    technicalNotes: '采用方案 A 独立词单实体，彻底解耦原有 words 必须绑定 island_id 的历史包袱。iPad 软键盘弹出时避免使用 fixed 绝对定位导致的视口推挤错位，采用上半区流式卡片设计。发音优先使用本地 Web Speech API，完全免除 MP3 流量消耗与离线资源下载负担。',
+    verification: '在 iPad Safari 中添加至主屏幕并以 Standalone 全屏运行，切断网络后仍可完整浏览词单探索卡片；看词选义、听音选义、听音拼写三项限时游戏交互流畅、发音清晰、输入防泄题生效；Admin 后台粘贴生词后 AI 能秒级解析丰富字段并正确入库。',
+    priority: 'HIGH'
+  },
+
+  // ==========================================
+  // Phase 10: 全局左侧可折叠探险导航轨与全景沉浸式布局重构 (Collapsible Left Rail Navigation Architecture)
+  // ==========================================
+  {
+    id: 'TASK-10.1',
+    title: '全局左侧可折叠探险导航轨与全景沉浸式布局重构 (Collapsible Left Rail Navigation Architecture)',
+    category: 'gameplay',
+    categoryLabel: '学生端交互与游戏',
+    status: 'COMPLETED',
+    version: 'v2.8',
+    date: '2026-10-01',
+    summary: '彻底淘汰顶部容易横向挤压折行的 Header 栏，升级为左侧可折叠星舰探险导航轨（展开 240px ⇄ 折叠 72px 极简图标轨），纵向视口 100% 留给游戏关卡、单词大卡片与歌曲原声播放，契合 iPad 双手握持人体工学。',
+    steps: [
+      '设计并抽象独立顶层导航组件 AppSidebar.tsx：统一收拢“绘本故事地图 (AdventureMap)”、“单词宝库 (WordBankMap)”、“歌曲乐园 (SongAdventureMap)”三大核心学习路由，消灭子页面分散独立的 Header 顶栏。',
+      '实现丝滑的折叠展开手风琴轨机制：支持展开模式（240px 宽，完整展示模块中文名称、英文副标题与微型徽标）与极简折叠模式（72px 宽，纯图标沉浸布局）；折叠状态通过 localStorage (wordquest_sidebar_collapsed) 全局持久化记忆。',
+      '折叠轨悬浮悬停 Tooltip 交互：在 72px 折叠模式下，鼠标悬停或轻触导航按钮右侧时，弹出带发光边缘与指向箭头的 Floating Tooltip，直观展示完整导航名称与当前快捷键。',
+      '集成化学员身份微舱（Learner Identity Capsule）：在导航顶部展示学员 3D 萌趣头像、当前等级 Lv 与 XP 经验条；点击头像直接平滑呼出“学员切换与个人档案”侧边滑出抽屉，彻底淘汰原 Header 右上角占地臃肿的学员选择弹窗。',
+      '底部资产看板与极简系统托盘：侧边栏底端聚合展示金币/星星宝箱奖励，并提供紧凑的工具操作栏（昼夜模式切换、字号缩放、离线同步状态指示灯与安全退出按钮）。',
+      '全局沉浸式画布布局改造：改造 App.tsx 顶层网格布局，采用 flex-row 结构，左侧固定/平滑过渡 Sidebar，右侧主内容区（main content canvas）支持独立滚动与全宽满屏渲染，完美解决移动端与 iPad 横竖屏下的视口利用率。'
+    ],
+    affectedFiles: [
+      'frontend/src/components/AppSidebar.tsx',
+      'frontend/src/components/AdventureMap.tsx',
+      'frontend/src/components/WordBankMap.tsx',
+      'frontend/src/components/SongAdventureMap.tsx',
+      'frontend/src/components/ParentDashboard.tsx',
+      'frontend/src/App.tsx',
+      'backend/src/controllers/roadmapController.ts',
+      'frontend/src/components/ProjectRoadmap.tsx',
+      'docs/REQUIREMENTS.md'
+    ],
+    technicalNotes: '传统横向 Header 随导航项增加（故事、单词、歌曲、错题本）在 iPad 等中等分辨率屏幕上极易溢出换行，侵占宝贵的纵向绘本阅读与拼写键盘视口。采用左侧导航轨不仅符合 iPad 双手握持自然操作手势（左手大拇指轻触切换），而且折叠后仅占 72px，可为右侧各类关卡提供超过 95% 的纵向画布。组件采用全 CSS transition 硬件加速平滑变换，不引入庞大外部 UI 库。',
+    verification: '1. 在浏览器和 iPad Safari 访问前台，左侧导航轨默认自适应或根据记忆展开/收起；\n2. 点击折叠切换按钮，侧边栏在 240px 与 72px 之间顺滑动画过渡，右侧内容区自适应伸缩无闪烁；\n3. 在 72px 折叠状态下悬停导航项，右侧准确弹出 Floating Tooltip；\n4. 点击头像微舱，弹出学员切换面板；\n5. 点击故事、单词、歌曲三个导航，路由无缝切换且高亮激活态精准更新；\n6. 任务与改动追踪看板中 TASK-10.1 状态为 CONFIRMED 并持久化至 MySQL。',
+    priority: 'HIGH'
+  },
+
+  // ==========================================
+  // Phase 11: 学员金币换算经验与五大职阶等级体系
+  // ==========================================
+  {
+    id: 'TASK-11.1',
+    title: '学员金币换算经验与五大职阶等级成长体系 (Gamified Coin-to-EXP Level & Career Tier System)',
+    category: 'gameplay',
+    categoryLabel: '学生端交互与游戏',
+    status: 'COMPLETED',
+    version: 'v2.9',
+    date: '2026-10-02',
+    summary: '【已上线】将学员金币（Coins）1:1 换算为累计探险经验值（EXP），构建“五大探险职阶（Cadet/Ranger/Vanguard/Navigator/Legend）× 每阶 5 级”的成长段位模型。以核心学员 Murphy（13.5万币）突破进入【第 2 职阶·星轨游侠 Lv.1】为锚点基准，在侧边栏身份胶囊实时呈现职阶徽章、等级与经验进度条，结合探险军衔晋升谱系树（RankRoadModal）激发长期自主学习动力。',
+    steps: [
+      '设计金币/经验换算与五大职阶数值模型（RankConfig）：设定 1 金币 = 1 累计 EXP，划定 5 大职阶（T1 启航学员 0~130k、T2 星轨游侠 130k~400k、T3 深空先锋 400k~1000k、T4 星系领航官 1000k~2500k、T5 宇宙传奇 2500k+），每阶细分 Lv.1~Lv.5。',
+      '以平台核心学员战绩深度锚定校准：精确将全站领跑学员 Murphy（135,530 币）映射为全站首位【第 2 职阶·星轨游侠 Lv.1】，Eugenie（74,809 币）映射为【第 1 职阶·启航学员 Lv.4】，Raymond（8,909 币）映射为【第 1 职阶·启航学员 Lv.1】，形成错落有致、极具追赶动机的健康梯队。',
+      '封装前端轻量段位计算引擎与类型定义（rankService.ts）：提供纯函数 calcRankProgress(coins)，秒级输入金币返回当前职阶 ID、职阶名称、阶内等级(1~5)、阶内已获经验、升级所需经验、经验进度百分比及专属主题色值。',
+      '侧边栏（AppSidebar）学员身份舱升级：替换原硬编码 HERO/NOVICE 标签，在展开态展示专属职阶称号、彩色徽章（如 🏹 星轨游侠 Lv.1）与实时经验进度条（如 5,530 / 40,000 EXP · 13.8%）；在折叠 72px 极简轨展示头像角标与智能 Tooltip。',
+      '设计“晋阶转职”与“阶内升级”双重激励交互：关卡结算金币增加触发升级时，播放轻量音效与金币加成弹窗；当学员突破职阶门槛（如 130,000 EXP）时触发全屏星际跃迁授勋仪式（Promotion Ceremony），解锁专属探险伙伴（Buddy）或炫彩动态头像框。',
+      '开发“探险军衔晋升谱系树（Career Road Modal）”：学员点击侧边栏身份卡可呼出军衔谱系弹窗，纵向滚动查看五大职阶全景、各阶达成门槛、专属徽章、待解锁伙伴与当前所处位置，强化前瞻探索欲。'
+    ],
+    affectedFiles: [
+      'frontend/src/utils/rankService.ts',
+      'frontend/src/components/AppSidebar.tsx',
+      'frontend/src/components/RankRoadModal.tsx',
+      'backend/src/controllers/roadmapController.ts',
+      'frontend/src/components/ProjectRoadmap.tsx',
+      'docs/REQUIREMENTS.md'
+    ],
+    technicalNotes: '采用纯前端或微服务纯函数映射方案，直接基于当前已有 users.coins 进行无损计算，无需修改现有 MySQL 表结构或执行破坏性数据迁移，兼顾 100% 离线 PWA 环境下的无网即时计算与流畅渲染。未来如果开放游戏商城消费金币，只需在 users 表平滑增加 total_coins（历史累计金币）字段，即可实现“消费金币绝不掉级”的双轨保护。\n\n五大职阶详细升级经验对照矩阵：\n- T1 启航学员 (0~130k)：Lv.1 (0~15k, Admin 282 & Raymond 8.9k) / Lv.2 (15k~40k) / Lv.3 (40k~70k) / Lv.4 (70k~100k, Eugenie 74.8k) / Lv.5 (100k~130k)；\n- T2 星轨游侠 (130k~400k)：Lv.1 (130k~170k, Murphy 135.5k 领跑) / Lv.2 (170k~220k) / Lv.3 (220k~275k) / Lv.4 (275k~335k) / Lv.5 (335k~400k)；\n- T3 深空先锋 (400k~1M)：Lv.1 (400k~500k) / Lv.2 (500k~610k) / Lv.3 (610k~730k) / Lv.4 (730k~860k) / Lv.5 (860k~1M)；\n- T4 星系领航官 (1M~2.5M)：Lv.1 (1M~1.25M) / Lv.2 (1.25M~1.52M) / Lv.3 (1.52M~1.81M) / Lv.4 (1.81M~2.13M) / Lv.5 (2.13M~2.5M)；\n- T5 宇宙传奇 (2.5M+)：Lv.1 (2.5M~3M) / Lv.2 (3M~3.6M) / Lv.3 (3.6M~4.3M) / Lv.4 (4.3M~5.1M) / Lv.5 (5.1M+ 极境满星)。',
+    verification: '1. 访问前台，Murphy 账号登录后侧边栏顶端精准呈现【星轨游侠 Lv.1】（翡翠绿徽章）与 5,530 / 40,000 EXP 进度；\n2. Eugenie 登录后呈现【启航学员 Lv.4】，Raymond 呈现【启航学员 Lv.1】；\n3. 完成任一故事关卡或单词挑战获得金币后，经验条与等级数字实时平滑动画递增；\n4. 折叠侧边栏后，悬停头像可查看完整职阶与升级倒计时经验；\n5. 在任务与改动追踪看板中，TASK-11.1 显示为已上线（COMPLETED）。',
+    priority: 'HIGH'
+  },
+  {
+    id: 'TASK-11.2',
+    title: '全关卡奖励与经验机制独立控制台与防刷防伪安全加固 (Reward Engine & Security Hardening Dashboard)',
+    category: 'admin',
+    categoryLabel: '管理端与配置',
+    status: 'COMPLETED',
+    version: 'v2.8.5',
+    date: '2026-10-02',
+    summary: '【已上线】在 Admin 后台增设独立的“关卡奖励与经验控制”专页，可视化矩阵展示全关卡金币（经验）计算规则并支持实时调参；全面落地太空战机【选项 B·战败不发金币】、全关卡 20% 复习防刷衰减倍率、单词宝库全局参数化配置，以及服务端 50,000 上限安全锁。',
+    steps: [
+      '落地【选项 B·战败不发金币】：在太空防卫战（关卡 04 / falling）中严格锁定 Game Over 护盾破裂时 coinsReward = 0，不调用入账 API 并不加金币，彻底杜绝挂机自杀刷币漏洞。',
+      '全关卡 20% 复习防刷鼓励机制：根据 completed_stages_mask 与历史进度位掩码识别复习状态。Stage 1 阅读、Stage 2 追逐、Stage 3 匹配、Stage 4 太空防卫在复习重玩时统一按 20% 折算发放鼓励金币。',
+      '单词宝库奖励全局配置化：新增 coins_vocab_reading（默认 10）与 coins_vocab_spelling（默认 20）配置，新掌握全额发放，复习练习按 20% 发放，前后端完全以服务端返回值同步。',
+      '服务端安全防伪与上下限锁：在 userController.addCoins 增加校验，限制 user_id 为正整数，每次金币变动 deltaCoins 必须在 [0, 50000] 之间，防止负数扣分与数值溢出攻击。',
+      'Admin 后台独立控制专页：在侧边栏新增“🪙 关卡奖励与经验控制”独立菜单，提供清晰的 6 大关卡/模块规则与结算全景表格、即时输入调节控件、防刷衰减倍率滑块、技能加成配置以及系统安全锁指示灯。'
+    ],
+    affectedFiles: [
+      'frontend/src/components/ParentDashboard.tsx',
+      'frontend/src/components/GamePlay.tsx',
+      'frontend/src/components/WordBankMap.tsx',
+      'backend/src/controllers/settingController.ts',
+      'backend/src/controllers/wordBookController.ts',
+      'backend/src/controllers/userController.ts',
+      'backend/src/controllers/roadmapController.ts',
+      'frontend/src/components/ProjectRoadmap.tsx',
+      'docs/REQUIREMENTS.md'
+    ],
+    technicalNotes: '所有关卡结算奖励与衰减比例均统一由 MySQL game_settings 驱动，避免硬编码分散。新增 coins_stage1_reading、coins_stage3_matching 与 coins_review_multiplier（默认 0.2）参数并纳入数值范围安全校验；PWA 离线模式下优先读取 IndexedDB 缓存的最新配置，兼顾断网离线游玩与在线精准同步。',
+    verification: '1. 进入 Admin 后台左侧菜单，点击“🪙 关卡奖励与经验控制”，完整呈现所有关卡计算表格与输入控件；\n2. 修改 Stage 1 奖励或复习折算率并点击保存，数据库与前台游戏关卡实时生效；\n3. 在太空战机模式故意耗尽护盾战败，结算清晰显示“0 (战败未发放)”且金币不增加；\n4. 重复挑战已通关的绘本故事，结算面板准确显示“+20 Coins (复习奖励)”；\n5. 在任务与改动追踪看板中，TASK-11.2 显示为已上线（COMPLETED）。',
+    priority: 'HIGH'
+  },
+
   // =========================================================================
   // 待开发细分 1: 确定会加入的功能 (Confirmed for Upcoming Releases)
   // =========================================================================
@@ -703,15 +843,39 @@ export const ROADMAP_ITEMS: RoadmapItem[] = [
   }
 ];
 
-export const ProjectRoadmap: React.FC = () => {
-  // Database-backed items state
+interface ProjectRoadmapProps {
+  onNavigateTab?: (tab: 'rewards' | 'game_settings' | 'stories' | 'users') => void;
+}
+
+const mergeWithDefaults = (loadedItems: RoadmapItem[]): RoadmapItem[] => {
+  const loadedMap = new Map(loadedItems.map(i => [i.id, i]));
+  // 1. First keep all built-in ROADMAP_ITEMS in their canonical natural order, overriding with any DB changes
+  const merged: RoadmapItem[] = ROADMAP_ITEMS.map(defaultItem => {
+    const remote = loadedMap.get(defaultItem.id);
+    return remote ? { ...defaultItem, ...remote } : defaultItem;
+  });
+  // 2. Append any extra custom tasks from DB that aren't in ROADMAP_ITEMS
+  loadedItems.forEach(item => {
+    if (!ROADMAP_ITEMS.some(d => d.id === item.id)) {
+      merged.push(item);
+    }
+  });
+  return merged;
+};
+
+export const ProjectRoadmap: React.FC<ProjectRoadmapProps> = ({ onNavigateTab }) => {
+  // Database-backed items state with resilient merging
   const [items, setItems] = useState<RoadmapItem[]>(() => {
     try {
       const cached = localStorage.getItem('wordquest_roadmap_items');
-      return cached ? JSON.parse(cached) : ROADMAP_ITEMS;
-    } catch {
-      return ROADMAP_ITEMS;
-    }
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return mergeWithDefaults(parsed);
+        }
+      }
+    } catch {}
+    return ROADMAP_ITEMS;
   });
 
   const [isLoadingFromDb, setIsLoadingFromDb] = useState(false);
@@ -722,6 +886,8 @@ export const ProjectRoadmap: React.FC = () => {
   const [categoryFilter, setCategoryFilter] = useState<TaskCategory>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set([
+    'TASK-11.1',
+    'TASK-11.2',
     'FEAT-CONFIRM-01',
     'FEAT-DISCARD-01'
   ]));
@@ -745,10 +911,11 @@ export const ProjectRoadmap: React.FC = () => {
         if (res.ok) {
           const data = await res.json();
           if (Array.isArray(data) && data.length > 0) {
-            setItems(data);
+            const canonicalItems = mergeWithDefaults(data);
+            setItems(canonicalItems);
             setDbConnected(true);
             try {
-              localStorage.setItem('wordquest_roadmap_items', JSON.stringify(data));
+              localStorage.setItem('wordquest_roadmap_items', JSON.stringify(canonicalItems));
             } catch {}
           }
         }
@@ -1262,6 +1429,18 @@ export const ProjectRoadmap: React.FC = () => {
                         }`}>
                           {item.version}
                         </span>
+                        {item.id === 'TASK-11.1' && (
+                          <span className="text-2xs font-mono px-1.5 py-0.5 rounded bg-emerald-950/80 text-emerald-300 border border-emerald-500/50 font-bold flex items-center gap-1">
+                            <span>📊</span>
+                            <span>含五大职阶经验对照表</span>
+                          </span>
+                        )}
+                        {item.id === 'TASK-11.2' && (
+                          <span className="text-2xs font-mono px-1.5 py-0.5 rounded bg-amber-950/80 text-amber-300 border border-amber-500/50 font-bold flex items-center gap-1">
+                            <span>🪙</span>
+                            <span>含关卡奖励矩阵与独立控制台</span>
+                          </span>
+                        )}
                       </div>
                       <p className="text-xs text-slate-400 font-mono mt-1 line-clamp-1">
                         {item.summary}
@@ -1531,12 +1710,382 @@ export const ProjectRoadmap: React.FC = () => {
                       </div>
                     )}
 
+                    {/* Special Dedicated Matrix Table for TASK-11.1 */}
+                    {item.id === 'TASK-11.1' && (
+                      <div className="space-y-2.5 pt-1">
+                        <div className="flex items-center justify-between flex-wrap gap-2">
+                          <h4 className="text-xs font-bold font-mono text-cyan-300 uppercase tracking-wider flex items-center gap-2">
+                            <span>📊 五大职阶与阶内等级升级经验全量矩阵 (Career Tier & EXP Matrix)</span>
+                          </h4>
+                          <span className="text-[10px] font-mono text-cyan-400 bg-cyan-950/80 px-2 py-0.5 rounded border border-cyan-800">
+                            1 金币 = 1 累计 EXP · 历史累计不降级
+                          </span>
+                        </div>
+
+                        <div className="overflow-x-auto rounded-xl border border-slate-800 bg-slate-950 shadow-inner">
+                          <table className="w-full text-left font-mono text-xs border-collapse">
+                            <thead>
+                              <tr className="bg-slate-900/90 text-[10px] text-slate-400 uppercase tracking-wider border-b border-slate-800">
+                                <th className="py-2.5 px-3">大职阶 (Tier)</th>
+                                <th className="py-2.5 px-3">阶内等级 (Level)</th>
+                                <th className="py-2.5 px-3">累计经验区间 (Total EXP)</th>
+                                <th className="py-2.5 px-3">升本级需 (Gap)</th>
+                                <th className="py-2.5 px-3">专属徽章与称号</th>
+                                <th className="py-2.5 px-3">当前学员定位与状态</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-800/60 text-xs">
+                              {/* Tier 1 */}
+                              <tr className="bg-slate-950/40 hover:bg-slate-900/40 transition-colors">
+                                <td rowSpan={5} className="py-3 px-3 align-top border-r border-slate-800/80 font-bold text-cyan-300 bg-cyan-950/20">
+                                  <div className="text-sm">🧭 T1 · 启航学员</div>
+                                  <div className="text-[10px] text-slate-400 font-normal mt-0.5">Cadet (0 ~ 130,000)</div>
+                                  <div className="text-[9px] text-cyan-400/80 mt-1">突破门槛: 130k</div>
+                                </td>
+                                <td className="py-2 px-3 font-bold text-slate-200">Lv.1</td>
+                                <td className="py-2 px-3 text-cyan-400">0 ~ 15,000</td>
+                                <td className="py-2 px-3 text-slate-400">15,000</td>
+                                <td className="py-2 px-3 font-bold">🧭 启航学员 Lv.1</td>
+                                <td className="py-2 px-3 text-amber-300">
+                                  <strong>Admin (282)</strong>, <strong>Raymond (8,909)</strong> 处于本级 (稳健起步)
+                                </td>
+                              </tr>
+                              <tr className="bg-slate-950/40 hover:bg-slate-900/40 transition-colors">
+                                <td className="py-2 px-3 font-bold text-slate-200">Lv.2</td>
+                                <td className="py-2 px-3 text-cyan-400">15,000 ~ 40,000</td>
+                                <td className="py-2 px-3 text-slate-400">25,000</td>
+                                <td className="py-2 px-3 font-bold">🧭 启航学员 Lv.2</td>
+                                <td className="py-2 px-3 text-slate-400">熟练探险起步阶段</td>
+                              </tr>
+                              <tr className="bg-slate-950/40 hover:bg-slate-900/40 transition-colors">
+                                <td className="py-2 px-3 font-bold text-slate-200">Lv.3</td>
+                                <td className="py-2 px-3 text-cyan-400">40,000 ~ 70,000</td>
+                                <td className="py-2 px-3 text-slate-400">30,000</td>
+                                <td className="py-2 px-3 font-bold">🧭 启航学员 Lv.3</td>
+                                <td className="py-2 px-3 text-slate-400">绘本阅读稳步进阶期</td>
+                              </tr>
+                              <tr className="bg-cyan-950/30 hover:bg-cyan-950/50 transition-colors border-l-2 border-l-cyan-400">
+                                <td className="py-2 px-3 font-bold text-cyan-200">Lv.4</td>
+                                <td className="py-2 px-3 text-cyan-300 font-bold">70,000 ~ 100,000</td>
+                                <td className="py-2 px-3 text-slate-400">30,000</td>
+                                <td className="py-2 px-3 font-bold text-cyan-300">🧭 启航学员 Lv.4</td>
+                                <td className="py-2 px-3 text-cyan-300 font-bold">
+                                  🌟 Eugenie (74,809) 处于本级 (进度: 4.8k/30k, 冲刺大晋阶!)
+                                </td>
+                              </tr>
+                              <tr className="bg-slate-950/40 hover:bg-slate-900/40 transition-colors">
+                                <td className="py-2 px-3 font-bold text-slate-200">Lv.5</td>
+                                <td className="py-2 px-3 text-cyan-400">100,000 ~ 130,000</td>
+                                <td className="py-2 px-3 text-slate-400">30,000</td>
+                                <td className="py-2 px-3 font-bold">🧭 启航学员 Lv.5</td>
+                                <td className="py-2 px-3 text-amber-400 font-bold">1阶极境大圆满，准备转职试炼</td>
+                              </tr>
+
+                              {/* Tier 2 */}
+                              <tr className="bg-emerald-950/20 hover:bg-emerald-950/30 transition-colors border-t-2 border-slate-800">
+                                <td rowSpan={5} className="py-3 px-3 align-top border-r border-slate-800/80 font-bold text-emerald-300 bg-emerald-950/30">
+                                  <div className="text-sm">🏹 T2 · 星轨游侠</div>
+                                  <div className="text-[10px] text-slate-400 font-normal mt-0.5">Ranger (130,000 ~ 400,000)</div>
+                                  <div className="text-[9px] text-emerald-400/80 mt-1">突破门槛: 400k</div>
+                                </td>
+                                <td className="py-2 px-3 font-bold text-emerald-300">Lv.1</td>
+                                <td className="py-2 px-3 text-emerald-300 font-bold">130,000 ~ 170,000</td>
+                                <td className="py-2 px-3 text-slate-400">40,000</td>
+                                <td className="py-2 px-3 font-bold text-emerald-300">🏹 星轨游侠 Lv.1</td>
+                                <td className="py-2 px-3 text-emerald-300 font-bold">
+                                  👑 Murphy (135,530) 全站首位破茧晋阶先锋 (进度: 5,530 / 40,000 EXP)
+                                </td>
+                              </tr>
+                              <tr className="bg-slate-950/40 hover:bg-slate-900/40 transition-colors">
+                                <td className="py-2 px-3 font-bold text-slate-200">Lv.2</td>
+                                <td className="py-2 px-3 text-emerald-400">170,000 ~ 220,000</td>
+                                <td className="py-2 px-3 text-slate-400">50,000</td>
+                                <td className="py-2 px-3 font-bold">🏹 星轨游侠 Lv.2</td>
+                                <td className="py-2 px-3 text-slate-400">中阶星域稳步积累</td>
+                              </tr>
+                              <tr className="bg-slate-950/40 hover:bg-slate-900/40 transition-colors">
+                                <td className="py-2 px-3 font-bold text-slate-200">Lv.3</td>
+                                <td className="py-2 px-3 text-emerald-400">220,000 ~ 275,000</td>
+                                <td className="py-2 px-3 text-slate-400">55,000</td>
+                                <td className="py-2 px-3 font-bold">🏹 星轨游侠 Lv.3</td>
+                                <td className="py-2 px-3 text-slate-400">词法掌握游刃有余</td>
+                              </tr>
+                              <tr className="bg-slate-950/40 hover:bg-slate-900/40 transition-colors">
+                                <td className="py-2 px-3 font-bold text-slate-200">Lv.4</td>
+                                <td className="py-2 px-3 text-emerald-400">275,000 ~ 335,000</td>
+                                <td className="py-2 px-3 text-slate-400">60,000</td>
+                                <td className="py-2 px-3 font-bold">🏹 星轨游侠 Lv.4</td>
+                                <td className="py-2 px-3 text-slate-400">听音辨音高连击进阶</td>
+                              </tr>
+                              <tr className="bg-slate-950/40 hover:bg-slate-900/40 transition-colors">
+                                <td className="py-2 px-3 font-bold text-slate-200">Lv.5</td>
+                                <td className="py-2 px-3 text-emerald-400">335,000 ~ 400,000</td>
+                                <td className="py-2 px-3 text-slate-400">65,000</td>
+                                <td className="py-2 px-3 font-bold">🏹 星轨游侠 Lv.5</td>
+                                <td className="py-2 px-3 text-amber-400 font-bold">2阶大圆满，冲刺深空先锋转职</td>
+                              </tr>
+
+                              {/* Tier 3 */}
+                              <tr className="bg-slate-950/40 hover:bg-slate-900/40 transition-colors border-t-2 border-slate-800">
+                                <td rowSpan={5} className="py-3 px-3 align-top border-r border-slate-800/80 font-bold text-purple-300 bg-purple-950/20">
+                                  <div className="text-sm">⚡ T3 · 深空先锋</div>
+                                  <div className="text-[10px] text-slate-400 font-normal mt-0.5">Vanguard (400,000 ~ 1,000,000)</div>
+                                  <div className="text-[9px] text-purple-400/80 mt-1">突破门槛: 1M</div>
+                                </td>
+                                <td className="py-2 px-3 font-bold text-slate-200">Lv.1</td>
+                                <td className="py-2 px-3 text-purple-400">400,000 ~ 500,000</td>
+                                <td className="py-2 px-3 text-slate-400">100,000</td>
+                                <td className="py-2 px-3 font-bold">⚡ 深空先锋 Lv.1</td>
+                                <td className="py-2 px-3 text-slate-400">解锁高阶专属伙伴外观</td>
+                              </tr>
+                              <tr className="bg-slate-950/40 hover:bg-slate-900/40 transition-colors">
+                                <td className="py-2 px-3 font-bold text-slate-200">Lv.2</td>
+                                <td className="py-2 px-3 text-purple-400">500,000 ~ 610,000</td>
+                                <td className="py-2 px-3 text-slate-400">110,000</td>
+                                <td className="py-2 px-3 font-bold">⚡ 深空先锋 Lv.2</td>
+                                <td className="py-2 px-3 text-slate-400">高阶词汇与原声歌曲通关</td>
+                              </tr>
+                              <tr className="bg-slate-950/40 hover:bg-slate-900/40 transition-colors">
+                                <td className="py-2 px-3 font-bold text-slate-200">Lv.3</td>
+                                <td className="py-2 px-3 text-purple-400">610,000 ~ 730,000</td>
+                                <td className="py-2 px-3 text-slate-400">120,000</td>
+                                <td className="py-2 px-3 font-bold">⚡ 深空先锋 Lv.3</td>
+                                <td className="py-2 px-3 text-slate-400">语法感知与跟读熟练</td>
+                              </tr>
+                              <tr className="bg-slate-950/40 hover:bg-slate-900/40 transition-colors">
+                                <td className="py-2 px-3 font-bold text-slate-200">Lv.4</td>
+                                <td className="py-2 px-3 text-purple-400">730,000 ~ 860,000</td>
+                                <td className="py-2 px-3 text-slate-400">130,000</td>
+                                <td className="py-2 px-3 font-bold">⚡ 深空先锋 Lv.4</td>
+                                <td className="py-2 px-3 text-slate-400">听音拼写百发百中</td>
+                              </tr>
+                              <tr className="bg-slate-950/40 hover:bg-slate-900/40 transition-colors">
+                                <td className="py-2 px-3 font-bold text-slate-200">Lv.5</td>
+                                <td className="py-2 px-3 text-purple-400">860,000 ~ 1,000,000</td>
+                                <td className="py-2 px-3 text-slate-400">140,000</td>
+                                <td className="py-2 px-3 font-bold">⚡ 深空先锋 Lv.5</td>
+                                <td className="py-2 px-3 text-amber-400 font-bold">3阶大圆满，迈向星系领航</td>
+                              </tr>
+
+                              {/* Tier 4 */}
+                              <tr className="bg-slate-950/40 hover:bg-slate-900/40 transition-colors border-t-2 border-slate-800">
+                                <td rowSpan={5} className="py-3 px-3 align-top border-r border-slate-800/80 font-bold text-amber-300 bg-amber-950/20">
+                                  <div className="text-sm">🌌 T4 · 星系领航官</div>
+                                  <div className="text-[10px] text-slate-400 font-normal mt-0.5">Navigator (1M ~ 2.5M)</div>
+                                  <div className="text-[9px] text-amber-400/80 mt-1">突破门槛: 2.5M</div>
+                                </td>
+                                <td className="py-2 px-3 font-bold text-slate-200">Lv.1</td>
+                                <td className="py-2 px-3 text-amber-400">1,000,000 ~ 1,250,000</td>
+                                <td className="py-2 px-3 text-slate-400">250,000</td>
+                                <td className="py-2 px-3 font-bold">🌌 星系领航官 Lv.1</td>
+                                <td className="py-2 px-3 text-slate-400">黄金流光专属边框</td>
+                              </tr>
+                              <tr className="bg-slate-950/40 hover:bg-slate-900/40 transition-colors">
+                                <td className="py-2 px-3 font-bold text-slate-200">Lv.2</td>
+                                <td className="py-2 px-3 text-amber-400">1,250,000 ~ 1,520,000</td>
+                                <td className="py-2 px-3 text-slate-400">270,000</td>
+                                <td className="py-2 px-3 font-bold">🌌 星系领航官 Lv.2</td>
+                                <td className="py-2 px-3 text-slate-400">全本英文原著自主阅读</td>
+                              </tr>
+                              <tr className="bg-slate-950/40 hover:bg-slate-900/40 transition-colors">
+                                <td className="py-2 px-3 font-bold text-slate-200">Lv.3</td>
+                                <td className="py-2 px-3 text-amber-400">1,520,000 ~ 1,810,000</td>
+                                <td className="py-2 px-3 text-slate-400">290,000</td>
+                                <td className="py-2 px-3 font-bold">🌌 星系领航官 Lv.3</td>
+                                <td className="py-2 px-3 text-slate-400">听力理解母语级反应</td>
+                              </tr>
+                              <tr className="bg-slate-950/40 hover:bg-slate-900/40 transition-colors">
+                                <td className="py-2 px-3 font-bold text-slate-200">Lv.4</td>
+                                <td className="py-2 px-3 text-amber-400">1,810,000 ~ 2,130,000</td>
+                                <td className="py-2 px-3 text-slate-400">320,000</td>
+                                <td className="py-2 px-3 font-bold">🌌 星系领航官 Lv.4</td>
+                                <td className="py-2 px-3 text-slate-400">星系通关大满贯</td>
+                              </tr>
+                              <tr className="bg-slate-950/40 hover:bg-slate-900/40 transition-colors">
+                                <td className="py-2 px-3 font-bold text-slate-200">Lv.5</td>
+                                <td className="py-2 px-3 text-amber-400">2,130,000 ~ 2,500,000</td>
+                                <td className="py-2 px-3 text-slate-400">370,000</td>
+                                <td className="py-2 px-3 font-bold">🌌 星系领航官 Lv.5</td>
+                                <td className="py-2 px-3 text-amber-400 font-bold">领航官极境，挑战终极传奇</td>
+                              </tr>
+
+                              {/* Tier 5 */}
+                              <tr className="bg-slate-950/40 hover:bg-slate-900/40 transition-colors border-t-2 border-slate-800">
+                                <td rowSpan={5} className="py-3 px-3 align-top border-r border-slate-800/80 font-bold text-rose-300 bg-rose-950/20">
+                                  <div className="text-sm">👑 T5 · 宇宙传奇</div>
+                                  <div className="text-[10px] text-slate-400 font-normal mt-0.5">Legend (2,500,000+)</div>
+                                  <div className="text-[9px] text-rose-400/80 mt-1">殿堂大师级</div>
+                                </td>
+                                <td className="py-2 px-3 font-bold text-slate-200">Lv.1</td>
+                                <td className="py-2 px-3 text-rose-400">2,500,000 ~ 3,000,000</td>
+                                <td className="py-2 px-3 text-slate-400">500,000</td>
+                                <td className="py-2 px-3 font-bold">👑 宇宙传奇 Lv.1</td>
+                                <td className="py-2 px-3 text-slate-400">幻彩霓虹动态外环</td>
+                              </tr>
+                              <tr className="bg-slate-950/40 hover:bg-slate-900/40 transition-colors">
+                                <td className="py-2 px-3 font-bold text-slate-200">Lv.2</td>
+                                <td className="py-2 px-3 text-rose-400">3,000,000 ~ 3,600,000</td>
+                                <td className="py-2 px-3 text-slate-400">600,000</td>
+                                <td className="py-2 px-3 font-bold">👑 宇宙传奇 Lv.2</td>
+                                <td className="py-2 px-3 text-slate-400">殿堂级学者荣誉</td>
+                              </tr>
+                              <tr className="bg-slate-950/40 hover:bg-slate-900/40 transition-colors">
+                                <td className="py-2 px-3 font-bold text-slate-200">Lv.3</td>
+                                <td className="py-2 px-3 text-rose-400">3,600,000 ~ 4,300,000</td>
+                                <td className="py-2 px-3 text-slate-400">700,000</td>
+                                <td className="py-2 px-3 font-bold">👑 宇宙传奇 Lv.3</td>
+                                <td className="py-2 px-3 text-slate-400">宇宙语境大师</td>
+                              </tr>
+                              <tr className="bg-slate-950/40 hover:bg-slate-900/40 transition-colors">
+                                <td className="py-2 px-3 font-bold text-slate-200">Lv.4</td>
+                                <td className="py-2 px-3 text-rose-400">4,300,000 ~ 5,100,000</td>
+                                <td className="py-2 px-3 text-slate-400">800,000</td>
+                                <td className="py-2 px-3 font-bold">👑 宇宙传奇 Lv.4</td>
+                                <td className="py-2 px-3 text-slate-400">星河霸主</td>
+                              </tr>
+                              <tr className="bg-slate-950/40 hover:bg-slate-900/40 transition-colors">
+                                <td className="py-2 px-3 font-bold text-rose-300">Lv.5</td>
+                                <td className="py-2 px-3 text-rose-400 font-bold">5,100,000+</td>
+                                <td className="py-2 px-3 text-rose-400 font-bold">荣耀满星</td>
+                                <td className="py-2 px-3 font-bold text-rose-300">👑 宇宙传奇 Lv.5</td>
+                                <td className="py-2 px-3 text-rose-300 font-bold">巅峰永恒传奇，解锁全特权</td>
+                              </tr>
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Special Dedicated Matrix Table for TASK-11.2 */}
+                    {item.id === 'TASK-11.2' && (
+                      <div className="space-y-3 pt-1">
+                        <div className="flex items-center justify-between flex-wrap gap-2">
+                          <h4 className="text-xs font-bold font-mono text-amber-300 uppercase tracking-wider flex items-center gap-2">
+                            <span>🪙 全关卡奖励与经验计算规则矩阵 (Reward Rules & Security Matrix)</span>
+                          </h4>
+                          {onNavigateTab && (
+                            <button
+                              type="button"
+                              onClick={() => onNavigateTab('rewards')}
+                              className="px-3 py-1 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-lg text-xs font-mono font-bold flex items-center gap-1.5 cursor-pointer transition-all shadow-md shadow-amber-500/20 active:scale-95"
+                            >
+                              <span>🪙</span>
+                              <span>前往 Admin「关卡奖励与经验控制」实时调参 ➜</span>
+                            </button>
+                          )}
+                        </div>
+
+                        {/* Summary Badges */}
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs font-mono">
+                          <div className="p-2.5 rounded-lg bg-slate-950 border border-emerald-500/30 text-emerald-300 flex items-center gap-2">
+                            <span className="text-base">🛡️</span>
+                            <div>
+                              <div className="font-bold">战败结算锁定【选项 B】</div>
+                              <div className="text-[10px] text-slate-400">太空防卫战败严禁发币 (0 币)</div>
+                            </div>
+                          </div>
+                          <div className="p-2.5 rounded-lg bg-slate-950 border border-cyan-500/30 text-cyan-300 flex items-center gap-2">
+                            <span className="text-base">📉</span>
+                            <div>
+                              <div className="font-bold">复习防刷衰减倍率</div>
+                              <div className="text-[10px] text-slate-400">已通关重玩统一按 20% 发放</div>
+                            </div>
+                          </div>
+                          <div className="p-2.5 rounded-lg bg-slate-950 border border-purple-500/30 text-purple-300 flex items-center gap-2">
+                            <span className="text-base">🔒</span>
+                            <div>
+                              <div className="font-bold">服务端防伪安全锁</div>
+                              <div className="text-[10px] text-slate-400">每次变动限额 [0, 50000] 防溢出</div>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Rules Matrix Table */}
+                        <div className="overflow-x-auto rounded-xl border border-slate-800 bg-slate-950 shadow-inner">
+                          <table className="w-full text-left font-mono text-xs border-collapse">
+                            <thead>
+                              <tr className="bg-slate-900/90 text-[10px] text-slate-400 uppercase tracking-wider border-b border-slate-800">
+                                <th className="py-2.5 px-3">关卡 / 练习模块</th>
+                                <th className="py-2.5 px-3">首通经验奖励 (Initial)</th>
+                                <th className="py-2.5 px-3">额外技能加成 (Bonus)</th>
+                                <th className="py-2.5 px-3">复习防刷奖励 (Review 20%)</th>
+                                <th className="py-2.5 px-3">战败 / 容错机制</th>
+                                <th className="py-2.5 px-3">配置项与持久化</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-800/60 text-xs">
+                              <tr className="bg-slate-950/40 hover:bg-slate-900/40 transition-colors">
+                                <td className="py-2 px-3 font-bold text-cyan-300 flex items-center gap-1.5">
+                                  <span>📖</span> <span>Stage 1 绘本阅读</span>
+                                </td>
+                                <td className="py-2 px-3 text-emerald-400 font-bold">+100 EXP</td>
+                                <td className="py-2 px-3 text-slate-500">-</td>
+                                <td className="py-2 px-3 text-amber-400">+20 EXP (20%)</td>
+                                <td className="py-2 px-3 text-slate-400">无限朗读尝试，达标通关</td>
+                                <td className="py-2 px-3 text-slate-400 font-mono text-[11px]">coins_stage1_reading</td>
+                              </tr>
+                              <tr className="bg-slate-950/40 hover:bg-slate-900/40 transition-colors">
+                                <td className="py-2 px-3 font-bold text-cyan-300 flex items-center gap-1.5">
+                                  <span>🏃</span> <span>Stage 2 城堡追逐</span>
+                                </td>
+                                <td className="py-2 px-3 text-emerald-400 font-bold">+150 EXP</td>
+                                <td className="py-2 px-3 text-cyan-300">⚡ 极速+50 / ❤️ 满心+30</td>
+                                <td className="py-2 px-3 text-amber-400">+30 ~ +46 EXP</td>
+                                <td className="py-2 px-3 text-rose-400">红心耗尽被怪兽追上则失败</td>
+                                <td className="py-2 px-3 text-slate-400 font-mono text-[11px]">coins_completion / speed / full_hearts</td>
+                              </tr>
+                              <tr className="bg-slate-950/40 hover:bg-slate-900/40 transition-colors">
+                                <td className="py-2 px-3 font-bold text-cyan-300 flex items-center gap-1.5">
+                                  <span>🧩</span> <span>Stage 3 单词匹配</span>
+                                </td>
+                                <td className="py-2 px-3 text-emerald-400 font-bold">+100 EXP</td>
+                                <td className="py-2 px-3 text-slate-500">-</td>
+                                <td className="py-2 px-3 text-amber-400">+20 EXP (20%)</td>
+                                <td className="py-2 px-3 text-slate-400">连线配对，全对通过</td>
+                                <td className="py-2 px-3 text-slate-400 font-mono text-[11px]">coins_stage3_matching</td>
+                              </tr>
+                              <tr className="bg-slate-950/40 hover:bg-slate-900/40 transition-colors">
+                                <td className="py-2 px-3 font-bold text-cyan-300 flex items-center gap-1.5">
+                                  <span>🚀</span> <span>Stage 4 太空战机</span>
+                                </td>
+                                <td className="py-2 px-3 text-emerald-400 font-bold">+100 EXP</td>
+                                <td className="py-2 px-3 text-slate-500">-</td>
+                                <td className="py-2 px-3 text-amber-400">+20 EXP (20%)</td>
+                                <td className="py-2 px-3 text-rose-400 font-bold">💥 护盾耗尽战败 0 币 (选项 B)</td>
+                                <td className="py-2 px-3 text-slate-400 font-mono text-[11px]">GamePlay.tsx 强校验</td>
+                              </tr>
+                              <tr className="bg-slate-950/40 hover:bg-slate-900/40 transition-colors">
+                                <td className="py-2 px-3 font-bold text-purple-300 flex items-center gap-1.5">
+                                  <span>🔤</span> <span>单词宝库·阅读掌握</span>
+                                </td>
+                                <td className="py-2 px-3 text-emerald-400 font-bold">+10 EXP / 词</td>
+                                <td className="py-2 px-3 text-slate-500">-</td>
+                                <td className="py-2 px-3 text-amber-400">+2 EXP (20%)</td>
+                                <td className="py-2 px-3 text-slate-400">词汇卡朗读掌握后发放</td>
+                                <td className="py-2 px-3 text-slate-400 font-mono text-[11px]">coins_vocab_reading</td>
+                              </tr>
+                              <tr className="bg-slate-950/40 hover:bg-slate-900/40 transition-colors">
+                                <td className="py-2 px-3 font-bold text-purple-300 flex items-center gap-1.5">
+                                  <span>⌨️</span> <span>单词宝库·听音拼写</span>
+                                </td>
+                                <td className="py-2 px-3 text-emerald-400 font-bold">+20 EXP / 词</td>
+                                <td className="py-2 px-3 text-slate-500">-</td>
+                                <td className="py-2 px-3 text-amber-400">+4 EXP (20%)</td>
+                                <td className="py-2 px-3 text-slate-400">听音盲拼准确拼写发放</td>
+                                <td className="py-2 px-3 text-slate-400 font-mono text-[11px]">coins_vocab_spelling</td>
+                              </tr>
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    )}
+
                     {/* Section 3: Technical Notes & Rationale */}
                     <div>
                       <h4 className="text-xs font-bold font-mono text-emerald-400 uppercase tracking-wider flex items-center gap-2 mb-2">
                         <span>💡 技术方案与核心要点 (Technical Key Points)</span>
                       </h4>
-                      <div className="p-3 rounded-lg bg-slate-900 border border-slate-800 font-mono text-xs text-slate-300 leading-relaxed">
+                      <div className="p-3 rounded-lg bg-slate-900 border border-slate-800 font-mono text-xs text-slate-300 leading-relaxed whitespace-pre-line">
                         {item.technicalNotes}
                       </div>
                     </div>

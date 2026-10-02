@@ -27,6 +27,7 @@ interface SongAdventureMapProps {
   onSelectSong: (songId: number) => void;
   onLogout?: () => void;
   onUpdateUser?: (updatedUser: any) => void;
+  hideHeader?: boolean;
 }
 
 const formatDuration = (seconds?: number | null) => {
@@ -38,14 +39,13 @@ const formatDuration = (seconds?: number | null) => {
 
 export const SongAdventureMap: React.FC<SongAdventureMapProps> = ({
   currentUser,
-  theme = 'cyber',
   fontScale = '130',
-  onThemeChange,
   onFontScaleChange,
   onBackToStories,
   onOpenWordBank,
   onSelectSong,
-  onLogout
+  onLogout,
+  hideHeader = false
 }) => {
   const [songs, setSongs] = useState<Song[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
@@ -97,6 +97,7 @@ export const SongAdventureMap: React.FC<SongAdventureMapProps> = ({
   return (
     <div className="min-h-screen w-full theme-bg theme-text font-mono p-4 sm:p-6 transition-colors duration-300">
       {/* Top Modern Command Bar (Same style as AdventureMap and WordBankMap) */}
+      {!hideHeader && (
       <header className="w-full max-w-6xl mx-auto mb-8 relative z-20">
         <div className="theme-card border theme-border rounded-2xl p-4 sm:p-5 shadow-2xl backdrop-blur-xl flex flex-col lg:flex-row items-center justify-between gap-5">
           {/* Left: Adventurer Identity Hero Card */}
@@ -157,16 +158,6 @@ export const SongAdventureMap: React.FC<SongAdventureMapProps> = ({
               </div>
             </div>
 
-            {/* Coins Capsule */}
-            <div className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-yellow-500/10 border border-yellow-500/30 text-amber-200 shadow-sm font-mono">
-              <span className="text-base leading-none">🪙</span>
-              <div>
-                <div className="text-[10px] uppercase text-yellow-400/70 font-black tracking-wider leading-none">金币奖励</div>
-                <div className="text-sm font-black text-amber-300 tabular-nums">
-                  {currentUser.coins}
-                </div>
-              </div>
-            </div>
 
             {/* Total Songs Capsule */}
             <div className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-purple-500/10 border border-purple-500/30 text-purple-200 shadow-sm font-mono">
@@ -182,33 +173,6 @@ export const SongAdventureMap: React.FC<SongAdventureMapProps> = ({
 
           {/* Right: Offline, Theme & Settings Control Cluster */}
           <div className="flex items-center justify-end gap-2.5 w-full lg:w-auto">
-            {/* 2-Way Theme Mode Switcher */}
-            <div className="flex items-center p-1 rounded-xl bg-slate-950/60 border border-slate-800 font-mono">
-              <button
-                type="button"
-                onClick={() => onThemeChange?.('cyber')}
-                className={`px-2.5 py-1 text-xs rounded-lg font-bold transition-all cursor-pointer flex items-center gap-1 ${
-                  theme === 'cyber' || theme !== 'bright'
-                    ? 'bg-cyan-500 text-slate-950 shadow-md font-black'
-                    : 'theme-text-muted hover:theme-text'
-                }`}
-                title="深色模式"
-              >
-                🌙
-              </button>
-              <button
-                type="button"
-                onClick={() => onThemeChange?.('bright')}
-                className={`px-2.5 py-1 text-xs rounded-lg font-bold transition-all cursor-pointer flex items-center gap-1 ${
-                  theme === 'bright'
-                    ? 'bg-amber-400 text-slate-950 shadow-md font-black'
-                    : 'theme-text-muted hover:theme-text'
-                }`}
-                title="浅色模式"
-              >
-                ☀️
-              </button>
-            </div>
 
             {/* Font Scale Selector */}
             <div className="flex items-center p-1 rounded-xl bg-slate-950/60 border border-slate-800 font-mono">
@@ -241,6 +205,7 @@ export const SongAdventureMap: React.FC<SongAdventureMapProps> = ({
           </div>
         </div>
       </header>
+      )}
 
       {/* Main Content Area */}
       <div className="w-full max-w-6xl mx-auto">
@@ -255,7 +220,12 @@ export const SongAdventureMap: React.FC<SongAdventureMapProps> = ({
             </p>
           </div>
           <div className="flex items-center gap-3">
-            <OfflineSyncBadge currentUserId={currentUser.id} variant="map" />
+            <OfflineSyncBadge
+              currentUserId={currentUser.id}
+              variant="map"
+              fontScale={fontScale}
+              onFontScaleChange={onFontScaleChange}
+            />
           </div>
         </div>
 

@@ -1257,7 +1257,7 @@ export const DifficultyCard: React.FC<DifficultyCardProps> = ({
       </div>
 
       <p className="text-xs text-slate-300 line-clamp-2 max-w-[200px] leading-relaxed">
-        怪兽紧追不舍！通关额外奖赏 +{speedBonus} 探险金币
+        怪兽紧追不舍！通关额外奖赏 +{speedBonus} 探险经验
       </p>
 
       {/* Speed Pill */}

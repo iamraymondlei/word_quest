@@ -8,6 +8,7 @@ import { SuspenseState } from './components/SuspenseState';
 import { FormBoundary } from './components/FormBoundary';
 import { WordBankMap } from './components/WordBankMap';
 import { SongAdventureMap } from './components/SongAdventureMap';
+import { AppSidebar, SidebarMode } from './components/AppSidebar';
 import { apiService } from './utils/apiService';
 import { OfflineSyncBadge } from './components/OfflineSyncBadge';
 import './index.css';
@@ -72,11 +73,7 @@ const App: React.FC = () => {
   const [showVersionModal, setShowVersionModal] = useState<boolean>(false);
   const [versionHistory, setVersionHistory] = useState<any[]>([]);
 
-  const [theme, setTheme] = useState<ThemeType>(() => {
-    const saved = localStorage.getItem('wordquest_theme') || localStorage.getItem('melearn_theme');
-    if (saved === 'bright') return 'bright';
-    return 'cyber';
-  });
+  const [theme] = useState<ThemeType>('cyber');
   const [fontScale, setFontScale] = useState<FontScaleType>(() => {
     const saved = localStorage.getItem('wordquest_font_scale') || localStorage.getItem('melearn_font_scale');
     if (saved === '100' || saved === '115' || saved === '130') return saved as FontScaleType;
@@ -91,6 +88,21 @@ const App: React.FC = () => {
     localStorage.setItem('wordquest_theme', theme);
     localStorage.setItem('wordquest_font_scale', fontScale);
   }, [theme, fontScale]);
+
+  const totalStars = React.useMemo(() => {
+    return islands.reduce((acc, sector) => {
+      const stage = sector.unlocked_stage ?? 1;
+      let mask = sector.completed_stages_mask || 0;
+      if (mask === 0 && stage > 1) {
+        if (stage === 2) mask = 1;
+        else if (stage === 3) mask = 3;
+        else if (stage === 4) mask = 7;
+        else if (stage >= 5) mask = 15;
+      }
+      const stars = (mask & 1 ? 1 : 0) + (mask & 2 ? 1 : 0) + (mask & 4 ? 1 : 0) + (mask & 8 ? 1 : 0);
+      return acc + stars;
+    }, 0);
+  }, [islands]);
 
   const loadIslands = async (userId: number, showLoading = false) => {
     if (showLoading) {
@@ -375,8 +387,96 @@ const App: React.FC = () => {
   const isSongRoute = mode === 'songs' || currentPath.startsWith('/songs');
   const activeSongId = selectedSongId || (currentPath.match(/^\/songs\/(\d+)/) ? Number(currentPath.match(/^\/songs\/(\d+)/)![1]) : null);
 
+  // Full-screen dedicated game immersion modes (no sidebar)
+  if (mode === 'game' && selectedIsland && gameMode) {
+    return (
+      <div className="app-container relative">
+        <GamePlay
+          island={selectedIsland}
+          gameMode={gameMode}
+          currentUser={currentUser}
+          theme={theme}
+          fontScale={fontScale}
+          onFontScaleChange={setFontScale}
+          onBack={handleGameBack}
+          onProgressUpdated={() => {
+            if (currentUser) {
+              loadIslands(currentUser.id, false);
+            }
+          }}
+        />
+        {renderOfflineBadge()}
+        {renderDevBadge()}
+        {renderVersionModal()}
+      </div>
+    );
+  }
+
+  if (isSongRoute && activeSongId !== null) {
+    return (
+      <div className="app-container relative">
+        <SongLearning
+          songId={activeSongId}
+          userId={currentUser.id}
+          isAdmin={currentUser.is_admin === 1}
+          onBack={() => {
+            setSelectedSongId(null);
+            setMode('songs');
+            navigateTo('/songs');
+          }}
+        />
+        {renderDevBadge()}
+        {renderVersionModal()}
+      </div>
+    );
+  }
+
+  const currentSidebarMode: SidebarMode =
+    mode === 'vocab' || currentPath === '/vocab'
+      ? 'vocab'
+      : isSongRoute
+      ? 'songs'
+      : 'map';
+
   return (
-    <div className="app-container relative">
+    <div className="flex h-screen w-screen overflow-hidden theme-bg theme-text select-none relative">
+      <AppSidebar
+        currentMode={currentSidebarMode}
+        onNavigate={(navMode) => {
+          if (navMode === 'map') {
+            setMode('map');
+            setSelectedSongId(null);
+            navigateTo('/');
+            if (currentUser) loadIslands(currentUser.id, false);
+          } else if (navMode === 'vocab') {
+            setMode('vocab');
+            setSelectedSongId(null);
+            navigateTo('/vocab');
+          } else if (navMode === 'songs') {
+            setMode('songs');
+            setSelectedSongId(null);
+            navigateTo('/songs');
+          }
+        }}
+        currentUser={currentUser}
+        theme={theme}
+        fontScale={fontScale}
+        onFontScaleChange={setFontScale}
+        onLogout={handleLogout}
+        onOpenAdmin={() => {
+          setMode('admin');
+          navigateTo('/admin');
+        }}
+        onUpdateUser={(updatedUser) => {
+          setCurrentUser(updatedUser);
+          localStorage.setItem('wordquest_current_user', JSON.stringify(updatedUser));
+          localStorage.setItem('wordquest_user', JSON.stringify(updatedUser));
+        }}
+        totalStars={totalStars}
+      />
+
+      {/* Main Content Canvas (Scrollable viewport) */}
+      <main className="flex-1 h-full overflow-y-auto overflow-x-hidden relative">
         {mode === 'map' && currentPath !== '/vocab' && !isSongRoute && (
           <SuspenseState isLoading={loading}>
             <AdventureMap
@@ -384,7 +484,6 @@ const App: React.FC = () => {
               currentUser={currentUser}
               theme={theme}
               fontScale={fontScale}
-              onThemeChange={setTheme}
               onFontScaleChange={setFontScale}
               onStartGame={handleStartGame}
               onLogout={handleLogout}
@@ -403,15 +502,16 @@ const App: React.FC = () => {
                 localStorage.setItem('wordquest_current_user', JSON.stringify(updatedUser));
                 localStorage.setItem('wordquest_user', JSON.stringify(updatedUser));
               }}
+              hideHeader={true}
             />
           </SuspenseState>
         )}
+
         {(mode === 'vocab' || currentPath === '/vocab') && !isSongRoute && (
           <WordBankMap
             currentUser={currentUser}
             theme={theme}
             fontScale={fontScale}
-            onThemeChange={setTheme}
             onFontScaleChange={setFontScale}
             onBackToStories={() => {
               setMode('map');
@@ -429,26 +529,15 @@ const App: React.FC = () => {
               localStorage.setItem('wordquest_current_user', JSON.stringify(updatedUser));
               localStorage.setItem('wordquest_user', JSON.stringify(updatedUser));
             }}
+            hideHeader={true}
           />
         )}
-        {isSongRoute && activeSongId !== null && (
-          <SongLearning
-            songId={activeSongId}
-            userId={currentUser.id}
-            isAdmin={currentUser.is_admin === 1}
-            onBack={() => {
-              setSelectedSongId(null);
-              setMode('songs');
-              navigateTo('/songs');
-            }}
-          />
-        )}
+
         {isSongRoute && activeSongId === null && (
           <SongAdventureMap
             currentUser={currentUser}
             theme={theme}
             fontScale={fontScale}
-            onThemeChange={setTheme}
             onFontScaleChange={setFontScale}
             onBackToStories={() => {
               setMode('map');
@@ -471,26 +560,11 @@ const App: React.FC = () => {
               localStorage.setItem('wordquest_current_user', JSON.stringify(updatedUser));
               localStorage.setItem('wordquest_user', JSON.stringify(updatedUser));
             }}
+            hideHeader={true}
           />
         )}
-        {mode === 'game' && selectedIsland && gameMode && (
-          <GamePlay
-            island={selectedIsland}
-            gameMode={gameMode}
-            currentUser={currentUser}
-            theme={theme}
-            fontScale={fontScale}
-            onThemeChange={setTheme}
-            onFontScaleChange={setFontScale}
-            onBack={handleGameBack}
-            onProgressUpdated={() => {
-              if (currentUser) {
-                loadIslands(currentUser.id, false);
-              }
-            }}
-          />
-        )}
-      {mode === 'game' && renderOfflineBadge()}
+      </main>
+
       {renderDevBadge()}
       {renderVersionModal()}
     </div>

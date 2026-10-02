@@ -15,7 +15,7 @@ from fastapi.staticfiles import StaticFiles
 from PIL import Image, UnidentifiedImageError
 
 from app.config import settings
-from app.schemas import APIResponse, SongTranslationRequest, TranslationResponse, VocabularyEnrichRequest, VocabularyEnrichResponse
+from app.schemas import APIResponse, BilingualizeBatchRequest, BilingualizeBatchResponse, SongTranslationRequest, TranslationResponse, VocabularyEnrichRequest, VocabularyEnrichResponse
 from app.services.gemini_parser import GeminiParser, get_available_models, get_cli_config
 
 logger = logging.getLogger(__name__)
@@ -146,6 +146,25 @@ async def enrich_vocabulary(request: VocabularyEnrichRequest):
         return VocabularyEnrichResponse(success=True, data=enriched_list)
     except ValueError as exc:
         logger.error("Vocabulary enrichment failed: %s", exc)
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@app.post("/bilingualize-roots-etymology", response_model=BilingualizeBatchResponse)
+async def bilingualize_roots_etymology(request: BilingualizeBatchRequest):
+    """Generate or complete bilingual (EN+ZH) root_affixes and etymology for words."""
+    if parser is None:
+        raise HTTPException(status_code=503, detail="Story parser is not initialized.")
+    if not request.items:
+        raise HTTPException(status_code=400, detail="单词条目列表不能为空。")
+    cli = request.cli.lower().strip()
+    if cli not in {"agy", "codex"}:
+        raise HTTPException(status_code=400, detail="cli must be 'agy' or 'codex'.")
+    try:
+        raw_items = [item.model_dump() for item in request.items]
+        results = await parser.bilingualize_roots_and_etymology(raw_items, request.model, cli)
+        return BilingualizeBatchResponse(success=True, data=results)
+    except ValueError as exc:
+        logger.error("Bilingualize roots & etymology failed: %s", exc)
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
 

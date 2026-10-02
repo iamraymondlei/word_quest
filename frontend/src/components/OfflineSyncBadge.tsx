@@ -8,9 +8,17 @@ interface OfflineSyncBadgeProps {
   currentUserId?: number;
   onRefreshData?: () => void;
   variant?: 'badge' | 'map';
+  fontScale?: '100' | '115' | '130';
+  onFontScaleChange?: (scale: '100' | '115' | '130') => void;
 }
 
-export const OfflineSyncBadge: React.FC<OfflineSyncBadgeProps> = ({ currentUserId, onRefreshData, variant = 'badge' }) => {
+export const OfflineSyncBadge: React.FC<OfflineSyncBadgeProps> = ({
+  currentUserId,
+  onRefreshData,
+  variant = 'badge',
+  fontScale,
+  onFontScaleChange
+}) => {
   const [status, setStatus] = useState<SyncStatus>({
     isOnline: typeof navigator !== 'undefined' ? navigator.onLine && !isForcedOffline() : true,
     forcedOffline: isForcedOffline(),
@@ -126,6 +134,31 @@ export const OfflineSyncBadge: React.FC<OfflineSyncBadgeProps> = ({ currentUserI
           >
             {isCaching ? '⏳ 正在下载题库...' : '📥 下载离线题库'}
           </button>
+
+          {/* Font Scale Selector right beside the Download button */}
+          {fontScale && onFontScaleChange && (
+            <div className="flex items-center p-1 rounded-xl bg-slate-950/70 border border-slate-800 shadow-sm font-mono">
+              <span className="text-[10px] text-slate-400 font-bold px-1.5 select-none">
+                字号
+              </span>
+              {(['100', '115', '130'] as const).map((scale) => (
+                <button
+                  key={scale}
+                  type="button"
+                  onClick={() => onFontScaleChange(scale)}
+                  className={`px-2.5 py-1 text-xs rounded-lg font-bold transition-all cursor-pointer ${
+                    fontScale === scale
+                      ? 'bg-cyan-500/25 text-cyan-300 border border-cyan-500/50 shadow-sm font-black'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                  title={`设置字号大小: ${scale}%`}
+                >
+                  {scale === '130' ? '130%' : `${scale}%`}
+                </button>
+              ))}
+            </div>
+          )}
+
           <button
             type="button"
             onClick={() => setShowModal(true)}

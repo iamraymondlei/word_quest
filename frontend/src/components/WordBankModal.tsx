@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { apiService } from '../utils/apiService';
 import { isForcedOffline } from '../utils/offlineMode';
+import { parseBilingual, playBilingualSpeech } from '../utils/bilingual';
 
 export interface SentenceItem {
   en: string;
@@ -151,21 +152,16 @@ export const WordBankModal: React.FC<WordBankModalProps> = ({
     return groups;
   }, [books]);
 
-  // Audio synthesis helper
-  const playWordAudio = useCallback((text: string) => {
-    if (!('speechSynthesis' in window)) {
+  // Audio synthesis helper with dual language (en-US / Cantonese zh-HK) support
+  const playSpeech = useCallback((text: string, lang: 'en' | 'yue' | 'zh' = 'en') => {
+    playBilingualSpeech(text, lang, () => {
       setToastMsg(`🔊 [无法发音]: 设备不支持 Web Speech`);
-      return;
-    }
-    window.speechSynthesis.cancel();
-    const utter = new SpeechSynthesisUtterance(text);
-    utter.lang = 'en-US';
-    utter.rate = 0.88;
-    const voices = window.speechSynthesis.getVoices();
-    const offlineVoice = voices.find(v => v.lang.startsWith('en') && (v.localService || !v.voiceURI.includes('Google'))) || voices.find(v => v.lang.startsWith('en'));
-    if (offlineVoice) utter.voice = offlineVoice;
-    window.speechSynthesis.speak(utter);
+    });
   }, []);
+
+  const playWordAudio = useCallback((text: string) => {
+    playSpeech(text, 'en');
+  }, [playSpeech]);
 
   const showToast = (msg: string) => {
     setToastMsg(msg);
@@ -478,15 +474,6 @@ export const WordBankModal: React.FC<WordBankModalProps> = ({
     }
   };
 
-  // Safe split for roots & affixes
-  const rootTags = useMemo(() => {
-    if (!currentLearnWord?.root_affixes) return [];
-    return currentLearnWord.root_affixes
-      .split(/[,;\n]/)
-      .map(s => s.trim())
-      .filter(Boolean);
-  }, [currentLearnWord]);
-
   return (
     <div className="min-h-screen w-full bg-[#0B0F19] text-slate-100 font-mono py-4 px-2 sm:py-6 sm:px-4 transition-colors duration-300">
       <div className="max-w-5xl mx-auto flex flex-col gap-6">
@@ -736,26 +723,59 @@ export const WordBankModal: React.FC<WordBankModalProps> = ({
                     {/* Right: 词根词缀 + 反义词 + 词源 */}
                     <div className="space-y-4">
                       {/* 词根词缀 */}
-                      <div className="bg-slate-900/70 border border-slate-800 rounded-2xl p-5 space-y-3">
-                        <div className="text-xs font-black uppercase text-purple-400 flex items-center gap-2 tracking-wider">
-                          <span>🧩</span>
-                          <span>词根与构词剖析 (Root & Affixes)</span>
-                        </div>
-                        {rootTags.length > 0 ? (
-                          <div className="flex flex-wrap gap-2">
-                            {rootTags.map((tag, idx) => (
-                              <span
-                                key={idx}
-                                className="px-2.5 py-1 rounded-lg bg-purple-950/40 border border-purple-500/30 text-purple-300 text-xs font-bold"
-                              >
-                                {tag}
-                              </span>
-                            ))}
+                      {(() => {
+                        const roots = parseBilingual(currentLearnWord.root_affixes);
+                        const hasContent = Boolean(roots.en || roots.zh);
+                        return (
+                          <div className="bg-slate-900/70 border border-slate-800 rounded-2xl p-5 space-y-3">
+                            <div className="flex items-center justify-between gap-2">
+                              <div className="text-xs font-black uppercase text-purple-400 flex items-center gap-2 tracking-wider">
+                                <span>🧩</span>
+                                <span>词根与构词剖析 (Root & Affixes)</span>
+                              </div>
+                              <div className="flex items-center gap-1.5 shrink-0">
+                                {roots.en && (
+                                  <button
+                                    type="button"
+                                    onClick={() => playSpeech(roots.en, 'en')}
+                                    className="px-2 py-0.5 rounded-lg bg-cyan-500/10 hover:bg-cyan-500/20 text-[#00f0ff] border border-cyan-500/30 text-[10px] font-bold flex items-center gap-1 transition-all active:scale-95 cursor-pointer"
+                                    title="朗读构词英文说明"
+                                  >
+                                    <span>🔊</span>
+                                    <span>EN</span>
+                                  </button>
+                                )}
+                                {roots.zh && (
+                                  <button
+                                    type="button"
+                                    onClick={() => playSpeech(roots.zh, 'yue')}
+                                    className="px-2 py-0.5 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-[10px] font-bold flex items-center gap-1 transition-all active:scale-95 cursor-pointer"
+                                    title="朗读构词粤语解析"
+                                  >
+                                    <span>🔊</span>
+                                    <span>粤语</span>
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                            <div className="bg-slate-950/60 p-3 rounded-xl border border-slate-800 space-y-1.5">
+                              {roots.en && (
+                                <p className="text-xs text-slate-200 font-medium leading-relaxed">
+                                  {roots.en}
+                                </p>
+                              )}
+                              {roots.zh && (
+                                <p className={`text-xs text-purple-300/90 leading-relaxed ${roots.en ? 'border-t border-slate-800 pt-1.5' : ''}`}>
+                                  {roots.zh}
+                                </p>
+                              )}
+                              {!hasContent && (
+                                <p className="text-xs text-slate-500 italic">暂无词根词缀拆解</p>
+                              )}
+                            </div>
                           </div>
-                        ) : (
-                          <div className="text-xs text-slate-500 italic">暂无词根词缀拆解</div>
-                        )}
-                      </div>
+                        );
+                      })()}
 
                       {/* 语义对照网络: 反义词与同义词 */}
                       <div className="bg-slate-900/70 border border-slate-800 rounded-2xl p-5 space-y-3">
@@ -780,15 +800,59 @@ export const WordBankModal: React.FC<WordBankModalProps> = ({
                       </div>
 
                       {/* 词源小秘密 */}
-                      <div className="bg-slate-900/70 border border-slate-800 rounded-2xl p-5 space-y-2">
-                        <div className="text-xs font-black uppercase text-amber-300 flex items-center gap-2 tracking-wider">
-                          <span>📜</span>
-                          <span>词源趣谈 (Etymology Story)</span>
-                        </div>
-                        <div className="text-xs text-slate-300 leading-relaxed bg-amber-500/5 border-l-2 border-amber-400 p-3 rounded-r-lg">
-                          {currentLearnWord.etymology || '源自自然演化与语言变迁。'}
-                        </div>
-                      </div>
+                      {(() => {
+                        const etym = parseBilingual(currentLearnWord.etymology);
+                        const hasContent = Boolean(etym.en || etym.zh);
+                        return (
+                          <div className="bg-slate-900/70 border border-slate-800 rounded-2xl p-5 space-y-2">
+                            <div className="flex items-center justify-between gap-2">
+                              <div className="text-xs font-black uppercase text-amber-300 flex items-center gap-2 tracking-wider">
+                                <span>📜</span>
+                                <span>词源趣谈 (Etymology Story)</span>
+                              </div>
+                              <div className="flex items-center gap-1.5 shrink-0">
+                                {etym.en && (
+                                  <button
+                                    type="button"
+                                    onClick={() => playSpeech(etym.en, 'en')}
+                                    className="px-2 py-0.5 rounded-lg bg-purple-500/10 hover:bg-purple-500/20 text-purple-300 border border-purple-500/30 text-[10px] font-bold flex items-center gap-1 transition-all active:scale-95 cursor-pointer"
+                                    title="朗读词源英文故事"
+                                  >
+                                    <span>🔊</span>
+                                    <span>EN</span>
+                                  </button>
+                                )}
+                                {etym.zh && (
+                                  <button
+                                    type="button"
+                                    onClick={() => playSpeech(etym.zh, 'yue')}
+                                    className="px-2 py-0.5 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 text-[10px] font-bold flex items-center gap-1 transition-all active:scale-95 cursor-pointer"
+                                    title="朗读词源粤语小故事"
+                                  >
+                                    <span>🔊</span>
+                                    <span>粤语</span>
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                            <div className="bg-amber-500/5 border-l-2 border-amber-400 p-3 rounded-r-lg space-y-1.5">
+                              {etym.en && (
+                                <p className="text-xs text-slate-200 leading-relaxed">
+                                  {etym.en}
+                                </p>
+                              )}
+                              {etym.zh && (
+                                <p className={`text-xs text-amber-200/90 leading-relaxed ${etym.en ? 'border-t border-amber-500/20 pt-1.5' : ''}`}>
+                                  {etym.zh}
+                                </p>
+                              )}
+                              {!hasContent && (
+                                <p className="text-xs text-slate-400 italic">源自自然演化与语言变迁。</p>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })()}
                     </div>
                   </div>
 

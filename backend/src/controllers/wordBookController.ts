@@ -14,8 +14,8 @@ export interface VocabularyWordInput {
   fun_sentences_json?: string | SentenceItem[];
   antonyms?: string;
   synonyms?: string;
-  root_affixes?: string;
-  etymology?: string;
+  root_affixes?: string | any;
+  etymology?: string | any;
 }
 
 /**
@@ -424,8 +424,12 @@ export const addWordsToBook = async (req: Request, res: Response) => {
       const funSentencesJson = JSON.stringify(funSentences);
       const antonyms = item.antonyms ? String(item.antonyms).trim() : '';
       const synonyms = item.synonyms ? String(item.synonyms).trim() : '';
-      const rootAffixes = item.root_affixes ? String(item.root_affixes).trim() : '';
-      const etymology = item.etymology ? String(item.etymology).trim() : '';
+      const rootAffixes = item.root_affixes
+        ? (typeof item.root_affixes === 'object' ? JSON.stringify(item.root_affixes) : String(item.root_affixes).trim())
+        : '';
+      const etymology = item.etymology
+        ? (typeof item.etymology === 'object' ? JSON.stringify(item.etymology) : String(item.etymology).trim())
+        : '';
 
       const [res]: any = await connection.query(
         `INSERT INTO vocabulary_words
@@ -493,8 +497,12 @@ export const updateVocabularyWord = async (req: Request, res: Response) => {
         funSentencesJson,
         antonyms !== undefined ? String(antonyms).trim() : null,
         synonyms !== undefined ? String(synonyms).trim() : null,
-        root_affixes !== undefined ? String(root_affixes).trim() : null,
-        etymology !== undefined ? String(etymology).trim() : null,
+        root_affixes !== undefined
+          ? (typeof root_affixes === 'object' && root_affixes !== null ? JSON.stringify(root_affixes) : String(root_affixes).trim())
+          : null,
+        etymology !== undefined
+          ? (typeof etymology === 'object' && etymology !== null ? JSON.stringify(etymology) : String(etymology).trim())
+          : null,
         id
       ]
     );
@@ -681,11 +689,31 @@ export const recordWordProgress = async (req: Request, res: Response) => {
       [userId, id, errorCount, mastered, readingPassed, listeningPassed, spellingPassed]
     );
 
-    // If passed, award coins to user
+    // If passed, award coins to user based on game_settings configuration
     let coinsAwarded = 0;
     if (passed) {
-      coinsAwarded = newlyPassed ? 15 : 5;
-      await pool.query('UPDATE users SET coins = coins + ? WHERE id = ?', [coinsAwarded, userId]);
+      try {
+        const [settingRows]: any = await pool.query(
+          "SELECT setting_key, setting_value FROM game_settings WHERE setting_key IN ('coins_vocab_reading', 'coins_vocab_spelling')"
+        );
+        let readingReward = 10;
+        let spellingReward = 20;
+        for (const row of settingRows) {
+          if (row.setting_key === 'coins_vocab_reading') readingReward = Number(JSON.parse(row.setting_value)) || 10;
+          if (row.setting_key === 'coins_vocab_spelling') spellingReward = Number(JSON.parse(row.setting_value)) || 20;
+        }
+
+        const baseReward = mode === 'spelling' ? spellingReward : readingReward;
+        // First pass awards full configured amount; review/repeat passes award 20% encouragement coins (at least 1)
+        coinsAwarded = newlyPassed ? baseReward : Math.max(1, Math.round(baseReward * 0.2));
+      } catch {
+        const baseReward = mode === 'spelling' ? 20 : 10;
+        coinsAwarded = newlyPassed ? baseReward : Math.max(1, Math.round(baseReward * 0.2));
+      }
+
+      if (coinsAwarded > 0) {
+        await pool.query('UPDATE users SET coins = coins + ? WHERE id = ?', [coinsAwarded, userId]);
+      }
     }
 
     res.json({

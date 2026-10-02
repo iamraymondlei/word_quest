@@ -53,13 +53,29 @@ export const getUsers = async (req: Request, res: Response) => {
 
 export const addCoins = async (req: Request, res: Response) => {
   const { user_id, coins } = req.body;
-  if (!user_id || coins === undefined) return res.status(400).json({ error: 'Missing parameters' });
+  const uid = Number(user_id);
+  const deltaCoins = Number(coins);
+
+  if (!Number.isInteger(uid) || uid <= 0 || !Number.isInteger(deltaCoins)) {
+    return res.status(400).json({ error: 'Valid user_id and integer coins amount are required' });
+  }
+
+  // Security guard: coins increment must be positive and not exceed reasonable single-action threshold (50,000)
+  if (deltaCoins < 0 || deltaCoins > 50000) {
+    return res.status(400).json({ error: 'Coins increment must be between 0 and 50,000' });
+  }
+
+  if (deltaCoins === 0) {
+    const [rows]: any = await pool.query('SELECT coins FROM users WHERE id = ?', [uid]);
+    return res.json({ success: true, coins: rows[0]?.coins || 0 });
+  }
+
   try {
-    const [result]: any = await pool.query('UPDATE users SET coins = coins + ? WHERE id = ?', [coins, user_id]);
+    const [result]: any = await pool.query('UPDATE users SET coins = coins + ? WHERE id = ?', [deltaCoins, uid]);
     if (result.affectedRows === 0) {
       return res.status(404).json({ error: 'User not found' });
     }
-    const [rows]: any = await pool.query('SELECT coins FROM users WHERE id = ?', [user_id]);
+    const [rows]: any = await pool.query('SELECT coins FROM users WHERE id = ?', [uid]);
     res.json({ success: true, coins: rows[0]?.coins || 0 });
   } catch (err: any) {
     res.status(500).json({ error: err.message });

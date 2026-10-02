@@ -43,6 +43,7 @@ interface AdventureMapProps {
   onUpdateUser?: (updatedUser: any) => void;
   onOpenWordBank?: () => void;
   onOpenSongs?: () => void;
+  hideHeader?: boolean;
 }
 
 export const AdventureMap: React.FC<AdventureMapProps> = ({
@@ -50,13 +51,13 @@ export const AdventureMap: React.FC<AdventureMapProps> = ({
   currentUser,
   theme = 'cyber',
   fontScale = '130',
-  onThemeChange,
   onFontScaleChange,
   onStartGame,
   onLogout,
   onUpdateUser,
   onOpenWordBank,
-  onOpenSongs
+  onOpenSongs,
+  hideHeader = false
 }) => {
   const [isBuddyModalOpen, setIsBuddyModalOpen] = useState(false);
   const [isWordBankModalOpen, setIsWordBankModalOpen] = useState(false);
@@ -234,7 +235,6 @@ export const AdventureMap: React.FC<AdventureMapProps> = ({
         currentUser={currentUser}
         theme={theme}
         fontScale={fontScale}
-        onThemeChange={onThemeChange}
         onFontScaleChange={onFontScaleChange}
         onBackToStories={() => setIsWordBankModalOpen(false)}
         onLogout={onLogout}
@@ -246,6 +246,7 @@ export const AdventureMap: React.FC<AdventureMapProps> = ({
   return (
     <div className="min-h-screen w-full theme-bg theme-text font-mono p-4 sm:p-6 transition-colors duration-300">
       {/* Redesigned Modern Adventure Command Bar */}
+      {!hideHeader && (
       <header className="w-full max-w-6xl mx-auto mb-8 relative z-20">
         <div className="theme-card border theme-border rounded-2xl p-4 sm:p-5 shadow-2xl backdrop-blur-xl flex flex-col lg:flex-row items-center justify-between gap-5">
           
@@ -340,17 +341,6 @@ export const AdventureMap: React.FC<AdventureMapProps> = ({
               </div>
             </div>
 
-            {/* Coins Capsule */}
-            <div className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-yellow-500/10 border border-yellow-500/30 text-amber-200 shadow-sm font-mono">
-              <span className="text-base leading-none">🪙</span>
-              <div>
-                <div className="text-[10px] uppercase text-yellow-400/70 font-black tracking-wider leading-none">金币奖励</div>
-                <div className="text-sm font-black text-amber-300 tabular-nums">
-                  {currentUser.coins}
-                </div>
-              </div>
-            </div>
-
             {/* Quest Completion Progress Capsule */}
             <div className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-cyan-500/10 border border-cyan-500/30 text-cyan-200 shadow-sm font-mono">
               <span className="text-base leading-none">🌟</span>
@@ -365,33 +355,6 @@ export const AdventureMap: React.FC<AdventureMapProps> = ({
 
           {/* Right: Theme & Settings Control Cluster */}
           <div className="flex items-center justify-end gap-2.5 w-full lg:w-auto">
-            {/* 2-Way Theme Mode Switcher */}
-            <div className="flex items-center p-1 rounded-xl bg-slate-950/60 border border-slate-800 font-mono">
-              <button
-                type="button"
-                onClick={() => onThemeChange?.('cyber')}
-                className={`px-2.5 py-1 text-xs rounded-lg font-bold transition-all cursor-pointer flex items-center gap-1 ${
-                  theme === 'cyber' || theme !== 'bright'
-                    ? 'bg-cyan-500 text-slate-950 shadow-md font-black'
-                    : 'theme-text-muted hover:theme-text'
-                }`}
-                title="深色模式"
-              >
-                🌙
-              </button>
-              <button
-                type="button"
-                onClick={() => onThemeChange?.('bright')}
-                className={`px-2.5 py-1 text-xs rounded-lg font-bold transition-all cursor-pointer flex items-center gap-1 ${
-                  theme === 'bright'
-                    ? 'bg-amber-400 text-slate-950 shadow-md font-black'
-                    : 'theme-text-muted hover:theme-text'
-                }`}
-                title="浅色模式"
-              >
-                ☀️
-              </button>
-            </div>
 
             {/* Font Scale Selector */}
             <div className="flex items-center p-1 rounded-xl bg-slate-950/60 border border-slate-800 font-mono">
@@ -423,6 +386,7 @@ export const AdventureMap: React.FC<AdventureMapProps> = ({
 
         </div>
       </header>
+      )}
 
       {/* Sector Map Main Content */}
       <div className="w-full max-w-6xl mx-auto">
@@ -436,7 +400,12 @@ export const AdventureMap: React.FC<AdventureMapProps> = ({
               Pick a story to start reading and playing!
             </p>
           </div>
-          <OfflineSyncBadge currentUserId={currentUser.id} variant="map" />
+          <OfflineSyncBadge
+            currentUserId={currentUser.id}
+            variant="map"
+            fontScale={fontScale}
+            onFontScaleChange={onFontScaleChange}
+          />
         </div>
 
         {/* Story Group Selector Tabs & Summary */}
@@ -640,9 +609,9 @@ export const AdventureMap: React.FC<AdventureMapProps> = ({
                           </span>
                         </div>
 
-                        {/* Coin Reward Indicator */}
-                        <div className="text-amber-500 dark:text-amber-400 font-mono font-extrabold flex items-center gap-1">
-                          🪙 +300 Coins
+                        {/* EXP Reward Indicator */}
+                        <div className="text-cyan-400 font-mono font-extrabold flex items-center gap-1">
+                          ⚡ +300 EXP
                         </div>
                       </div>
                     )}

@@ -526,6 +526,104 @@ export const INITIAL_ROADMAP_ITEMS = [
     priority: 'HIGH'
   },
 
+  // Phase 10: 全局左侧可折叠探险导航轨与全景沉浸式布局重构 (Collapsible Left Rail Navigation Architecture)
+  {
+    id: 'TASK-10.1',
+    title: '全局左侧可折叠探险导航轨与全景沉浸式布局重构 (Collapsible Left Rail Navigation Architecture)',
+    category: 'gameplay',
+    category_label: '学生端交互与游戏',
+    status: 'COMPLETED',
+    version: 'v2.8',
+    date_str: '2026-10-01',
+    summary: '彻底淘汰顶部容易横向挤压折行的 Header 栏，升级为左侧可折叠星舰探险导航轨（展开 240px ⇄ 折叠 72px 极简图标轨），纵向视口 100% 留给游戏关卡、单词大卡片与歌曲原声播放，契合 iPad 双手握持人体工学。',
+    steps_json: [
+      '设计并抽象独立顶层导航组件 AppSidebar.tsx：统一收拢“绘本故事地图 (AdventureMap)”、“单词宝库 (WordBankMap)”、“歌曲乐园 (SongAdventureMap)”三大核心学习路由，消灭子页面分散独立的 Header 顶栏。',
+      '实现丝滑的折叠展开手风琴轨机制：支持展开模式（240px 宽，完整展示模块中文名称、英文副标题与微型徽标）与极简折叠模式（72px 宽，纯图标沉浸布局）；折叠状态通过 localStorage (wordquest_sidebar_collapsed) 全局持久化记忆。',
+      '折叠轨悬浮悬停 Tooltip 交互：在 72px 折叠模式下，鼠标悬停或轻触导航按钮右侧时，弹出带发光边缘与指向箭头的 Floating Tooltip，直观展示完整导航名称与当前快捷键。',
+      '集成化学员身份微舱（Learner Identity Capsule）：在导航顶部展示学员 3D 萌趣头像、当前等级 Lv 与 XP 经验条；点击头像直接平滑呼出“学员切换与个人档案”侧边滑出抽屉，彻底淘汰原 Header 右上角占地臃肿的学员选择弹窗。',
+      '底部资产看板与极简系统托盘：侧边栏底端聚合展示金币/星星宝箱奖励，并提供紧凑的工具操作栏（昼夜模式切换、字号缩放、离线同步状态指示灯与安全退出按钮）。',
+      '全局沉浸式画布布局改造：改造 App.tsx 顶层网格布局，采用 flex-row 结构，左侧固定/平滑过渡 Sidebar，右侧主内容区（main content canvas）支持独立滚动与全宽满屏渲染，完美解决移动端与 iPad 横竖屏下的视口利用率。'
+    ],
+    affected_files_json: [
+      'frontend/src/components/AppSidebar.tsx',
+      'frontend/src/components/AdventureMap.tsx',
+      'frontend/src/components/WordBankMap.tsx',
+      'frontend/src/components/SongAdventureMap.tsx',
+      'frontend/src/components/ParentDashboard.tsx',
+      'frontend/src/App.tsx',
+      'backend/src/controllers/roadmapController.ts',
+      'frontend/src/components/ProjectRoadmap.tsx',
+      'docs/REQUIREMENTS.md'
+    ],
+    technical_notes: '传统横向 Header 随导航项增加（故事、单词、歌曲、错题本）在 iPad 等中等分辨率屏幕上极易溢出换行，侵占宝贵的纵向绘本阅读与拼写键盘视口。采用左侧导航轨不仅符合 iPad 双手握持自然操作手势（左手大拇指轻触切换），而且折叠后仅占 72px，可为右侧各类关卡提供超过 95% 的纵向画布。组件采用全 CSS transition 硬件加速平滑变换，不引入庞大外部 UI 库。',
+    verification: '1. 在浏览器和 iPad Safari 访问前台，左侧导航轨默认自适应或根据记忆展开/收起；\\n2. 点击折叠切换按钮，侧边栏在 240px 与 72px 之间顺滑动画过渡，右侧内容区自适应伸缩无闪烁；\\n3. 在 72px 折叠状态下悬停导航项，右侧准确弹出 Floating Tooltip；\\n4. 点击头像微舱，弹出学员切换面板；\\n5. 点击故事、单词、歌曲三个导航，路由无缝切换且高亮激活态精准更新；\\n6. 任务与改动追踪看板中 TASK-10.1 状态为 CONFIRMED 并持久化至 MySQL。',
+    priority: 'HIGH'
+  },
+
+  // ==========================================
+  // Phase 11: 学员金币换算经验与五大职阶等级体系
+  // ==========================================
+  {
+    id: 'TASK-11.1',
+    title: '学员金币换算经验与五大职阶等级成长体系 (Gamified Coin-to-EXP Level & Career Tier System)',
+    category: 'gameplay',
+    category_label: '学生端交互与游戏',
+    status: 'COMPLETED',
+    version: 'v2.9',
+    date_str: '2026-10-02',
+    summary: '【已上线】将学员金币（Coins）1:1 换算为累计探险经验值（EXP），构建“五大探险职阶（Cadet/Ranger/Vanguard/Navigator/Legend）× 每阶 5 级”的成长段位模型。以核心学员 Murphy（13.5万币）突破进入【第 2 职阶·星轨游侠 Lv.1】为锚点基准，在侧边栏身份胶囊实时呈现职阶徽章、等级与经验进度条，结合探险军衔晋升谱系树（RankRoadModal）激发长期自主学习动力。',
+    steps_json: [
+      '设计金币/经验换算与五大职阶数值模型（RankConfig）：设定 1 金币 = 1 累计 EXP，划定 5 大职阶（T1 启航学员 0~130k、T2 星轨游侠 130k~400k、T3 深空先锋 400k~1000k、T4 星系领航官 1000k~2500k、T5 宇宙传奇 2500k+），每阶细分 Lv.1~Lv.5。',
+      '以平台核心学员战绩深度锚定校准：精确将全站领跑学员 Murphy（135,530 币）映射为全站首位【第 2 职阶·星轨游侠 Lv.1】，Eugenie（74,809 币）映射为【第 1 职阶·启航学员 Lv.4】，Raymond（8,909 币）映射为【第 1 职阶·启航学员 Lv.1】，形成错落有致、极具追赶动机的健康梯队。',
+      '封装前端轻量段位计算引擎与类型定义（rankService.ts）：提供纯函数 calcRankProgress(coins)，秒级输入金币返回当前职阶 ID、职阶名称、阶内等级(1~5)、阶内已获经验、升级所需经验、经验进度百分比及专属主题色值。',
+      '侧边栏（AppSidebar）学员身份舱升级：替换原硬编码 HERO/NOVICE 标签，在展开态展示专属职阶称号、彩色徽章（如 🏹 星轨游侠 Lv.1）与实时经验进度条（如 5,530 / 40,000 EXP · 13.8%）；在折叠 72px 极简轨展示头像角标与智能 Tooltip。',
+      '设计“晋阶转职”与“阶内升级”双重激励交互：关卡结算金币增加触发升级时，播放轻量音效与金币加成弹窗；当学员突破职阶门槛（如 130,000 EXP）时触发全屏星际跃迁授勋仪式（Promotion Ceremony），解锁专属探险伙伴（Buddy）或炫彩动态头像框。',
+      '开发“探险军衔晋升谱系树（Career Road Modal）”：学员点击侧边栏身份卡可呼出军衔谱系弹窗，纵向滚动查看五大职阶全景、各阶达成门槛、专属徽章、待解锁伙伴与当前所处位置，强化前瞻探索欲。'
+    ],
+    affected_files_json: [
+      'frontend/src/utils/rankService.ts',
+      'frontend/src/components/AppSidebar.tsx',
+      'frontend/src/components/RankRoadModal.tsx',
+      'backend/src/controllers/roadmapController.ts',
+      'frontend/src/components/ProjectRoadmap.tsx',
+      'docs/REQUIREMENTS.md'
+    ],
+    technical_notes: '采用纯前端或微服务纯函数映射方案，直接基于当前已有 users.coins 进行无损计算，无需修改现有 MySQL 表结构或执行破坏性数据迁移，兼顾 100% 离线 PWA 环境下的无网即时计算与流畅渲染。未来如果开放游戏商城消费金币，只需在 users 表平滑增加 total_coins（历史累计金币）字段，即可实现“消费金币绝不掉级”的双轨保护。\n\n五大职阶详细升级经验对照矩阵：\n- T1 启航学员 (0~130k)：Lv.1 (0~15k, Admin 282 & Raymond 8.9k) / Lv.2 (15k~40k) / Lv.3 (40k~70k) / Lv.4 (70k~100k, Eugenie 74.8k) / Lv.5 (100k~130k)；\n- T2 星轨游侠 (130k~400k)：Lv.1 (130k~170k, Murphy 135.5k 领跑) / Lv.2 (170k~220k) / Lv.3 (220k~275k) / Lv.4 (275k~335k) / Lv.5 (335k~400k)；\n- T3 深空先锋 (400k~1M)：Lv.1 (400k~500k) / Lv.2 (500k~610k) / Lv.3 (610k~730k) / Lv.4 (730k~860k) / Lv.5 (860k~1M)；\n- T4 星系领航官 (1M~2.5M)：Lv.1 (1M~1.25M) / Lv.2 (1.25M~1.52M) / Lv.3 (1.52M~1.81M) / Lv.4 (1.81M~2.13M) / Lv.5 (2.13M~2.5M)；\n- T5 宇宙传奇 (2.5M+)：Lv.1 (2.5M~3M) / Lv.2 (3M~3.6M) / Lv.3 (3.6M~4.3M) / Lv.4 (4.3M~5.1M) / Lv.5 (5.1M+ 极境满星)。',
+    verification: '1. 访问前台，Murphy 账号登录后侧边栏顶端精准呈现【星轨游侠 Lv.1】（翡翠绿徽章）与 5,530 / 40,000 EXP 进度；\\n2. Eugenie 登录后呈现【启航学员 Lv.4】，Raymond 呈现【启航学员 Lv.1】；\\n3. 完成任一故事关卡或单词挑战获得金币后，经验条与等级数字实时平滑动画递增；\\n4. 折叠侧边栏后，悬停头像可查看完整职阶与升级倒计时经验；\\n5. 在任务与改动追踪看板中，TASK-11.1 显示为已上线（COMPLETED）。',
+    priority: 'HIGH'
+  },
+  {
+    id: 'TASK-11.2',
+    title: '全关卡奖励与经验机制独立控制台与防刷防伪安全加固 (Reward Engine & Security Hardening Dashboard)',
+    category: 'admin',
+    category_label: '管理端与配置',
+    status: 'COMPLETED',
+    version: 'v2.8.5',
+    date_str: '2026-10-02',
+    summary: '【已上线】在 Admin 后台增设独立的“关卡奖励与经验控制”专页，可视化矩阵展示全关卡金币（经验）计算规则并支持实时调参；全面落地太空战机【选项 B·战败不发金币】、全关卡 20% 复习防刷衰减倍率、单词宝库全局参数化配置，以及服务端 50,000 上限安全锁。',
+    steps_json: [
+      '落地【选项 B·战败不发金币】：在太空防卫战（关卡 04 / falling）中严格锁定 Game Over 护盾破裂时 coinsReward = 0，不调用入账 API 并不加金币，彻底杜绝挂机自杀刷币漏洞。',
+      '全关卡 20% 复习防刷鼓励机制：根据 completed_stages_mask 与历史进度位掩码识别复习状态。Stage 1 阅读、Stage 2 追逐、Stage 3 匹配、Stage 4 太空防卫在复习重玩时统一按 20% 折算发放鼓励金币。',
+      '单词宝库奖励全局配置化：新增 coins_vocab_reading（默认 10）与 coins_vocab_spelling（默认 20）配置，新掌握全额发放，复习练习按 20% 发放，前后端完全以服务端返回值同步。',
+      '服务端安全防伪与上下限锁：在 userController.addCoins 增加校验，限制 user_id 为正整数，每次金币变动 deltaCoins 必须在 [0, 50000] 之间，防止负数扣分与数值溢出攻击。',
+      'Admin 后台独立控制专页：在侧边栏新增“🪙 关卡奖励与经验控制”独立菜单，提供清晰的 6 大关卡/模块规则与结算全景表格、即时输入调节控件、防刷衰减倍率滑块、技能加成配置以及系统安全锁指示灯。'
+    ],
+    affected_files_json: [
+      'frontend/src/components/ParentDashboard.tsx',
+      'frontend/src/components/GamePlay.tsx',
+      'frontend/src/components/WordBankMap.tsx',
+      'backend/src/controllers/settingController.ts',
+      'backend/src/controllers/wordBookController.ts',
+      'backend/src/controllers/userController.ts',
+      'backend/src/controllers/roadmapController.ts',
+      'frontend/src/components/ProjectRoadmap.tsx',
+      'docs/REQUIREMENTS.md'
+    ],
+    technical_notes: '所有关卡结算奖励与衰减比例均统一由 MySQL game_settings 驱动，避免硬编码分散。新增 coins_stage1_reading、coins_stage3_matching 与 coins_review_multiplier（默认 0.2）参数并纳入数值范围安全校验；PWA 离线模式下优先读取 IndexedDB 缓存的最新配置，兼顾断网离线游玩与在线精准同步。',
+    verification: '1. 进入 Admin 后台左侧菜单，点击“🪙 关卡奖励与经验控制”，完整呈现所有关卡计算表格与输入控件；\\n2. 修改 Stage 1 奖励或复习折算率并点击保存，数据库与前台游戏关卡实时生效；\\n3. 在太空战机模式故意耗尽护盾战败，结算清晰显示“0 (战败未发放)”且金币不增加；\\n4. 重复挑战已通关的绘本故事，结算面板准确显示“+20 Coins (复习奖励)”；\\n5. 在任务与改动追踪看板中，TASK-11.2 显示为已上线（COMPLETED）。',
+    priority: 'HIGH'
+  },
+
   // 确定加入 (CONFIRMED)
   {
     id: 'FEAT-CONFIRM-01',
@@ -820,7 +918,91 @@ export const getRoadmapItems = async (req: Request, res: Response) => {
         ]
       );
     }
-    const [seededRows]: any = await pool.query('SELECT * FROM project_roadmap_tasks ORDER BY id ASC');
+    // Keep the planned implementation details current for TASK-10.1
+    const sidebarPlan = INITIAL_ROADMAP_ITEMS.find((item) => item.id === 'TASK-10.1');
+    if (sidebarPlan) {
+      await pool.query(
+        `UPDATE project_roadmap_tasks
+         SET title = ?, category = ?, category_label = ?, status = ?, version = ?, date_str = ?, summary = ?,
+             steps_json = ?, affected_files_json = ?, technical_notes = ?, verification = ?, priority = ?
+         WHERE id = 'TASK-10.1'`,
+        [
+          sidebarPlan.title,
+          sidebarPlan.category,
+          sidebarPlan.category_label,
+          sidebarPlan.status,
+          sidebarPlan.version,
+          sidebarPlan.date_str,
+          sidebarPlan.summary,
+          JSON.stringify(sidebarPlan.steps_json),
+          JSON.stringify(sidebarPlan.affected_files_json),
+          sidebarPlan.technical_notes,
+          sidebarPlan.verification,
+          sidebarPlan.priority || 'HIGH'
+        ]
+      );
+    }
+    // Keep the planned implementation details current for TASK-11.1
+    const rankPlan = INITIAL_ROADMAP_ITEMS.find((item) => item.id === 'TASK-11.1');
+    if (rankPlan) {
+      await pool.query(
+        `UPDATE project_roadmap_tasks
+         SET title = ?, category = ?, category_label = ?, status = ?, version = ?, date_str = ?, summary = ?,
+             steps_json = ?, affected_files_json = ?, technical_notes = ?, verification = ?, priority = ?
+         WHERE id = 'TASK-11.1'`,
+        [
+          rankPlan.title,
+          rankPlan.category,
+          rankPlan.category_label,
+          rankPlan.status,
+          rankPlan.version,
+          rankPlan.date_str,
+          rankPlan.summary,
+          JSON.stringify(rankPlan.steps_json),
+          JSON.stringify(rankPlan.affected_files_json),
+          rankPlan.technical_notes,
+          rankPlan.verification,
+          rankPlan.priority || 'HIGH'
+        ]
+      );
+    }
+    // Ensure TASK-11.2 is inserted or updated in project_roadmap_tasks
+    const rewardPlan = INITIAL_ROADMAP_ITEMS.find((item) => item.id === 'TASK-11.2');
+    if (rewardPlan) {
+      await pool.query(
+        `INSERT INTO project_roadmap_tasks
+         (id, title, category, category_label, status, version, date_str, summary, steps_json, affected_files_json, technical_notes, verification, priority)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON DUPLICATE KEY UPDATE
+           title = VALUES(title), category = VALUES(category), category_label = VALUES(category_label),
+           status = VALUES(status), version = VALUES(version), date_str = VALUES(date_str),
+           summary = VALUES(summary), steps_json = VALUES(steps_json), affected_files_json = VALUES(affected_files_json),
+           technical_notes = VALUES(technical_notes), verification = VALUES(verification), priority = VALUES(priority)`,
+        [
+          rewardPlan.id,
+          rewardPlan.title,
+          rewardPlan.category,
+          rewardPlan.category_label,
+          rewardPlan.status,
+          rewardPlan.version,
+          rewardPlan.date_str,
+          rewardPlan.summary,
+          JSON.stringify(rewardPlan.steps_json),
+          JSON.stringify(rewardPlan.affected_files_json),
+          rewardPlan.technical_notes,
+          rewardPlan.verification,
+          rewardPlan.priority || 'HIGH'
+        ]
+      );
+    }
+    const [seededRows]: any = await pool.query('SELECT * FROM project_roadmap_tasks');
+    const orderMap = new Map(INITIAL_ROADMAP_ITEMS.map((item, idx) => [item.id, idx]));
+    seededRows.sort((a: any, b: any) => {
+      const oA = orderMap.has(a.id) ? orderMap.get(a.id)! : 9999;
+      const oB = orderMap.has(b.id) ? orderMap.get(b.id)! : 9999;
+      if (oA !== oB) return oA - oB;
+      return a.id.localeCompare(b.id, undefined, { numeric: true });
+    });
     return res.json(formatRows(seededRows));
   } catch (err: any) {
     console.error('getRoadmapItems error:', err.message);

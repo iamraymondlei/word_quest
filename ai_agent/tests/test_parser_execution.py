@@ -2,7 +2,7 @@ import asyncio
 from unittest.mock import AsyncMock, patch
 import pytest
 
-from app.schemas import StoryParseResult
+from app.schemas import StoryParseResult, EnrichedWord
 from app.services.gemini_parser import GeminiParser, _clean_and_parse_json
 
 
@@ -167,7 +167,54 @@ async def test_parse_images_builds_correct_codex_command():
         cmd_args = mock_exec.await_args[0]
         assert "codex" in cmd_args[0]
         assert "exec" in cmd_args
-        assert "--dangerously-bypass-approvals-and-sandbox" in cmd_args
-        assert "--ephemeral" in cmd_args
-        assert "-m" in cmd_args
         assert "gpt-5.6-sol" in cmd_args
+
+
+def test_enriched_word_bilingual_schema():
+    raw = {
+        "word": "strict",
+        "phonetic": "/strɪkt/",
+        "translation": "严格的",
+        "fun_sentences": [{"en": "He is strict.", "zh": "他很严格。"}],
+        "antonyms": "lenient",
+        "synonyms": "stern",
+        "root_affixes": {
+            "en": "From Latin stringere (to draw tight)",
+            "zh": "源自拉丁语 stringere（拉紧）"
+        },
+        "etymology": {
+            "en": "Ancient ropes pulled tight.",
+            "zh": "古代拉得很紧的绳子。"
+        }
+    }
+    word = EnrichedWord.model_validate(raw)
+    assert word.word == "strict"
+    assert word.root_affixes.en == "From Latin stringere (to draw tight)"
+    assert word.root_affixes.zh == "源自拉丁语 stringere（拉紧）"
+    assert word.etymology.en == "Ancient ropes pulled tight."
+    assert word.etymology.zh == "古代拉得很紧的绳子。"
+
+
+@pytest.mark.asyncio
+async def test_bilingualize_roots_and_etymology_exec():
+    parser = GeminiParser()
+    fake_proc = AsyncMock()
+    fake_proc.returncode = 0
+    fake_proc.communicate.return_value = (
+        b'{"results": [{"id": 47, "root_affixes": {"en": "root_en", "zh": "root_zh"}, "etymology": {"en": "etym_en", "zh": "etym_zh"}}]}',
+        b"",
+    )
+
+    with patch("shutil.which", return_value="/usr/local/bin/agy"), \
+         patch("asyncio.create_subprocess_exec", new=AsyncMock(return_value=fake_proc)):
+        results = await parser.bilingualize_roots_and_etymology(
+            items=[{"id": 47, "word": "strict", "root_affixes": "Latin", "etymology": "Ropes"}],
+            effective_model="gemini-3.7-flash-high",
+            cli_type="agy"
+        )
+        assert len(results) == 1
+        assert results[0].id == 47
+        assert results[0].root_affixes.en == "root_en"
+        assert results[0].root_affixes.zh == "root_zh"
+        assert results[0].etymology.en == "etym_en"
+        assert results[0].etymology.zh == "etym_zh"

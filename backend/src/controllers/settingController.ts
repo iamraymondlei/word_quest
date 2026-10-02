@@ -13,6 +13,11 @@ export interface GameSettingsMap {
   coins_completion: number;
   coins_speed_bonus: number;
   coins_full_hearts_bonus: number;
+  coins_stage1_reading: number;
+  coins_stage3_matching: number;
+  coins_review_multiplier: number;
+  coins_vocab_reading: number;
+  coins_vocab_spelling: number;
   monster_emojis: string[];
   ai_prompt_template?: string;
 }
@@ -64,6 +69,11 @@ export const DEFAULT_GAME_SETTINGS: GameSettingsMap = {
   coins_completion: 150,
   coins_speed_bonus: 50,
   coins_full_hearts_bonus: 30,
+  coins_stage1_reading: 100,
+  coins_stage3_matching: 100,
+  coins_review_multiplier: 0.2,
+  coins_vocab_reading: 10,
+  coins_vocab_spelling: 20,
   monster_emojis: ['dragon', 'ogre', 'goblin', 'wolf', 'mech', 'ghost', 'zombie', 'spider'],
   ai_prompt_template: DEFAULT_AI_PROMPT_TEMPLATE
 };
@@ -81,6 +91,11 @@ const NUMERIC_SETTING_RULES: Record<string, { min: number; max: number; integer?
   coins_completion: { min: 0, max: 100000, integer: true },
   coins_speed_bonus: { min: 0, max: 100000, integer: true },
   coins_full_hearts_bonus: { min: 0, max: 100000, integer: true },
+  coins_stage1_reading: { min: 0, max: 100000, integer: true },
+  coins_stage3_matching: { min: 0, max: 100000, integer: true },
+  coins_review_multiplier: { min: 0, max: 1, integer: false },
+  coins_vocab_reading: { min: 0, max: 10000, integer: true },
+  coins_vocab_spelling: { min: 0, max: 10000, integer: true },
 };
 const MAX_AI_PROMPT_LENGTH = 20000;
 

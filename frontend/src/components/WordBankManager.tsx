@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { apiService } from '../utils/apiService';
+import { parseBilingual } from '../utils/bilingual';
 
 export interface SentenceItem {
   en: string;
@@ -438,7 +439,16 @@ export const WordBankManager: React.FC = () => {
           if (res.source === 'fallback') {
             hadFallbackWarning = res.warning || '部分词条响应超时，已生成待填模板';
           }
-          accumulatedDraft.push(...res.data);
+          const formattedItems = res.data.map((item: any) => ({
+            ...item,
+            root_affixes: typeof item.root_affixes === 'object' && item.root_affixes !== null
+              ? JSON.stringify(item.root_affixes)
+              : (item.root_affixes || ''),
+            etymology: typeof item.etymology === 'object' && item.etymology !== null
+              ? JSON.stringify(item.etymology)
+              : (item.etymology || '')
+          }));
+          accumulatedDraft.push(...formattedItems);
           // Stream progressive updates into draft review table
           setDraftWords([...accumulatedDraft]);
         }
@@ -1385,22 +1395,39 @@ export const WordBankManager: React.FC = () => {
                                   )}
                                 </td>
                                 <td className="p-3.5 space-y-1">
-                                  {w.root_affixes && (
-                                    <div className="text-purple-300 text-[11px] font-medium">
-                                      🧩 {w.root_affixes}
-                                    </div>
-                                  )}
-                                  {w.antonyms && (
-                                    <div className="text-rose-300 text-[11px] font-medium">
-                                      ⚖️ 反: {w.antonyms}
-                                    </div>
-                                  )}
-                                  {!w.root_affixes && !w.antonyms && (
-                                    <span className="text-slate-600">—</span>
-                                  )}
+                                  {(() => {
+                                    const roots = parseBilingual(w.root_affixes);
+                                    if (!roots.en && !roots.zh && !w.antonyms) {
+                                      return <span className="text-slate-600">—</span>;
+                                    }
+                                    return (
+                                      <>
+                                        {(roots.en || roots.zh) && (
+                                          <div className="text-purple-300 text-[11px] font-medium space-y-0.5">
+                                            {roots.en && <div>🧩 {roots.en}</div>}
+                                            {roots.zh && <div className="text-purple-400/80 pl-4">{roots.zh}</div>}
+                                          </div>
+                                        )}
+                                        {w.antonyms && (
+                                          <div className="text-rose-300 text-[11px] font-medium">
+                                            ⚖️ 反: {w.antonyms}
+                                          </div>
+                                        )}
+                                      </>
+                                    );
+                                  })()}
                                 </td>
                                 <td className="p-3.5 text-slate-400 text-[11px] max-w-xs leading-relaxed">
-                                  {w.etymology || '—'}
+                                  {(() => {
+                                    const etym = parseBilingual(w.etymology);
+                                    if (!etym.en && !etym.zh) return <span className="text-slate-600">—</span>;
+                                    return (
+                                      <div className="space-y-0.5">
+                                        {etym.en && <div className="text-slate-200">{etym.en}</div>}
+                                        {etym.zh && <div className="text-amber-300/80 text-[10px]">{etym.zh}</div>}
+                                      </div>
+                                    );
+                                  })()}
                                 </td>
                                 <td className="p-3.5 text-right whitespace-nowrap">
                                   <div className="flex items-center justify-end gap-1.5">

@@ -9,7 +9,7 @@ import time
 from typing import Any
 
 from app.config import settings
-from app.schemas import DEFAULT_SYSTEM_PROMPT, EnrichedWord, SongTranslationResult, StoryParseResult
+from app.schemas import DEFAULT_SYSTEM_PROMPT, EnrichedWord, SongTranslationResult, StoryParseResult, WordBilingualResult
 
 logger = logging.getLogger(__name__)
 
@@ -341,8 +341,8 @@ class GeminiParser:
             "IMPORTANT: Every sentence must be unique, vivid, and contextualized to that specific word's meaning. NEVER use repetitive boilerplate phrases like 'Look at the amazing...'. "
             "5. 'antonyms': comma-separated antonyms. "
             "6. 'synonyms': comma-separated synonyms. "
-            "7. 'root_affixes': breakdown of root and affixes explaining word structure. "
-            "8. 'etymology': fun concise 1-2 sentence origin story for kids. "
+            "7. 'root_affixes': bilingual object with 'en' (English linguistic breakdown of root and affixes) and 'zh' (child-friendly lively Chinese explanation in standard written Chinese, clear and engaging for kids). "
+            "8. 'etymology': bilingual object with 'en' (fun 1-2 sentence English origin story for kids) and 'zh' (child-friendly lively Chinese origin story in standard written Chinese, clear and engaging for kids). "
             "Return ONLY valid JSON with shape: {\"words\": [...]}, no markdown formatting. Do not use unescaped double quotes inside values. "
             f"Words: {json.dumps(words, ensure_ascii=False)}"
         )
@@ -387,6 +387,65 @@ class GeminiParser:
                     await asyncio.sleep(1.5)
                     continue
                 raise ValueError(f"词汇丰富结果解析失败: {exc}") from exc
+
+    async def bilingualize_roots_and_etymology(
+        self,
+        items: list[dict],
+        effective_model: str,
+        cli_type: str = "agy"
+    ) -> list[WordBilingualResult]:
+        prompt = (
+            "You are an English linguistic and etymological tutor for children.\n"
+            "For each of the following words, provide English ('en') and child-friendly standard written Chinese ('zh') versions for 'root_affixes' and 'etymology'.\n"
+            "Requirements for EACH word:\n"
+            "1. 'id': integer matching input word id.\n"
+            "2. 'root_affixes': an object with 'en' (concise English linguistic analysis of roots/affixes) and 'zh' (lively, clear child-friendly standard Chinese explanation, easy to read and understand).\n"
+            "3. 'etymology': an object with 'en' (fun 1-2 sentence English origin story for kids) and 'zh' (lively, fun child-friendly standard Chinese origin story for kids).\n"
+            "4. Both 'en' and 'zh' should be complete and engaging. Avoid dialect slang words; use natural, expressive standard written Chinese suitable for kids.\n"
+            "Return ONLY valid JSON with shape: {\"results\": [{\"id\": <id>, \"root_affixes\": {\"en\": \"...\", \"zh\": \"...\"}, \"etymology\": {\"en\": \"...\", \"zh\": \"...\"}}]}, no markdown formatting. Do not use unescaped double quotes inside values.\n"
+            f"Input items: {json.dumps(items, ensure_ascii=False)}"
+        )
+
+        for attempt in range(2):
+            try:
+                if cli_type == "codex":
+                    if not shutil.which("codex"):
+                        raise ValueError("系统未找到 codex 命令。")
+                    cmd = ["codex", "exec", "--dangerously-bypass-approvals-and-sandbox", "--ephemeral"]
+                    if effective_model and effective_model.lower() not in ("default", "none"):
+                        cmd.extend(["-m", effective_model])
+                    cmd.append("-")
+                    proc = await asyncio.create_subprocess_exec(*cmd, stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+                    stdout, stderr = await asyncio.wait_for(proc.communicate(input=prompt.encode("utf-8")), timeout=120)
+                else:
+                    if not shutil.which("agy"):
+                        raise ValueError("系统未找到 agy 命令。")
+                    cmd = ["agy", "--dangerously-skip-permissions", "--disable-slash-commands"]
+                    if effective_model:
+                        cmd.extend(["--model", effective_model])
+                    cmd.extend(["-p", prompt])
+                    proc = await asyncio.create_subprocess_exec(*cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+                    stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=120)
+
+                if len(stdout) + len(stderr) > settings.MAX_CLI_OUTPUT_BYTES:
+                    raise ValueError("CLI 输出超过允许大小。")
+                if proc.returncode != 0:
+                    raise ValueError(f"{cli_type} CLI Error: {stderr.decode().strip()}")
+
+                parsed = _clean_and_parse_json(stdout.decode().strip(), fallback_to_story=False)
+                if isinstance(parsed, dict) and "results" in parsed:
+                    parsed = parsed["results"]
+                elif isinstance(parsed, dict) and "data" in parsed:
+                    parsed = parsed["data"]
+                if not isinstance(parsed, list):
+                    parsed = [parsed]
+                return [WordBilingualResult.model_validate(item) for item in parsed]
+            except Exception as exc:
+                if attempt == 0:
+                    logger.warning("Bilingualize attempt 1 failed: %s. Retrying...", exc)
+                    await asyncio.sleep(1.5)
+                    continue
+                raise ValueError(f"双语词根与词源生成失败: {exc}") from exc
 
     async def parse_images(
         self,

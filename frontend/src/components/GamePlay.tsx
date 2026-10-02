@@ -29,6 +29,9 @@ export interface GameSettings {
   coins_completion: number;
   coins_speed_bonus: number;
   coins_full_hearts_bonus: number;
+  coins_stage1_reading?: number;
+  coins_stage3_matching?: number;
+  coins_review_multiplier?: number;
   monster_emojis: string[];
 }
 
@@ -44,6 +47,9 @@ export const DEFAULT_GAME_SETTINGS: GameSettings = {
   coins_completion: 150,
   coins_speed_bonus: 50,
   coins_full_hearts_bonus: 30,
+  coins_stage1_reading: 100,
+  coins_stage3_matching: 100,
+  coins_review_multiplier: 0.2,
   monster_emojis: ['👻']
 };
 
@@ -82,9 +88,7 @@ export const GamePlay: React.FC<Props> = ({
   island,
   gameMode,
   currentUser,
-  theme = 'cyber',
   fontScale = '130',
-  onThemeChange,
   onFontScaleChange,
   onBack,
   onProgressUpdated
@@ -106,6 +110,9 @@ export const GamePlay: React.FC<Props> = ({
   const [stage, setStage] = useState<'story' | 'listening' | 'translation' | 'falling' | 'success' | 'listening_success' | 'translation_success' | 'falling_success'>('story');
   const [feedback, setFeedback] = useState<{ isError: boolean; message: string } | null>(null);
   const [isSaving, setIsSaving] = useState<boolean>(false);
+
+  const [earnedStageCoins, setEarnedStageCoins] = useState<number>(100);
+  const [earnedTranslationCoins, setEarnedTranslationCoins] = useState<number>(100);
 
   // Audio Hint state & Slot focus state
   const [audioRates, setAudioRates] = useState<Record<number, number>>({});
@@ -820,6 +827,11 @@ export const GamePlay: React.FC<Props> = ({
   const handleCompleteStory = async () => {
     setIsSaving(true);
     setFeedback(null);
+    const isRepeat = ((island.completed_stages_mask || 0) & 1) !== 0 || (island.unlocked_stage ?? 1) > 1;
+    const baseCoins = chaseGameSettings.coins_stage1_reading || 100;
+    const multiplier = chaseGameSettings.coins_review_multiplier ?? 0.2;
+    const coins = isRepeat ? Math.round(baseCoins * multiplier) : baseCoins;
+    setEarnedStageCoins(coins);
     try {
       await apiService.updateStageProgress({
         user_id: currentUser.id,
@@ -830,7 +842,7 @@ export const GamePlay: React.FC<Props> = ({
         mistakes: []
       });
 
-      await apiService.addCoins(currentUser.id, 100);
+      await apiService.addCoins(currentUser.id, coins);
 
       onProgressUpdated();
       setStage('success');
@@ -1234,7 +1246,10 @@ export const GamePlay: React.FC<Props> = ({
     const speedBonus = chaseSelectedSpeed === 'fast' ? (chaseGameSettings.coins_speed_bonus || 50) : 0;
     const fullHeartsBonus = chaseHearts === (chaseGameSettings.initial_hearts || 3) ? (chaseGameSettings.coins_full_hearts_bonus || 30) : 0;
     const totalCoins = baseCoins + speedBonus + fullHeartsBonus;
-    setChaseEarnedCoins(totalCoins);
+    const isRepeat = ((island.completed_stages_mask || 0) & 2) !== 0 || (island.unlocked_stage ?? 1) > 2;
+    const multiplier = chaseGameSettings.coins_review_multiplier ?? 0.2;
+    const finalAwardedCoins = isRepeat ? Math.round(totalCoins * multiplier) : totalCoins;
+    setChaseEarnedCoins(finalAwardedCoins);
 
     try {
       await apiService.updateStageProgress({
@@ -1246,7 +1261,7 @@ export const GamePlay: React.FC<Props> = ({
         mistakes: []
       });
 
-      await apiService.addCoins(currentUser.id, totalCoins);
+      await apiService.addCoins(currentUser.id, finalAwardedCoins);
 
       onProgressUpdated();
       setChaseIsSuccess(true);
@@ -1851,6 +1866,11 @@ export const GamePlay: React.FC<Props> = ({
   const handleCompleteTranslation = async () => {
     setIsSaving(true);
     setFeedback(null);
+    const isRepeat = ((island.completed_stages_mask || 0) & 4) !== 0 || (island.unlocked_stage ?? 1) > 3;
+    const baseCoins = chaseGameSettings.coins_stage3_matching || 100;
+    const multiplier = chaseGameSettings.coins_review_multiplier ?? 0.2;
+    const coins = isRepeat ? Math.round(baseCoins * multiplier) : baseCoins;
+    setEarnedTranslationCoins(coins);
     try {
       await apiService.updateStageProgress({
         user_id: currentUser.id,
@@ -1861,7 +1881,7 @@ export const GamePlay: React.FC<Props> = ({
         mistakes: []
       });
 
-      await apiService.addCoins(currentUser.id, 100);
+      await apiService.addCoins(currentUser.id, coins);
 
       onProgressUpdated();
       setStage('translation_success');
@@ -2179,7 +2199,13 @@ export const GamePlay: React.FC<Props> = ({
   const handleFinishFalling = async (finalScore: number, isVictory: boolean) => {
     setIsSaving(true);
     setFeedback(null);
-    const coinsReward = Math.round(finalScore * difficulty.multiplier);
+    let coinsReward = 0;
+    if (isVictory) {
+      const rawCoins = Math.round(finalScore * difficulty.multiplier);
+      const isRepeat = ((island.completed_stages_mask || 0) & 8) !== 0 || (island.unlocked_stage ?? 1) >= 5;
+      const multiplier = chaseGameSettings.coins_review_multiplier ?? 0.2;
+      coinsReward = isRepeat ? Math.round(rawCoins * multiplier) : rawCoins;
+    }
     setEarnedCoins(coinsReward);
 
     try {
@@ -2192,10 +2218,10 @@ export const GamePlay: React.FC<Props> = ({
           score: finalScore,
           mistakes: []
         });
-      }
 
-      if (coinsReward > 0) {
-        await apiService.addCoins(currentUser.id, coinsReward);
+        if (coinsReward > 0) {
+          await apiService.addCoins(currentUser.id, coinsReward);
+        }
       }
 
       onProgressUpdated();
@@ -2386,7 +2412,7 @@ export const GamePlay: React.FC<Props> = ({
               ⚡ {streak}x STREAK
             </div>
             <div className="bg-cyan-500/10 border border-cyan-500/30 text-cyan-400 font-mono font-bold px-3 py-1.5 rounded-xl text-xs flex items-center gap-1.5 shadow-sm">
-              🪙 {(currentUser.coins + (earnedCoins || 0)).toLocaleString()} COINS
+              ⚡ {(currentUser.coins + (earnedCoins || 0)).toLocaleString()} EXP
             </div>
           </div>
         </header>
@@ -2394,28 +2420,6 @@ export const GamePlay: React.FC<Props> = ({
         {/* Compact Settings & Voice Controller Toolbar */}
         <div className="flex flex-wrap items-center justify-between gap-3 mb-6 font-mono text-xs">
           <div className="flex flex-wrap items-center gap-3">
-            <div className="flex items-center gap-1 bg-[#0F172A]/80 p-1 rounded-xl border border-cyan-500/20 font-mono">
-              <button
-                type="button"
-                onClick={() => onThemeChange?.('cyber')}
-                className={`px-3 py-1 text-xs rounded-lg font-bold transition-all cursor-pointer flex items-center gap-1 ${
-                  theme === 'cyber' || theme !== 'bright' ? 'bg-cyan-500 text-slate-950 shadow-sm' : 'text-slate-400 hover:text-slate-200'
-                }`}
-                title="Dark Mode"
-              >
-                🌙 Dark
-              </button>
-              <button
-                type="button"
-                onClick={() => onThemeChange?.('bright')}
-                className={`px-3 py-1 text-xs rounded-lg font-bold transition-all cursor-pointer flex items-center gap-1 ${
-                  theme === 'bright' ? 'bg-amber-400 text-slate-950 shadow-sm' : 'text-slate-400 hover:text-slate-200'
-                }`}
-                title="Bright Mode"
-              >
-                ☀️ Bright
-              </button>
-            </div>
 
             <div className="flex items-center gap-1 bg-[#0F172A]/80 p-1 rounded-xl border border-cyan-500/20">
               <button
@@ -2605,7 +2609,7 @@ export const GamePlay: React.FC<Props> = ({
                   
                   <div className="w-full space-y-3 mb-8">
                     <div className="bg-yellow-950/20 border border-yellow-500/30 text-yellow-400 px-4 py-3 rounded-xl font-bold text-xs flex items-center justify-center gap-2">
-                      🪙 +100 Coins Secured
+                      ⚡ +{earnedStageCoins} 探险经验 (EXP) {earnedStageCoins < 100 && '(复习奖励)'}
                     </div>
                     <div className="bg-cyan-950/20 border border-cyan-500/30 text-cyan-400 px-4 py-3 rounded-xl font-bold text-xs flex items-center justify-center gap-2">
                       ⛵ Acoustic Capture Decryption Unlocked
@@ -2943,30 +2947,30 @@ export const GamePlay: React.FC<Props> = ({
                     你成功甩开了所有追击怪兽，完成了故事 **{island.name}** 的全部打字挑战！
                   </p>
 
-                  {/* Coin & Reward Breakdown */}
+                  {/* EXP & Reward Breakdown */}
                   <div className="w-full space-y-2.5 mb-6 font-mono relative z-10 tabular-nums">
                     <div className="bg-amber-950/40 border border-amber-500/40 text-amber-300 px-4 py-2.5 rounded-xl font-bold text-xs flex justify-between items-center shadow-sm">
-                      <span>🪙 基础通关奖励:</span>
-                      <span className="font-extrabold text-sm">+{chaseGameSettings.coins_completion || 150}</span>
+                      <span>🎯 基础通关经验:</span>
+                      <span className="font-extrabold text-sm">+{chaseGameSettings.coins_completion || 150} EXP</span>
                     </div>
 
                     {chaseSelectedSpeed === 'fast' && (
                       <div className="bg-purple-950/40 border border-purple-500/40 text-purple-300 px-4 py-2.5 rounded-xl font-bold text-xs flex justify-between items-center shadow-sm">
-                        <span>⚡ 极速冲刺奖励:</span>
-                        <span className="font-extrabold text-sm">+{chaseGameSettings.coins_speed_bonus || 50}</span>
+                        <span>⚡ 极速冲刺经验:</span>
+                        <span className="font-extrabold text-sm">+{chaseGameSettings.coins_speed_bonus || 50} EXP</span>
                       </div>
                     )}
 
                     {chaseHearts === (chaseGameSettings.initial_hearts || 3) && (
                       <div className="bg-rose-950/40 border border-rose-500/40 text-rose-300 px-4 py-2.5 rounded-xl font-bold text-xs flex justify-between items-center shadow-sm">
-                        <span>💖 满血无伤逃脱奖励:</span>
-                        <span className="font-extrabold text-sm">+{chaseGameSettings.coins_full_hearts_bonus || 30}</span>
+                        <span>💖 满血无伤逃脱经验:</span>
+                        <span className="font-extrabold text-sm">+{chaseGameSettings.coins_full_hearts_bonus || 30} EXP</span>
                       </div>
                     )}
 
                     <div className="bg-gradient-to-r from-amber-500/25 to-emerald-500/25 border border-amber-400/70 text-amber-200 px-4 py-3 rounded-xl font-black text-sm flex justify-between items-center shadow-lg">
-                      <span>✨ 总计获得金币:</span>
-                      <span className="text-base text-amber-300">🪙 +{chaseEarnedCoins} Coins</span>
+                      <span>✨ 总计获得经验:</span>
+                      <span className="text-base text-cyan-300 font-mono">⚡ +{chaseEarnedCoins} EXP</span>
                     </div>
                   </div>
 
@@ -3588,7 +3592,7 @@ export const GamePlay: React.FC<Props> = ({
                   
                   <div className="w-full space-y-3 mb-8">
                     <div className="bg-yellow-950/20 border border-yellow-500/30 text-yellow-400 px-4 py-3 rounded-xl font-bold text-xs flex items-center justify-center gap-2">
-                      🪙 +100 Coins Secured
+                      ⚡ +{earnedTranslationCoins} 探险经验 (EXP) {earnedTranslationCoins < 100 && '(复习奖励)'}
                     </div>
                     <div className="bg-cyan-950/20 border border-cyan-500/30 text-cyan-400 px-4 py-3 rounded-xl font-bold text-xs flex items-center justify-center gap-2">
                       👾 Intrusion Matrix Decryption Unlocked
@@ -3814,9 +3818,15 @@ export const GamePlay: React.FC<Props> = ({
                           <span>Speed Multiplier:</span>
                           <span>{difficulty.label} ({difficulty.multiplier}x)</span>
                         </div>
-                        <div className="flex justify-between text-sm font-black text-emerald-400 border-t border-slate-800 pt-2 font-mono">
-                          <span>Coins Earned:</span>
-                          <span>🪙 +{earnedCoins}</span>
+                        <div className="flex justify-between text-sm font-black text-cyan-400 border-t border-slate-800 pt-2 font-mono">
+                          <span>EXP Earned (获得经验):</span>
+                          <span>
+                            {fallingGameState === 'victory' ? (
+                              `⚡ +${earnedCoins} EXP${((island.completed_stages_mask || 0) & 8) !== 0 || (island.unlocked_stage ?? 1) >= 5 ? ' (复习奖励)' : ''}`
+                            ) : (
+                              <span className="text-slate-400 font-normal">0 (战败未发放)</span>
+                            )}
+                          </span>
                         </div>
                       </div>
 

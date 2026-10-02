@@ -7,6 +7,7 @@ import {
   normalizeBuddyKey,
   RunnerSprite
 } from './StoryChaseAssets';
+import { parseBilingual, playBilingualSpeech } from '../utils/bilingual';
 
 export interface SentenceItem {
   en: string;
@@ -63,6 +64,7 @@ interface WordBankMapProps {
   onOpenSongs?: () => void;
   onLogout?: () => void;
   onUpdateUser?: (updatedUser: any) => void;
+  hideHeader?: boolean;
 }
 
 type StageMode = 'learn' | 'reading' | 'spelling';
@@ -135,14 +137,13 @@ export const renderSentenceWithHighlight = (sentence: string, targetWord: string
 
 export const WordBankMap: React.FC<WordBankMapProps> = ({
   currentUser,
-  theme = 'cyber',
   fontScale = '130',
-  onThemeChange,
   onFontScaleChange,
   onBackToStories,
   onOpenSongs,
   onLogout,
-  onUpdateUser
+  onUpdateUser,
+  hideHeader = false
 }) => {
   // Books & Category state
   const [books, setBooks] = useState<WordBook[]>([]);
@@ -181,28 +182,37 @@ export const WordBankMap: React.FC<WordBankMapProps> = ({
     return BUDDY_CHARACTERS.find((b) => b.key === key) || BUDDY_CHARACTERS[0];
   }, [currentUser.avatar]);
 
-  // Audio synthesis helper
-  const playWordAudio = useCallback((text: string) => {
-    if (!('speechSynthesis' in window)) {
+  // Audio synthesis helper with dual language (en-US / Cantonese zh-HK) support
+  const playSpeech = useCallback((text: string, lang: 'en' | 'yue' | 'zh' = 'en') => {
+    playBilingualSpeech(text, lang, () => {
       showToast(`🔊 [无法发音]: 设备不支持 Web Speech`);
-      return;
-    }
-    window.speechSynthesis.cancel();
-    const utter = new SpeechSynthesisUtterance(text);
-    utter.lang = 'en-US';
-    utter.rate = 0.88;
-    const voices = window.speechSynthesis.getVoices();
-    const offlineVoice = voices.find(v => v.lang.startsWith('en') && (v.localService || !v.voiceURI.includes('Google'))) || voices.find(v => v.lang.startsWith('en'));
-    if (offlineVoice) utter.voice = offlineVoice;
-    window.speechSynthesis.speak(utter);
+    });
   }, []);
 
-  // 1. Fetch word books
+  const playWordAudio = useCallback((text: string) => {
+    playSpeech(text, 'en');
+  }, [playSpeech]);
+
+  const [gameSettings, setGameSettings] = useState<{ coins_vocab_reading: number; coins_vocab_spelling: number }>({
+    coins_vocab_reading: 10,
+    coins_vocab_spelling: 20
+  });
+
+  // 1. Fetch word books & game settings
   const loadBooks = useCallback(async () => {
     try {
       setLoadingBooks(true);
-      const data = await apiService.getWordBooks(currentUser.id);
+      const [data, settings] = await Promise.all([
+        apiService.getWordBooks(currentUser.id),
+        apiService.getGameSettings().catch(() => null)
+      ]);
       setBooks(data || []);
+      if (settings) {
+        setGameSettings({
+          coins_vocab_reading: Number(settings.coins_vocab_reading) || 10,
+          coins_vocab_spelling: Number(settings.coins_vocab_spelling) || 20
+        });
+      }
     } catch (err) {
       console.error('Failed to load word books:', err);
     } finally {
@@ -477,13 +487,21 @@ export const WordBankMap: React.FC<WordBankMapProps> = ({
     if (option.isCorrect) {
       const nextCombo = combo + 1;
       setCombo(nextCombo);
-      const earnedCoins = nextCombo >= 3 ? 20 : 10;
+      const isNewlyPassed = !currentQuizWord.reading_passed;
+      const baseReward = gameSettings.coins_vocab_reading || 10;
+      const earnedCoins = isNewlyPassed ? baseReward : Math.max(1, Math.round(baseReward * 0.2));
       setRoundCoins(prev => prev + earnedCoins);
       const updatedCoins = currentUser.coins + earnedCoins;
       onUpdateUser?.({ ...currentUser, coins: updatedCoins });
-      showToast(`🎯 正确！Combo x${nextCombo} +${earnedCoins}金币`);
+      showToast(isNewlyPassed ? `🎯 正确！Combo x${nextCombo} +${earnedCoins} 经验` : `🎯 温故知新！Combo x${nextCombo} +${earnedCoins} 经验`);
       playWordAudio(currentQuizWord.word);
-      await apiService.recordVocabularyProgress(currentQuizWord.id, currentUser.id, 'reading', true);
+      apiService.recordVocabularyProgress(currentQuizWord.id, currentUser.id, 'reading', true).then(res => {
+        if (res && typeof res.coins_awarded === 'number' && res.coins_awarded !== earnedCoins) {
+          // Sync exact server awarded amount if different
+          const diff = res.coins_awarded - earnedCoins;
+          onUpdateUser?.({ ...currentUser, coins: updatedCoins + diff });
+        }
+      }).catch(() => {});
     } else {
       setCombo(0);
       showToast(`❌ 选错啦，正确释义：${currentQuizWord.translation}`);
@@ -544,13 +562,20 @@ export const WordBankMap: React.FC<WordBankMapProps> = ({
     if (val === targetClean) {
       setSpellAnswered(true);
       setSpellIsCorrect(true);
-      const earnedCoins = 25;
+      const isNewlyPassed = !currentSpellWord.spelling_passed;
+      const baseReward = gameSettings.coins_vocab_spelling || 20;
+      const earnedCoins = isNewlyPassed ? baseReward : Math.max(1, Math.round(baseReward * 0.2));
       setRoundCoins(prev => prev + earnedCoins);
       const updatedCoins = currentUser.coins + earnedCoins;
       onUpdateUser?.({ ...currentUser, coins: updatedCoins });
-      showToast(`🎉 拼写完美匹配！+${earnedCoins}金币`);
+      showToast(isNewlyPassed ? `🎉 拼写完美匹配！+${earnedCoins} 经验` : `🎉 拼写复习达标！+${earnedCoins} 经验`);
       playWordAudio(currentSpellWord.word);
-      await apiService.recordVocabularyProgress(currentSpellWord.id, currentUser.id, 'spelling', true);
+      apiService.recordVocabularyProgress(currentSpellWord.id, currentUser.id, 'spelling', true).then(res => {
+        if (res && typeof res.coins_awarded === 'number' && res.coins_awarded !== earnedCoins) {
+          const diff = res.coins_awarded - earnedCoins;
+          onUpdateUser?.({ ...currentUser, coins: updatedCoins + diff });
+        }
+      }).catch(() => {});
       setTimeout(() => {
         advanceSpellingWord();
       }, 1500);
@@ -650,9 +675,9 @@ export const WordBankMap: React.FC<WordBankMapProps> = ({
                 </button>
               </div>
 
-              <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-300 font-mono text-xs font-bold">
-                <span>🪙</span>
-                <span>{currentUser.coins}</span>
+              <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 font-mono text-xs font-bold">
+                <span>⚡</span>
+                <span>{currentUser.coins} EXP</span>
               </div>
 
               <div className="flex items-center gap-1.5 p-1 pl-1 pr-2.5 rounded-full bg-slate-800/80 border border-slate-700">
@@ -870,15 +895,61 @@ export const WordBankMap: React.FC<WordBankMapProps> = ({
                       {/* Right: 词根剖析 & 词源趣谈 */}
                       <div className="bg-[#0d1424]/90 border border-white/10 hover:border-white/20 rounded-3xl p-6 sm:p-7 shadow-xl backdrop-blur-md space-y-6 transition-colors">
                         {/* 构词与词根 */}
-                        <div className="space-y-2.5">
-                          <h3 className="text-sm uppercase tracking-wider font-extrabold text-emerald-400 flex items-center gap-2">
-                            <span className="text-lg">🧩</span>
-                            <span>构词奥秘 (Roots & Affixes)</span>
-                          </h3>
-                          <p className="text-sm sm:text-base text-slate-200 leading-relaxed bg-[#121a2f]/80 p-4 rounded-2xl border border-white/5">
-                            {currentLearnWord.root_affixes || '词根拆解尚未生成，可通过后台 AI 智能丰富'}
-                          </p>
-                        </div>
+                        {(() => {
+                          const roots = parseBilingual(currentLearnWord.root_affixes);
+                          const hasContent = Boolean(roots.en || roots.zh);
+                          return (
+                            <div className="space-y-2.5">
+                              <div className="flex items-center justify-between gap-2">
+                                <h3 className="text-sm uppercase tracking-wider font-extrabold text-emerald-400 flex items-center gap-2">
+                                  <span className="text-lg">🧩</span>
+                                  <span>构词奥秘 (Roots & Affixes)</span>
+                                </h3>
+                                <div className="flex items-center gap-1.5 shrink-0">
+                                  {roots.en && (
+                                    <button
+                                      type="button"
+                                      onClick={() => playSpeech(roots.en, 'en')}
+                                      className="px-2.5 py-1 rounded-xl bg-cyan-500/10 hover:bg-cyan-500/20 text-[#00f0ff] border border-cyan-500/30 text-xs font-bold flex items-center gap-1 transition-all active:scale-95 cursor-pointer"
+                                      title="朗读构词英文说明"
+                                    >
+                                      <span>🔊</span>
+                                      <span>EN</span>
+                                    </button>
+                                  )}
+                                  {roots.zh && (
+                                    <button
+                                      type="button"
+                                      onClick={() => playSpeech(roots.zh, 'yue')}
+                                      className="px-2.5 py-1 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-xs font-bold flex items-center gap-1 transition-all active:scale-95 cursor-pointer"
+                                      title="朗读构词粤语解析"
+                                    >
+                                      <span>🔊</span>
+                                      <span>粤语</span>
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+                              <div className="bg-[#121a2f]/80 p-4 rounded-2xl border border-white/5 space-y-2">
+                                {roots.en && (
+                                  <p className="text-sm sm:text-base text-slate-100 font-medium leading-relaxed">
+                                    {roots.en}
+                                  </p>
+                                )}
+                                {roots.zh && (
+                                  <p className={`text-xs sm:text-sm text-emerald-300/90 leading-relaxed ${roots.en ? 'border-t border-white/5 pt-2' : ''}`}>
+                                    {roots.zh}
+                                  </p>
+                                )}
+                                {!hasContent && (
+                                  <p className="text-sm text-slate-400 italic">
+                                    词根拆解尚未生成，可通过后台 AI 智能丰富
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })()}
 
                         {/* 反义词 & 同义词 */}
                         {(currentLearnWord.antonyms || currentLearnWord.synonyms) && (
@@ -903,17 +974,56 @@ export const WordBankMap: React.FC<WordBankMapProps> = ({
                         )}
 
                         {/* 词源趣谈 */}
-                        {currentLearnWord.etymology && (
-                          <div className="space-y-2.5">
-                            <h3 className="text-sm uppercase tracking-wider font-extrabold text-purple-400 flex items-center gap-2">
-                              <span className="text-lg">📜</span>
-                              <span>词源与记忆挂钩 (Etymology)</span>
-                            </h3>
-                            <p className="text-sm sm:text-base text-slate-200 leading-relaxed bg-[#121a2f]/80 p-4 rounded-2xl border border-white/5">
-                              {currentLearnWord.etymology}
-                            </p>
-                          </div>
-                        )}
+                        {(() => {
+                          const etym = parseBilingual(currentLearnWord.etymology);
+                          if (!etym.en && !etym.zh) return null;
+                          return (
+                            <div className="space-y-2.5">
+                              <div className="flex items-center justify-between gap-2">
+                                <h3 className="text-sm uppercase tracking-wider font-extrabold text-purple-400 flex items-center gap-2">
+                                  <span className="text-lg">📜</span>
+                                  <span>词源与记忆挂钩 (Etymology)</span>
+                                </h3>
+                                <div className="flex items-center gap-1.5 shrink-0">
+                                  {etym.en && (
+                                    <button
+                                      type="button"
+                                      onClick={() => playSpeech(etym.en, 'en')}
+                                      className="px-2.5 py-1 rounded-xl bg-purple-500/10 hover:bg-purple-500/20 text-purple-300 border border-purple-500/30 text-xs font-bold flex items-center gap-1 transition-all active:scale-95 cursor-pointer"
+                                      title="朗读词源英文故事"
+                                    >
+                                      <span>🔊</span>
+                                      <span>EN</span>
+                                    </button>
+                                  )}
+                                  {etym.zh && (
+                                    <button
+                                      type="button"
+                                      onClick={() => playSpeech(etym.zh, 'yue')}
+                                      className="px-2.5 py-1 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 text-xs font-bold flex items-center gap-1 transition-all active:scale-95 cursor-pointer"
+                                      title="朗读词源粤语故事"
+                                    >
+                                      <span>🔊</span>
+                                      <span>粤语</span>
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+                              <div className="bg-[#121a2f]/80 p-4 rounded-2xl border border-white/5 space-y-2">
+                                {etym.en && (
+                                  <p className="text-sm sm:text-base text-slate-100 font-medium leading-relaxed">
+                                    {etym.en}
+                                  </p>
+                                )}
+                                {etym.zh && (
+                                  <p className={`text-xs sm:text-sm text-purple-300/90 leading-relaxed ${etym.en ? 'border-t border-white/5 pt-2' : ''}`}>
+                                    {etym.zh}
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })()}
                       </div>
                     </div>
 
@@ -1064,8 +1174,8 @@ export const WordBankMap: React.FC<WordBankMapProps> = ({
                           共完成了 <strong className="text-cyan-300">{quizList.length}</strong> 道语境词汇挑战关卡
                         </p>
                         <div className="flex items-center justify-center gap-6 py-4">
-                          <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300">
-                            <div className="text-[10px] uppercase font-bold text-amber-400/80">收获金币</div>
+                          <div className="p-4 rounded-xl bg-cyan-500/10 border border-cyan-500/30 text-cyan-300">
+                            <div className="text-[10px] uppercase font-bold text-cyan-400/80">收获经验 (EXP)</div>
                             <div className="text-2xl font-black">+{roundCoins}</div>
                           </div>
                         </div>
@@ -1202,8 +1312,8 @@ export const WordBankMap: React.FC<WordBankMapProps> = ({
                           本轮完成了 <strong className="text-purple-300">{spellList.length}</strong> 个单词盲听盲打记忆
                         </p>
                         <div className="flex items-center justify-center gap-6 py-4">
-                          <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300">
-                            <div className="text-[10px] uppercase font-bold text-amber-400/80">金币奖励</div>
+                          <div className="p-4 rounded-xl bg-purple-500/10 border border-purple-500/30 text-purple-300">
+                            <div className="text-[10px] uppercase font-bold text-purple-400/80">经验奖励 (EXP)</div>
                             <div className="text-2xl font-black">+{roundCoins}</div>
                           </div>
                         </div>
@@ -1326,6 +1436,7 @@ export const WordBankMap: React.FC<WordBankMapProps> = ({
   return (
     <div className="min-h-screen w-full theme-bg theme-text font-mono p-4 sm:p-6 transition-colors duration-300">
       {/* Top Modern Command Bar (Same style as AdventureMap) */}
+      {!hideHeader && (
       <header className="w-full max-w-6xl mx-auto mb-8 relative z-20">
         <div className="theme-card border theme-border rounded-2xl p-4 sm:p-5 shadow-2xl backdrop-blur-xl flex flex-col lg:flex-row items-center justify-between gap-5">
           {/* Left: Adventurer Identity Hero Card */}
@@ -1387,17 +1498,6 @@ export const WordBankMap: React.FC<WordBankMapProps> = ({
               </div>
             </div>
 
-            {/* Coins Capsule */}
-            <div className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-yellow-500/10 border border-yellow-500/30 text-amber-200 shadow-sm font-mono">
-              <span className="text-base leading-none">🪙</span>
-              <div>
-                <div className="text-[10px] uppercase text-yellow-400/70 font-black tracking-wider leading-none">金币奖励</div>
-                <div className="text-sm font-black text-amber-300 tabular-nums">
-                  {currentUser.coins}
-                </div>
-              </div>
-            </div>
-
             {/* Total Vocabulary Mastery Progress Capsule */}
             <div className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-cyan-500/10 border border-cyan-500/30 text-cyan-200 shadow-sm font-mono">
               <span className="text-base leading-none">📚</span>
@@ -1412,33 +1512,6 @@ export const WordBankMap: React.FC<WordBankMapProps> = ({
 
           {/* Right: Offline, Theme & Settings Control Cluster */}
           <div className="flex items-center justify-end gap-2.5 w-full lg:w-auto">
-            {/* 2-Way Theme Mode Switcher */}
-            <div className="flex items-center p-1 rounded-xl bg-slate-950/60 border border-slate-800 font-mono">
-              <button
-                type="button"
-                onClick={() => onThemeChange?.('cyber')}
-                className={`px-2.5 py-1 text-xs rounded-lg font-bold transition-all cursor-pointer flex items-center gap-1 ${
-                  theme === 'cyber' || theme !== 'bright'
-                    ? 'bg-cyan-500 text-slate-950 shadow-md font-black'
-                    : 'theme-text-muted hover:theme-text'
-                }`}
-                title="深色模式"
-              >
-                🌙
-              </button>
-              <button
-                type="button"
-                onClick={() => onThemeChange?.('bright')}
-                className={`px-2.5 py-1 text-xs rounded-lg font-bold transition-all cursor-pointer flex items-center gap-1 ${
-                  theme === 'bright'
-                    ? 'bg-amber-400 text-slate-950 shadow-md font-black'
-                    : 'theme-text-muted hover:theme-text'
-                }`}
-                title="浅色模式"
-              >
-                ☀️
-              </button>
-            </div>
 
             {/* Font Scale Selector */}
             <div className="flex items-center p-1 rounded-xl bg-slate-950/60 border border-slate-800 font-mono">
@@ -1471,6 +1544,7 @@ export const WordBankMap: React.FC<WordBankMapProps> = ({
           </div>
         </div>
       </header>
+      )}
 
       {/* Main Content Area */}
       <div className="w-full max-w-6xl mx-auto">
@@ -1484,7 +1558,12 @@ export const WordBankMap: React.FC<WordBankMapProps> = ({
               以书本与章节为单位，探索深度例句、语境推断与拼写打字！
             </p>
           </div>
-          <OfflineSyncBadge currentUserId={currentUser.id} variant="map" />
+          <OfflineSyncBadge
+            currentUserId={currentUser.id}
+            variant="map"
+            fontScale={fontScale}
+            onFontScaleChange={onFontScaleChange}
+          />
         </div>
 
         {/* ── STORY GROUPS 即是 书本系列 (Book Series Bar) ── */}
@@ -1693,8 +1772,8 @@ export const WordBankMap: React.FC<WordBankMapProps> = ({
                         </span>
                       </div>
 
-                      <div className="text-amber-500 dark:text-amber-400 font-mono font-extrabold flex items-center gap-1">
-                        🪙 +150 Coins
+                      <div className="text-cyan-400 font-mono font-extrabold flex items-center gap-1">
+                        ⚡ +150 EXP
                       </div>
                     </div>
 

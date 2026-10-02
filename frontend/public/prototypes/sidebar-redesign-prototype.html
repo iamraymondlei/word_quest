@@ -1,0 +1,728 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="dark">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+  <title>WordQuest · Collapsible Sidebar Prototype (左侧折叠导航轨原型)</title>
+  <!-- Google Fonts: Plus Jakarta Sans & JetBrains Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['"Plus Jakarta Sans"', '-apple-system', 'BlinkMacSystemFont', '"Segoe UI"', 'sans-serif'],
+            mono: ['"JetBrains Mono"', 'ui-monospace', 'monospace']
+          },
+          colors: {
+            canvas: '#070b14',
+            surface: '#0d1424',
+            sidebar: '#090e1a',
+            borderDim: 'rgba(255, 255, 255, 0.08)',
+            neonCyan: '#00f0ff',
+            neonEmerald: '#10b981',
+            neonPink: '#ec4899',
+            neonPurple: '#a855f7',
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    :root {
+      color-scheme: dark;
+    }
+    body {
+      background-color: #070b14;
+      background-image: 
+        radial-gradient(ellipse 80% 50% at 30% -20%, rgba(0, 240, 255, 0.08), transparent),
+        radial-gradient(ellipse 60% 40% at 90% 80%, rgba(168, 85, 247, 0.07), transparent);
+      min-height: 100vh;
+      font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      overflow: hidden;
+      margin: 0;
+      padding: 0;
+    }
+
+    /* Light Theme */
+    html:not(.dark) body {
+      background-color: #f1f5f9;
+      background-image: 
+        radial-gradient(ellipse 80% 50% at 30% -20%, rgba(14, 165, 233, 0.1), transparent),
+        radial-gradient(ellipse 60% 40% at 90% 80%, rgba(168, 85, 247, 0.08), transparent);
+      color: #0f172a;
+    }
+
+    /* Active Glow styles */
+    .glow-cyan-active {
+      border-color: #00f0ff !important;
+      background: linear-gradient(90deg, rgba(0, 240, 255, 0.18), rgba(0, 240, 255, 0.05)) !important;
+      box-shadow: 0 0 20px rgba(0, 240, 255, 0.35), inset 3px 0 0 #00f0ff;
+      color: #00f0ff !important;
+    }
+    .glow-emerald-active {
+      border-color: #10b981 !important;
+      background: linear-gradient(90deg, rgba(16, 185, 129, 0.18), rgba(16, 185, 129, 0.05)) !important;
+      box-shadow: 0 0 20px rgba(16, 185, 129, 0.35), inset 3px 0 0 #10b981;
+      color: #10b981 !important;
+    }
+    .glow-pink-active {
+      border-color: #ec4899 !important;
+      background: linear-gradient(90deg, rgba(236, 72, 153, 0.18), rgba(236, 72, 153, 0.05)) !important;
+      box-shadow: 0 0 20px rgba(236, 72, 153, 0.35), inset 3px 0 0 #ec4899;
+      color: #ec4899 !important;
+    }
+
+    /* Sidebar Glassmorphism */
+    .glass-sidebar {
+      background: rgba(9, 14, 26, 0.92);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border-right: 1px solid rgba(255, 255, 255, 0.09);
+    }
+    html:not(.dark) .glass-sidebar {
+      background: rgba(255, 255, 255, 0.95);
+      border-right: 1px solid rgba(0, 0, 0, 0.08);
+      box-shadow: 4px 0 24px rgba(0, 0, 0, 0.05);
+    }
+
+    /* Smooth sidebar transition */
+    .sidebar-transition {
+      transition: width 0.3s cubic-bezier(0.16, 1, 0.3, 1), padding 0.3s ease;
+    }
+
+    /* Tooltip when collapsed */
+    .has-tooltip:hover .tooltip-pop {
+      opacity: 1;
+      transform: translateX(0);
+      pointer-events: auto;
+    }
+  </style>
+</head>
+<body class="text-slate-100 flex flex-col h-screen select-none">
+
+  <!-- ════════════════════════════════════════════════════════════════════════ -->
+  <!-- 0. TOP SIMULATOR CONTROL BAR                                              -->
+  <!-- ════════════════════════════════════════════════════════════════════════ -->
+  <aside class="w-full bg-slate-950 border-b border-slate-800 text-[11px] font-mono py-2 px-4 flex flex-wrap items-center justify-between gap-3 text-slate-400 z-50 shrink-0">
+    <div class="flex items-center gap-2">
+      <span class="w-2 h-2 rounded-full bg-cyan-400 animate-pulse"></span>
+      <span class="text-cyan-400 font-bold">SIDEBAR PROTOTYPE</span>
+      <span class="text-slate-600">|</span>
+      <span>左侧可折叠探险导航轨方案 (Collapsible Left Rail)</span>
+    </div>
+
+    <!-- Toggle Action Callout -->
+    <div class="flex items-center gap-3">
+      <span class="text-slate-500">点击侧栏右上角按钮或按键即可折叠/展开：</span>
+      <button 
+        type="button" 
+        onclick="toggleSidebarCollapse()" 
+        class="px-3 py-1 rounded-lg bg-cyan-500/20 text-cyan-300 font-bold border border-cyan-500/40 hover:bg-cyan-500/30 cursor-pointer transition-all active:scale-95"
+      >
+        <span id="topToggleLabel">‹ 折叠侧边栏 (72px 图标轨)</span>
+      </button>
+    </div>
+  </aside>
+
+  <!-- ════════════════════════════════════════════════════════════════════════ -->
+  <!-- MAIN LAYOUT WRAPPER (SIDEBAR + CONTENT CANVAS)                           -->
+  <!-- ════════════════════════════════════════════════════════════════════════ -->
+  <div class="flex-1 flex overflow-hidden w-full relative">
+
+    <!-- ─────────────────────────────────────────────────────────────────────── -->
+    <!-- 1. LEFT COLLAPSIBLE NAVIGATION SIDEBAR                                  -->
+    <!-- ─────────────────────────────────────────────────────────────────────── -->
+    <aside 
+      id="mainSidebar" 
+      class="h-full glass-sidebar sidebar-transition flex flex-col justify-between relative z-30 shrink-0 w-64 p-4"
+    >
+      <!-- Subtle Neon Seam Right Glow Line -->
+      <div class="absolute top-0 right-0 bottom-0 w-[1.5px] bg-gradient-to-b from-cyan-500/40 via-purple-500/20 to-transparent"></div>
+
+      <!-- ── SECTION A: TOP BRAND & COLLAPSE CHEVRON ─────────────────────────── -->
+      <div class="space-y-5">
+        
+        <!-- Brand Header Row -->
+        <div class="flex items-center justify-between gap-2">
+          <!-- Expanded Brand Logo -->
+          <div id="brandExpanded" class="flex items-center gap-2.5 cursor-pointer group" onclick="switchSidebarMode('story')">
+            <div class="w-9 h-9 rounded-xl bg-gradient-to-tr from-cyan-500 to-indigo-600 flex items-center justify-center text-slate-950 shadow-[0_0_18px_rgba(0,240,255,0.45)] group-hover:scale-105 transition-transform duration-300 shrink-0">
+              <span class="text-lg">🧭</span>
+            </div>
+            <div class="flex flex-col min-w-0">
+              <span class="text-lg font-black tracking-tight text-white dark:text-white flex items-center leading-none">
+                Word<span class="text-[#00f0ff] drop-shadow-[0_0_10px_rgba(0,240,255,0.5)]">Quest</span>
+              </span>
+              <span class="text-[9px] font-mono text-cyan-400/80 tracking-widest uppercase mt-0.5">Kids Adventure</span>
+            </div>
+          </div>
+
+          <!-- Collapsed Brand Logo (Hidden in Expanded mode) -->
+          <div id="brandCollapsed" class="hidden w-full flex justify-center cursor-pointer group" onclick="switchSidebarMode('story')" title="WordQuest 探险主航道">
+            <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-cyan-500 to-indigo-600 flex items-center justify-center text-slate-950 shadow-[0_0_18px_rgba(0,240,255,0.45)] group-hover:scale-105 transition-transform duration-300">
+              <span class="text-xl">🧭</span>
+            </div>
+          </div>
+
+          <!-- Sidebar Collapse Toggle Button -->
+          <button
+            id="btnCollapseSidebar"
+            type="button"
+            onclick="toggleSidebarCollapse()"
+            class="w-7 h-7 rounded-lg bg-slate-900/90 hover:bg-cyan-950 text-cyan-400 border border-slate-700 hover:border-cyan-400 flex items-center justify-center text-xs font-bold transition-all cursor-pointer shadow-md shrink-0 active:scale-90"
+            title="折叠/展开侧边栏"
+          >
+            ‹
+          </button>
+        </div>
+
+        <!-- ── SECTION B: STUDENT ADVENTURER CARD ─────────────────────────────── -->
+        <!-- Expanded Profile Card -->
+        <div 
+          id="profileExpanded"
+          onclick="toggleBuddyModal()"
+          class="group p-2.5 rounded-2xl bg-slate-900/80 border border-cyan-500/30 hover:border-cyan-400 cursor-pointer transition-all shadow-md hover:scale-[1.01]"
+          title="轻触查看伙伴等级、更换角色或切换档案"
+        >
+          <div class="flex items-center gap-3">
+            <div class="w-11 h-11 rounded-xl bg-slate-950 border border-cyan-400/40 flex items-center justify-center text-2xl shrink-0 relative group-hover:border-cyan-300 shadow-inner">
+              <span id="sbBuddyEmoji">🧑‍🚀</span>
+              <span class="absolute -bottom-1 -right-1 w-2.5 h-2.5 rounded-full bg-emerald-400 border border-slate-950"></span>
+            </div>
+            <div class="min-w-0 flex-1">
+              <div class="flex items-center justify-between">
+                <span id="sbUsername" class="text-sm font-black text-white truncate">Alex</span>
+                <span class="text-[9px] bg-cyan-500/20 text-cyan-300 border border-cyan-400/40 px-1 py-0.2 rounded font-black font-mono">
+                  LV.12
+                </span>
+              </div>
+              <div class="text-[10px] text-cyan-400 font-mono font-bold mt-0.5 flex items-center justify-between">
+                <span id="sbBuddyName">Astro Hero</span>
+                <span class="text-[9px] text-slate-500 group-hover:text-cyan-300">更改 ➔</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Collapsed Profile Card (Mini Avatar only) -->
+        <div 
+          id="profileCollapsed" 
+          onclick="toggleBuddyModal()"
+          class="hidden relative group w-full flex justify-center cursor-pointer has-tooltip"
+        >
+          <div class="w-10 h-10 rounded-xl bg-slate-950 border border-cyan-400/40 hover:border-cyan-300 flex items-center justify-center text-xl shadow-inner transition-transform hover:scale-110">
+            <span id="sbBuddyEmojiMini">🧑‍🚀</span>
+            <span class="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-emerald-400 border border-slate-950"></span>
+          </div>
+          <!-- Flyout Tooltip -->
+          <div class="tooltip-pop absolute left-14 top-1/2 -translate-y-1/2 opacity-0 pointer-events-none transition-all duration-200 px-3 py-1.5 rounded-xl bg-slate-900 border border-cyan-400/50 text-white font-mono text-xs whitespace-nowrap shadow-xl z-50">
+            Alex · LV.12 (Astro Hero)
+          </div>
+        </div>
+
+        <!-- ── SECTION C: THE 3 CORE EXPLORATION DIMENSIONS ───────────────────── -->
+        <div class="space-y-2 pt-1 font-mono">
+          <div id="navLabel" class="text-[10px] text-slate-400/80 font-black tracking-wider uppercase px-2 mb-2">
+            核心探险轨道 (DIMENSIONS)
+          </div>
+
+          <!-- 1. 故事地图 (Story Map Tab) -->
+          <div class="relative has-tooltip">
+            <button
+              id="sb-tab-story"
+              type="button"
+              onclick="switchSidebarMode('story')"
+              class="w-full py-2.5 px-3 rounded-xl text-xs font-bold transition-all duration-300 flex items-center gap-3 cursor-pointer border glow-cyan-active"
+            >
+              <span class="text-xl leading-none shrink-0">🗺️</span>
+              <div class="tab-label-text flex flex-col text-left leading-tight min-w-0">
+                <span class="font-black tracking-wide text-white">故事地图</span>
+                <span class="text-[9px] text-cyan-300/70 font-normal">STORY ADVENTURE</span>
+              </div>
+            </button>
+            <div class="tooltip-pop absolute left-16 top-1/2 -translate-y-1/2 opacity-0 pointer-events-none transition-all duration-200 px-3 py-1.5 rounded-xl bg-slate-900 border border-cyan-400/50 text-cyan-300 font-mono text-xs whitespace-nowrap shadow-xl z-50 hidden">
+              🗺️ 故事地图 (Story Map)
+            </div>
+          </div>
+
+          <!-- 2. 单词宝库 (Vocab Vault Tab) -->
+          <div class="relative has-tooltip">
+            <button
+              id="sb-tab-vocab"
+              type="button"
+              onclick="switchSidebarMode('vocab')"
+              class="w-full py-2.5 px-3 rounded-xl text-xs font-bold transition-all duration-300 flex items-center gap-3 cursor-pointer border border-transparent text-slate-400 hover:text-white hover:bg-slate-900/60"
+            >
+              <span class="text-xl leading-none shrink-0">📚</span>
+              <div class="tab-label-text flex flex-col text-left leading-tight min-w-0">
+                <span class="font-black tracking-wide">单词宝库</span>
+                <span class="text-[9px] opacity-60 font-normal">VOCAB VAULT</span>
+              </div>
+            </button>
+            <div class="tooltip-pop absolute left-16 top-1/2 -translate-y-1/2 opacity-0 pointer-events-none transition-all duration-200 px-3 py-1.5 rounded-xl bg-slate-900 border border-emerald-400/50 text-emerald-300 font-mono text-xs whitespace-nowrap shadow-xl z-50 hidden">
+              📚 单词宝库 (Vocab Vault)
+            </div>
+          </div>
+
+          <!-- 3. 歌曲乐园 (Song Lab Tab) -->
+          <div class="relative has-tooltip">
+            <button
+              id="sb-tab-song"
+              type="button"
+              onclick="switchSidebarMode('song')"
+              class="w-full py-2.5 px-3 rounded-xl text-xs font-bold transition-all duration-300 flex items-center gap-3 cursor-pointer border border-transparent text-slate-400 hover:text-white hover:bg-slate-900/60"
+            >
+              <span class="text-xl leading-none shrink-0">🎵</span>
+              <div class="tab-label-text flex flex-col text-left leading-tight min-w-0">
+                <span class="font-black tracking-wide">歌曲乐园</span>
+                <span class="text-[9px] opacity-60 font-normal">SONG LAB</span>
+              </div>
+            </button>
+            <div class="tooltip-pop absolute left-16 top-1/2 -translate-y-1/2 opacity-0 pointer-events-none transition-all duration-200 px-3 py-1.5 rounded-xl bg-slate-900 border border-pink-400/50 text-pink-300 font-mono text-xs whitespace-nowrap shadow-xl z-50 hidden">
+              🎵 歌曲乐园 (Song Lab)
+            </div>
+          </div>
+
+        </div>
+
+      </div>
+
+      <!-- ── SECTION D: TREASURE & BOTTOM SYSTEM UTILITIES ───────────────────── -->
+      <div class="space-y-4 pt-4 border-t border-white/10 font-mono">
+        
+        <!-- Treasure Box Card (Expanded) -->
+        <div id="treasureExpanded" class="p-3 rounded-2xl bg-gradient-to-br from-slate-900/90 to-amber-950/20 border border-amber-500/30">
+          <div class="flex items-center justify-between text-[10px] text-amber-400/80 font-bold mb-2">
+            <span>TREASURE BOX</span>
+            <span>🪙 奖励金库</span>
+          </div>
+          <div class="grid grid-cols-2 gap-2">
+            <div class="flex items-center gap-1.5 bg-slate-950/70 p-1.5 rounded-xl border border-amber-500/20">
+              <span class="text-sm">⭐</span>
+              <div>
+                <div class="text-[8px] text-slate-400">可用星星</div>
+                <div class="text-xs font-black text-amber-300">24</div>
+              </div>
+            </div>
+            <div class="flex items-center gap-1.5 bg-slate-950/70 p-1.5 rounded-xl border border-yellow-500/20">
+              <span class="text-sm">🪙</span>
+              <div>
+                <div class="text-[8px] text-slate-400">金币总额</div>
+                <div class="text-xs font-black text-amber-300">1,280</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Treasure Capsule (Collapsed) -->
+        <div id="treasureCollapsed" class="hidden flex flex-col items-center gap-1.5 p-1 rounded-xl bg-slate-900 border border-amber-500/30">
+          <span class="text-xs" title="24 颗星星">⭐24</span>
+          <div class="w-full h-px bg-slate-800"></div>
+          <span class="text-[10px] font-black text-amber-300" title="1,280 金币">1.2k</span>
+        </div>
+
+        <!-- Bottom Controls Cluster -->
+        <div class="flex items-center justify-between gap-1.5 pt-1">
+          <!-- Theme Toggle -->
+          <button
+            type="button"
+            onclick="toggleThemeMode()"
+            class="flex-1 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-300 hover:text-white flex items-center justify-center text-xs transition-all cursor-pointer"
+            title="切换深色/浅色模式"
+          >
+            <span id="sbThemeIcon">🌙</span>
+          </button>
+
+          <!-- Font Scaling -->
+          <button
+            type="button"
+            onclick="cycleFontScale()"
+            id="sbBtnFont"
+            class="flex-1 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-300 hover:text-white flex items-center justify-center text-[11px] font-bold transition-all cursor-pointer"
+            title="字号缩放 (130%)"
+          >
+            Aa
+          </button>
+
+          <!-- Admin Portal -->
+          <button
+            type="button"
+            onclick="alert('进入家长与教师管理后台...')"
+            class="flex-1 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-300 hover:text-white flex items-center justify-center text-xs transition-all cursor-pointer"
+            title="家长与教研后台"
+          >
+            ⚙️
+          </button>
+
+          <!-- Logout Button -->
+          <button
+            type="button"
+            onclick="alert('已退出当前档案')"
+            class="flex-1 py-2 rounded-xl bg-rose-950/30 hover:bg-rose-900/50 border border-rose-500/30 text-rose-400 hover:text-rose-300 flex items-center justify-center text-xs transition-all cursor-pointer"
+            title="安全退出"
+          >
+            🚪
+          </button>
+        </div>
+
+      </div>
+
+    </aside>
+
+    <!-- ─────────────────────────────────────────────────────────────────────── -->
+    <!-- 2. MAIN WORKSPACE / CANVAS (EXPANDS FREELY)                             -->
+    <!-- ─────────────────────────────────────────────────────────────────────── -->
+    <main class="flex-1 h-full overflow-y-auto p-4 sm:p-8 flex flex-col justify-start relative">
+      
+      <!-- Top Slim Navigation Status Bar on Canvas -->
+      <div class="flex items-center justify-between border-b border-white/10 pb-4 mb-6">
+        <div class="flex items-center gap-3">
+          <span class="text-xs text-slate-400 font-mono">当前航道：</span>
+          <span id="activePathBreadcrumb" class="px-2.5 py-1 rounded-lg bg-cyan-950/70 border border-cyan-500/40 text-cyan-300 text-xs font-mono font-black">
+            🗺️ 故事地图 (Story Map)
+          </span>
+        </div>
+
+        <div class="flex items-center gap-3">
+          <div class="flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-950/50 border border-emerald-500/30 text-emerald-400 text-xs font-mono">
+            <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+            <span>PWA 离线包已同步</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Simulated Mode Views -->
+      <!-- View 1: Story Map -->
+      <section id="sb-view-story" class="mode-view space-y-6">
+        <div class="space-y-1">
+          <h1 class="text-2xl sm:text-3xl font-black text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-indigo-400 font-mono uppercase">
+            Story Adventure Map 🗺️ 故事主地图
+          </h1>
+          <p class="text-xs text-slate-400 font-mono">
+            左侧导航栏可自由折叠！折叠后全屏幕专供关卡地图、单词记忆与情景绘本阅读。
+          </p>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div class="p-6 rounded-2xl bg-slate-900/60 border border-cyan-500/40 space-y-3 hover:scale-[1.02] transition-transform cursor-pointer">
+            <div class="flex justify-between items-center">
+              <span class="text-2xl">🏝️</span>
+              <span class="text-[10px] px-2 py-0.5 rounded bg-emerald-950 text-emerald-400 border border-emerald-500/30 font-mono font-bold">已全通关</span>
+            </div>
+            <h3 class="text-base font-bold text-white">Island 1: The Magic Garden</h3>
+            <p class="text-xs text-slate-400">4 关卡已完成 · 获得 4 颗星星</p>
+            <div class="w-full bg-cyan-950 h-2 rounded-full overflow-hidden">
+              <div class="bg-cyan-400 h-full w-full"></div>
+            </div>
+          </div>
+
+          <div class="p-6 rounded-2xl bg-slate-900/60 border border-slate-800 space-y-3 hover:border-cyan-400/50 transition-colors cursor-pointer">
+            <div class="flex justify-between items-center">
+              <span class="text-2xl">🌋</span>
+              <span class="text-[10px] px-2 py-0.5 rounded bg-cyan-950 text-cyan-400 border border-cyan-500/30 font-mono font-bold">进行中</span>
+            </div>
+            <h3 class="text-base font-bold text-white">Island 2: Whispering Volcano</h3>
+            <p class="text-xs text-slate-400">进行至 Stage 3 (看句选义)</p>
+            <div class="w-full bg-cyan-950 h-2 rounded-full overflow-hidden">
+              <div class="bg-cyan-400 h-full w-2/3"></div>
+            </div>
+          </div>
+
+          <div class="p-6 rounded-2xl bg-slate-900/60 border border-slate-800 space-y-3 opacity-70">
+            <div class="flex justify-between items-center">
+              <span class="text-2xl">🏰</span>
+              <span class="text-[10px] px-2 py-0.5 rounded bg-slate-800 text-slate-400 font-mono">未解锁</span>
+            </div>
+            <h3 class="text-base font-bold text-white">Island 3: Crystal Castle</h3>
+            <p class="text-xs text-slate-400">通关第 2 岛屿后自动开启</p>
+            <div class="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
+              <div class="bg-cyan-400 h-full w-0"></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- View 2: Vocab Vault -->
+      <section id="sb-view-vocab" class="mode-view hidden space-y-6">
+        <div class="space-y-1">
+          <h1 class="text-2xl sm:text-3xl font-black text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-teal-300 font-mono uppercase">
+            Vocab Vault 📚 单词宝库探险
+          </h1>
+          <p class="text-xs text-slate-400 font-mono">
+            左侧导航栏处于【单词宝库】轨道，高亮呈现翡翠绿晶体能量。
+          </p>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div class="p-6 rounded-2xl bg-slate-900/60 border border-emerald-500/40 space-y-3 cursor-pointer">
+            <span class="text-3xl">📖</span>
+            <h3 class="text-base font-bold text-white">Chapter 1: Animals & Nature</h3>
+            <p class="text-xs text-slate-400">12 核心词 · 已掌握 8 词</p>
+            <div class="w-full bg-emerald-950 h-2 rounded-full overflow-hidden">
+              <div class="bg-emerald-400 h-full w-3/4"></div>
+            </div>
+          </div>
+
+          <div class="p-6 rounded-2xl bg-slate-900/60 border border-slate-800 space-y-3 cursor-pointer">
+            <span class="text-3xl">🧪</span>
+            <h3 class="text-base font-bold text-white">Chapter 2: Space Odyssey</h3>
+            <p class="text-xs text-slate-400">16 核心词 · 已掌握 4 词</p>
+            <div class="w-full bg-emerald-950 h-2 rounded-full overflow-hidden">
+              <div class="bg-emerald-400 h-full w-1/4"></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- View 3: Song Lab -->
+      <section id="sb-view-song" class="mode-view hidden space-y-6">
+        <div class="space-y-1">
+          <h1 class="text-2xl sm:text-3xl font-black text-transparent bg-clip-text bg-gradient-to-r from-pink-400 to-purple-400 font-mono uppercase">
+            Song Lab 🎵 歌曲乐园探险
+          </h1>
+          <p class="text-xs text-slate-400 font-mono">
+            左侧导航栏处于【歌曲乐园】轨道，一首歌一张卡片，点卡片直接进入原声播放器！
+          </p>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div class="p-6 rounded-2xl bg-slate-900/60 border border-pink-500/40 space-y-4 hover:shadow-[0_0_30px_rgba(236,72,153,0.3)] transition-all cursor-pointer">
+            <div class="flex items-center justify-between text-xs font-mono">
+              <span class="px-2 py-0.5 rounded bg-pink-950 text-pink-300 font-bold border border-pink-500/30">TRACK #01</span>
+              <span class="text-slate-400">⏱️ 3:12</span>
+            </div>
+            <div class="flex items-center gap-3">
+              <div class="w-14 h-14 rounded-full bg-slate-950 border border-slate-700 flex items-center justify-center text-xl text-pink-400 shadow-inner">
+                ♫
+              </div>
+              <div>
+                <h3 class="text-base font-black text-white">Twinkle Little Star</h3>
+                <p class="text-xs text-slate-400">Kids Acoustic Rhyme</p>
+              </div>
+            </div>
+            <button class="w-full py-2.5 rounded-xl bg-gradient-to-r from-pink-500 to-purple-600 text-white font-black text-xs uppercase tracking-wider">
+              ▶ 立即开唱 · 进入歌曲
+            </button>
+          </div>
+        </div>
+      </section>
+
+    </main>
+
+  </div>
+
+  <!-- ════════════════════════════════════════════════════════════════════════ -->
+  <!-- 3. INTERACTIVE BUDDY MODAL                                               -->
+  <!-- ════════════════════════════════════════════════════════════════════════ -->
+  <div 
+    id="buddyModal" 
+    class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm hidden"
+    onclick="toggleBuddyModal()"
+  >
+    <div 
+      class="bg-slate-900 border-2 border-cyan-400/50 rounded-3xl p-6 max-w-sm w-full mx-4 shadow-2xl font-mono"
+      onclick="event.stopPropagation()"
+    >
+      <div class="flex justify-between items-center border-b border-white/10 pb-3 mb-4">
+        <h3 class="text-sm font-black text-cyan-300">更换探险伙伴 (SIDEKICK)</h3>
+        <button type="button" onclick="toggleBuddyModal()" class="text-slate-400 hover:text-white">✕</button>
+      </div>
+
+      <div class="grid grid-cols-4 gap-2 mb-4">
+        <button type="button" onclick="setBuddy('🧑‍🚀', 'Astro Hero')" class="p-2.5 rounded-xl bg-cyan-950/60 border-2 border-cyan-400 text-center hover:scale-105 transition-all">
+          <span class="text-2xl">🧑‍🚀</span>
+          <span class="text-[10px] block mt-1 font-bold text-cyan-300">Astro</span>
+        </button>
+        <button type="button" onclick="setBuddy('🦖', 'Dino Rex')" class="p-2.5 rounded-xl bg-slate-950 border border-slate-700 text-center hover:scale-105 transition-all">
+          <span class="text-2xl">🦖</span>
+          <span class="text-[10px] block mt-1 font-bold text-slate-300">Dino</span>
+        </button>
+        <button type="button" onclick="setBuddy('🦊', 'Foxy Swift')" class="p-2.5 rounded-xl bg-slate-950 border border-slate-700 text-center hover:scale-105 transition-all">
+          <span class="text-2xl">🦊</span>
+          <span class="text-[10px] block mt-1 font-bold text-slate-300">Foxy</span>
+        </button>
+        <button type="button" onclick="setBuddy('🤖', 'Sparky Bot')" class="p-2.5 rounded-xl bg-slate-950 border border-slate-700 text-center hover:scale-105 transition-all">
+          <span class="text-2xl">🤖</span>
+          <span class="text-[10px] block mt-1 font-bold text-slate-300">Sparky</span>
+        </button>
+      </div>
+
+      <button type="button" onclick="alert('切换学员玩家档案...')" class="w-full py-2.5 rounded-xl bg-cyan-600/30 border border-cyan-400/50 text-cyan-200 text-xs font-bold mb-2">
+        👤 切换学员玩家档案
+      </button>
+    </div>
+  </div>
+
+  <!-- ════════════════════════════════════════════════════════════════════════ -->
+  <!-- 4. CONTROLLER SCRIPTS                                                    -->
+  <!-- ════════════════════════════════════════════════════════════════════════ -->
+  <script>
+    let isCollapsed = false;
+    let currentMode = 'story';
+
+    function toggleSidebarCollapse() {
+      isCollapsed = !isCollapsed;
+      const sidebar = document.getElementById('mainSidebar');
+      const btnToggle = document.getElementById('btnCollapseSidebar');
+      const topLabel = document.getElementById('topToggleLabel');
+
+      const brandExp = document.getElementById('brandExpanded');
+      const brandCol = document.getElementById('brandCollapsed');
+
+      const profExp = document.getElementById('profileExpanded');
+      const profCol = document.getElementById('profileCollapsed');
+
+      const treasExp = document.getElementById('treasureExpanded');
+      const treasCol = document.getElementById('treasureCollapsed');
+
+      const navLabel = document.getElementById('navLabel');
+      const tabTexts = document.querySelectorAll('.tab-label-text');
+      const tooltips = document.querySelectorAll('.tooltip-pop');
+
+      if (isCollapsed) {
+        // Collapse to 72px (w-20)
+        sidebar.classList.remove('w-64', 'p-4');
+        sidebar.classList.add('w-20', 'p-2.5');
+
+        btnToggle.innerText = '›';
+        topLabel.innerText = '› 展开侧边栏 (240px 全量板)';
+
+        brandExp.classList.add('hidden');
+        brandCol.classList.remove('hidden');
+
+        profExp.classList.add('hidden');
+        profCol.classList.remove('hidden');
+
+        treasExp.classList.add('hidden');
+        treasCol.classList.remove('hidden');
+
+        navLabel.classList.add('hidden');
+        tabTexts.forEach(el => el.classList.add('hidden'));
+        tooltips.forEach(el => el.classList.remove('hidden'));
+
+        // Center tabs
+        document.querySelectorAll('#sb-tab-story, #sb-tab-vocab, #sb-tab-song').forEach(btn => {
+          btn.classList.remove('justify-start', 'px-3');
+          btn.classList.add('justify-center', 'px-0');
+        });
+
+      } else {
+        // Expand to 256px (w-64)
+        sidebar.classList.remove('w-20', 'p-2.5');
+        sidebar.classList.add('w-64', 'p-4');
+
+        btnToggle.innerText = '‹';
+        topLabel.innerText = '‹ 折叠侧边栏 (72px 图标轨)';
+
+        brandExp.classList.remove('hidden');
+        brandCol.classList.add('hidden');
+
+        profExp.classList.remove('hidden');
+        profCol.classList.add('hidden');
+
+        treasExp.classList.remove('hidden');
+        treasCol.classList.add('hidden');
+
+        navLabel.classList.remove('hidden');
+        tabTexts.forEach(el => el.classList.remove('hidden'));
+        tooltips.forEach(el => el.classList.add('hidden'));
+
+        document.querySelectorAll('#sb-tab-story, #sb-tab-vocab, #sb-tab-song').forEach(btn => {
+          btn.classList.remove('justify-center', 'px-0');
+          btn.classList.add('justify-start', 'px-3');
+        });
+      }
+    }
+
+    function switchSidebarMode(mode) {
+      currentMode = mode;
+      
+      const tabStory = document.getElementById('sb-tab-story');
+      const tabVocab = document.getElementById('sb-tab-vocab');
+      const tabSong = document.getElementById('sb-tab-song');
+
+      const viewStory = document.getElementById('sb-view-story');
+      const viewVocab = document.getElementById('sb-view-vocab');
+      const viewSong = document.getElementById('sb-view-song');
+
+      const breadcrumb = document.getElementById('activePathBreadcrumb');
+
+      // Reset tabs
+      [tabStory, tabVocab, tabSong].forEach(tab => {
+        tab.className = "w-full py-2.5 px-3 rounded-xl text-xs font-bold transition-all duration-300 flex items-center gap-3 cursor-pointer border border-transparent text-slate-400 hover:text-white hover:bg-slate-900/60";
+        if (isCollapsed) {
+          tab.classList.remove('px-3');
+          tab.classList.add('justify-center', 'px-0');
+        }
+      });
+
+      // Hide views
+      [viewStory, viewVocab, viewSong].forEach(v => v.classList.add('hidden'));
+
+      if (mode === 'story') {
+        tabStory.className = "w-full py-2.5 px-3 rounded-xl text-xs font-bold transition-all duration-300 flex items-center gap-3 cursor-pointer border glow-cyan-active";
+        viewStory.classList.remove('hidden');
+        breadcrumb.className = "px-2.5 py-1 rounded-lg bg-cyan-950/70 border border-cyan-500/40 text-cyan-300 text-xs font-mono font-black";
+        breadcrumb.innerText = "🗺️ 故事地图 (Story Map)";
+      } else if (mode === 'vocab') {
+        tabVocab.className = "w-full py-2.5 px-3 rounded-xl text-xs font-bold transition-all duration-300 flex items-center gap-3 cursor-pointer border glow-emerald-active";
+        viewVocab.classList.remove('hidden');
+        breadcrumb.className = "px-2.5 py-1 rounded-lg bg-emerald-950/70 border border-emerald-500/40 text-emerald-300 text-xs font-mono font-black";
+        breadcrumb.innerText = "📚 单词宝库 (Vocab Vault)";
+      } else if (mode === 'song') {
+        tabSong.className = "w-full py-2.5 px-3 rounded-xl text-xs font-bold transition-all duration-300 flex items-center gap-3 cursor-pointer border glow-pink-active";
+        viewSong.classList.remove('hidden');
+        breadcrumb.className = "px-2.5 py-1 rounded-lg bg-pink-950/70 border border-pink-500/40 text-pink-300 text-xs font-mono font-black";
+        breadcrumb.innerText = "🎵 歌曲乐园 (Song Lab)";
+      }
+
+      if (isCollapsed) {
+        document.querySelectorAll('#sb-tab-story, #sb-tab-vocab, #sb-tab-song').forEach(btn => {
+          btn.classList.remove('px-3');
+          btn.classList.add('justify-center', 'px-0');
+        });
+      }
+    }
+
+    function toggleBuddyModal() {
+      document.getElementById('buddyModal').classList.toggle('hidden');
+    }
+
+    function setBuddy(emoji, name) {
+      document.getElementById('sbBuddyEmoji').innerText = emoji;
+      document.getElementById('sbBuddyEmojiMini').innerText = emoji;
+      document.getElementById('sbBuddyName').innerText = name;
+      toggleBuddyModal();
+    }
+
+    function toggleThemeMode() {
+      const html = document.documentElement;
+      const icon = document.getElementById('sbThemeIcon');
+      if (html.classList.contains('dark')) {
+        html.classList.remove('dark');
+        icon.innerText = '☀️';
+      } else {
+        html.classList.add('dark');
+        icon.innerText = '🌙';
+      }
+    }
+
+    function cycleFontScale() {
+      const btn = document.getElementById('sbBtnFont');
+      if (btn.innerText.includes('130')) {
+        btn.innerText = '100%';
+      } else if (btn.innerText.includes('100')) {
+        btn.innerText = '115%';
+      } else {
+        btn.innerText = '130%';
+      }
+    }
+  </script>
+</body>
+</html>

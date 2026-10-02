@@ -2,7 +2,8 @@
 Pydantic schemas for API request validation and response serialization.
 """
 
-from pydantic import BaseModel, Field
+from typing import Any
+from pydantic import BaseModel, Field, field_validator
 
 
 # ── Response sub-models ──────────────────────────────────────────────
@@ -22,6 +23,13 @@ class SentencePair(BaseModel):
 
     en: str = Field(..., description="英文原句")
     zh: str = Field(..., description="中文翻译")
+
+
+class BilingualText(BaseModel):
+    """Bilingual text container for roots and etymology."""
+
+    en: str = ""
+    zh: str = ""
 
 
 class SongWordTranslation(BaseModel):
@@ -56,8 +64,15 @@ class EnrichedWord(BaseModel):
     fun_sentences: list[SentencePair] = Field(default_factory=list)
     antonyms: str = ""
     synonyms: str = ""
-    root_affixes: str = ""
-    etymology: str = ""
+    root_affixes: BilingualText | str = Field(default_factory=BilingualText)
+    etymology: BilingualText | str = Field(default_factory=BilingualText)
+
+    @field_validator("root_affixes", "etymology", mode="before")
+    @classmethod
+    def coerce_bilingual(cls, v: Any) -> BilingualText | str:
+        if isinstance(v, dict):
+            return BilingualText(en=str(v.get("en", "")).strip(), zh=str(v.get("zh", "")).strip())
+        return v
 
 
 class VocabularyEnrichRequest(BaseModel):
@@ -69,6 +84,31 @@ class VocabularyEnrichRequest(BaseModel):
 class VocabularyEnrichResponse(BaseModel):
     success: bool = True
     data: list[EnrichedWord] = Field(default_factory=list)
+    error: str | None = None
+
+
+class WordBilingualizeItem(BaseModel):
+    id: int
+    word: str
+    root_affixes: str = ""
+    etymology: str = ""
+
+
+class BilingualizeBatchRequest(BaseModel):
+    items: list[WordBilingualizeItem] = Field(..., min_length=1, max_length=50)
+    model: str | None = None
+    cli: str = "agy"
+
+
+class WordBilingualResult(BaseModel):
+    id: int
+    root_affixes: BilingualText
+    etymology: BilingualText
+
+
+class BilingualizeBatchResponse(BaseModel):
+    success: bool = True
+    data: list[WordBilingualResult] = Field(default_factory=list)
     error: str | None = None
 
 

@@ -301,8 +301,14 @@ export async function initializeDatabaseSchema() {
           ]),
           antonyms: 'indifferent, unconcerned',
           synonyms: 'inquisitive, eager to know',
-          root_affixes: 'cur- / cure (关心、在意) + -ious (形容词后缀: 充满...的)',
-          etymology: '来自拉丁语 cura（关怀、照料）。古时候指“对事物极度上心想要探究明白”。'
+          root_affixes: JSON.stringify({
+            en: 'cur- / cure (care, concern) + -ious (adjective suffix: full of)',
+            zh: 'cur- / cure (关心、在意) + -ious (形容词后缀: 充满...的)'
+          }),
+          etymology: JSON.stringify({
+            en: 'From Latin cura (care). In ancient times, it referred to someone who took deep care to inspect and understand things.',
+            zh: '来自拉丁语 cura（关怀、照料）。古时候指“对事物极度上心想要探究明白”。'
+          })
         },
         {
           word: 'ancient',
@@ -313,8 +319,14 @@ export async function initializeDatabaseSchema() {
           ]),
           antonyms: 'modern, fresh',
           synonyms: 'antique, primitive',
-          root_affixes: 'ante- (前面、早先)',
-          etymology: '源自拉丁语 ante 前方的时光。'
+          root_affixes: JSON.stringify({
+            en: 'ante- (before, in front of) + -ient',
+            zh: 'ante- (前面、早先) + -ient'
+          }),
+          etymology: JSON.stringify({
+            en: 'From Latin ante, pointing back to distant times long before our own.',
+            zh: '源自拉丁语 ante 前方的时光，指遥远过去的岁月。'
+          })
         },
         {
           word: 'resilient',
@@ -325,8 +337,14 @@ export async function initializeDatabaseSchema() {
           ]),
           antonyms: 'fragile, brittle',
           synonyms: 'flexible, tough',
-          root_affixes: 're- (回) + salire (跳跃)',
-          etymology: '字面意为‘反弹跳回’，形容物体或心态极具韧性。'
+          root_affixes: JSON.stringify({
+            en: 're- (back, again) + salire (to leap, jump)',
+            zh: 're- (回) + salire (跳跃)'
+          }),
+          etymology: JSON.stringify({
+            en: 'Literally meaning to bounce or leap back, describing an object or mind that bounces right back after being pushed down.',
+            zh: '字面意为‘反弹跳回’，形容物体或心态在受挫后迅速复原、极具韧性。'
+          })
         },
         {
           word: 'mysterious',
@@ -337,8 +355,14 @@ export async function initializeDatabaseSchema() {
           ]),
           antonyms: 'obvious, familiar',
           synonyms: 'secretive, puzzling',
-          root_affixes: 'mystery (秘密) + -ous (形容词后缀)',
-          etymology: '源于希腊语 mystērion（秘密仪式）。'
+          root_affixes: JSON.stringify({
+            en: 'mystery (secret, rite) + -ous (adjective suffix)',
+            zh: 'mystery (秘密) + -ous (形容词后缀)'
+          }),
+          etymology: JSON.stringify({
+            en: 'From Greek mystērion (secret ritual), evoking wondrous hidden truths.',
+            zh: '源于希腊语 mystērion（秘密仪式），引申为令人遐想的未解之谜。'
+          })
         },
         {
           word: 'courageous',
@@ -349,8 +373,14 @@ export async function initializeDatabaseSchema() {
           ]),
           antonyms: 'cowardly, fearful',
           synonyms: 'brave, fearless',
-          root_affixes: 'cour- / cor (心) + -age + -ous',
-          etymology: '古人认为勇气发端自纯粹的心灵（Cor）。'
+          root_affixes: JSON.stringify({
+            en: 'cour- / cor (heart) + -age + -ous',
+            zh: 'cour- / cor (心) + -age + -ous'
+          }),
+          etymology: JSON.stringify({
+            en: 'Ancient people believed true bravery springs directly from a stout, steadfast heart (cor).',
+            zh: '古人认为勇气发端自纯粹而坚定的内心（Cor）。'
+          })
         }
       ];
 

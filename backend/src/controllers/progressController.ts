@@ -4,7 +4,7 @@ import pool from '../config/db';
 /**
  * Recalculate stars for a specific user or all users based on completed subtasks (1 subtask = 1 star).
  * Uses a single atomic UPDATE JOIN query to prevent concurrent write drift.
- * Completed stages mask is masked with & 15 to strictly limit to 4 subtasks per island.
+ * Completed stages mask is masked with & 31 to support up to 5 subtasks per island.
  */
 export const recalculateUserStars = async (userId?: number): Promise<number | any> => {
   if (userId) {
@@ -25,7 +25,7 @@ export const recalculateUserStars = async (userId?: number): Promise<number | an
                    WHEN unlocked_stage >= 5 THEN 15 
                    ELSE 0 
                  END
-               )) & 15
+               )) & 31
              )
            ), 0) AS total_subtasks
          FROM user_island_progress
@@ -56,7 +56,7 @@ export const recalculateUserStars = async (userId?: number): Promise<number | an
                    WHEN unlocked_stage >= 5 THEN 15 
                    ELSE 0 
                  END
-               )) & 15
+               )) & 31
              )
            ), 0) AS total_subtasks
          FROM user_island_progress
@@ -72,7 +72,7 @@ export const recalculateStars = recalculateUserStars;
 export const recalculateAllUsersStars = async () => recalculateUserStars();
 
 export const updateStage = async (req: Request, res: Response) => {
-  const { user_id, island_id, stage, completed_stage } = req.body;
+  const { user_id, island_id, stage, completed_stage, stage1_answers } = req.body;
   const uid = parseInt(user_id, 10);
   const iid = parseInt(island_id, 10);
 
@@ -87,8 +87,8 @@ export const updateStage = async (req: Request, res: Response) => {
   let cStage: number | undefined = undefined;
   if (completed_stage !== undefined && completed_stage !== null && completed_stage !== '') {
     const parsedCStage = Number(completed_stage);
-    if (!Number.isInteger(parsedCStage) || parsedCStage < 1 || parsedCStage > 4) {
-      return res.status(400).json({ error: 'completed_stage must be an integer between 1 and 4' });
+    if (!Number.isInteger(parsedCStage) || parsedCStage < 1 || parsedCStage > 5) {
+      return res.status(400).json({ error: 'completed_stage must be an integer between 1 and 5' });
     }
     cStage = parsedCStage;
   }
@@ -96,44 +96,66 @@ export const updateStage = async (req: Request, res: Response) => {
   let stg: number | undefined = undefined;
   if (stage !== undefined && stage !== null && stage !== '') {
     const parsedStage = Number(stage);
-    if (!Number.isInteger(parsedStage) || parsedStage < 1 || parsedStage > 5) {
-      return res.status(400).json({ error: 'stage must be an integer between 1 and 5' });
+    if (!Number.isInteger(parsedStage) || parsedStage < 1 || parsedStage > 6) {
+      return res.status(400).json({ error: 'stage must be an integer between 1 and 6' });
     }
     stg = parsedStage;
   }
 
-  // Calculate stage bitmask (Stage 1 -> bit 1, Stage 2 -> bit 2, Stage 3 -> bit 4, Stage 4 -> bit 8)
+  // Calculate stage bitmask (Stage 1 -> bit 1, Stage 2 -> bit 2, Stage 3 -> bit 4, Stage 4 -> bit 8, Stage 5 -> bit 16)
   const targetCompletedStage = cStage || (stg ? stg - 1 : 0);
-  const stageBit = targetCompletedStage >= 1 && targetCompletedStage <= 4 ? (1 << (targetCompletedStage - 1)) : 0;
+  const stageBit = targetCompletedStage >= 1 && targetCompletedStage <= 5 ? (1 << (targetCompletedStage - 1)) : 0;
   const targetUnlockedStage = stg || (cStage ? cStage + 1 : 1);
+
+  let answersJson: string | null = null;
+  if (stage1_answers !== undefined && stage1_answers !== null) {
+    if (Array.isArray(stage1_answers)) {
+      answersJson = JSON.stringify(stage1_answers);
+    } else if (typeof stage1_answers === 'string') {
+      answersJson = stage1_answers;
+    }
+  }
 
   try {
     await pool.query(
-      `INSERT INTO user_island_progress (user_id, island_id, unlocked_stage, completed_stages_mask) 
-       VALUES (?, ?, ?, ?) 
+      `INSERT INTO user_island_progress (user_id, island_id, unlocked_stage, completed_stages_mask, stage1_answers_json)
+       VALUES (?, ?, ?, ?, ?)
        ON DUPLICATE KEY UPDATE 
          unlocked_stage = GREATEST(unlocked_stage, VALUES(unlocked_stage)),
-         completed_stages_mask = (completed_stages_mask | VALUES(completed_stages_mask)) & 15`,
-      [uid, iid, targetUnlockedStage, stageBit]
+         completed_stages_mask = (completed_stages_mask | VALUES(completed_stages_mask)) & 31,
+         stage1_answers_json = COALESCE(VALUES(stage1_answers_json), stage1_answers_json)`,
+      [uid, iid, targetUnlockedStage, stageBit, answersJson]
     );
 
     // Atomically sync user stars based on 1 subtask = 1 star rule
     const totalStars = await recalculateUserStars(uid);
 
     const [rows]: any = await pool.query(
-      'SELECT unlocked_stage, completed_stages_mask FROM user_island_progress WHERE user_id = ? AND island_id = ?',
+      'SELECT unlocked_stage, completed_stages_mask, stage1_answers_json FROM user_island_progress WHERE user_id = ? AND island_id = ?',
       [uid, iid]
     );
 
     const rawUnlocked = rows[0]?.unlocked_stage || 1;
-    let mask = (rows[0]?.completed_stages_mask || 0) & 15;
+    let mask = (rows[0]?.completed_stages_mask || 0) & 31;
     if (mask === 0 && rawUnlocked > 1) {
       if (rawUnlocked === 2) mask = 1;
       else if (rawUnlocked === 3) mask = 3;
       else if (rawUnlocked === 4) mask = 7;
       else if (rawUnlocked >= 5) mask = 15;
     }
-    mask = mask & 15;
+    if ((mask & 4) !== 0) {
+      mask |= 16;
+    }
+    mask = mask & 31;
+
+    let parsedAnswers: string[] = [];
+    if (rows[0]?.stage1_answers_json) {
+      try {
+        parsedAnswers = typeof rows[0].stage1_answers_json === 'string'
+          ? JSON.parse(rows[0].stage1_answers_json)
+          : rows[0].stage1_answers_json;
+      } catch (e) {}
+    }
 
     const [userRows]: any = await pool.query(
       'SELECT stars, spent_stars FROM users WHERE id = ?',
@@ -147,6 +169,7 @@ export const updateStage = async (req: Request, res: Response) => {
       success: true,
       unlocked_stage: rawUnlocked,
       completed_stages_mask: mask,
+      stage1_answers: parsedAnswers,
       stars: userStars,
       total_stars: userStars,
       spent_stars: spentStars,
@@ -191,7 +214,7 @@ export const getProgress = async (req: Request, res: Response) => {
                    WHEN unlocked_stage >= 5 THEN 15 
                    ELSE 0 
                  END
-               )) & 15
+               )) & 31
              )
            ), 0) AS total_subtasks
          FROM user_island_progress 
@@ -233,7 +256,7 @@ export const getProgress = async (req: Request, res: Response) => {
                    WHEN unlocked_stage >= 5 THEN 15 
                    ELSE 0 
                  END
-               )) & 15
+               )) & 31
              )
            ), 0) AS total_subtasks
          FROM user_island_progress 
@@ -305,12 +328,36 @@ export const logError = async (req: Request, res: Response) => {
   const { user_id, word_id } = req.body;
   if (!user_id || !word_id) return res.status(400).json({ error: 'Missing parameters' });
   try {
-    await pool.query(
-      `INSERT INTO user_word_progress (user_id, word_id, error_count) 
-       VALUES (?, ?, 1) 
-       ON DUPLICATE KEY UPDATE error_count = error_count + 1`,
-      [user_id, word_id]
-    );
+    let logged = false;
+
+    // 1. Try unified word bank (vocabulary_words)
+    const [vocabRows]: any = await pool.query('SELECT id FROM vocabulary_words WHERE id = ?', [word_id]);
+    if (vocabRows.length > 0) {
+      await pool.query(
+        `INSERT INTO user_vocabulary_mode_stats (user_id, vocab_id, mode, error_count, last_result)
+         VALUES (?, ?, 'spelling', 1, 0)
+         ON DUPLICATE KEY UPDATE error_count = error_count + 1, last_result = 0`,
+        [user_id, word_id]
+      );
+      logged = true;
+    }
+
+    // 2. Also try legacy words table if present
+    const [wordsRows]: any = await pool.query('SELECT id FROM words WHERE id = ?', [word_id]);
+    if (wordsRows.length > 0) {
+      await pool.query(
+        `INSERT INTO user_word_progress (user_id, word_id, error_count)
+         VALUES (?, ?, 1)
+         ON DUPLICATE KEY UPDATE error_count = error_count + 1`,
+        [user_id, word_id]
+      );
+      logged = true;
+    }
+
+    if (!logged) {
+      return res.status(400).json({ error: 'User, island, or word not found' });
+    }
+
     res.json({ success: true });
   } catch (err: any) {
     if (err.errno === 1452 || err.code === 'ER_NO_REFERENCED_ROW_2') {

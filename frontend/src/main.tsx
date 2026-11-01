@@ -6,7 +6,7 @@ import { finishPendingOfflineSwitch, isForcedOffline } from './utils/offlineMode
 
 // The service worker blocks resources too; this stops application fetches before dispatch.
 if (isForcedOffline()) {
-  window.fetch = () => Promise.reject(new Error('离线模式已关闭网络请求'));
+  window.fetch = () => Promise.reject(new Error('Network requests disabled in offline mode'));
 }
 
 // Register PWA Service Worker for offline support

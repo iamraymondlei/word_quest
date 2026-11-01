@@ -45,6 +45,7 @@ export interface Song {
 class ApiService {
   private syncListeners: Array<(status: SyncStatus) => void> = [];
   private isSyncing = false;
+  private syncPromise: Promise<{ syncedCount: number; remainingCount: number }> | null = null;
 
   constructor() {
     if (typeof window !== 'undefined') {
@@ -55,6 +56,24 @@ class ApiService {
       window.addEventListener('offline', () => {
         this.notifyStatus();
       });
+      // Automatically flush pending offline queue when page loads in online mode
+      window.setTimeout(() => {
+        if (this.isOnline()) {
+          this.syncOfflineQueue();
+        }
+      }, 300);
+    }
+  }
+
+  private async ensureSyncedIfOnline(): Promise<void> {
+    if (!this.isOnline()) return;
+    try {
+      const pending = await offlineStorage.getPendingSyncActions();
+      if (pending.length > 0 || this.syncPromise) {
+        await this.syncOfflineQueue();
+      }
+    } catch {
+      // Ignore sync pre-check errors and proceed with read
     }
   }
 
@@ -95,8 +114,54 @@ class ApiService {
   }
 
   // ── 1. Users API ──────────────────────────────────────────────────────
+  async adminLogin(username: string, password: string): Promise<any> {
+    if (isForcedOffline()) {
+      if (username.trim().toLowerCase() === 'admin' && password === 'admin') {
+        const cachedUsers = await offlineStorage.getCachedUsers();
+        let admin = cachedUsers.find((u: any) => u.username?.toLowerCase() === 'admin');
+        if (!admin) {
+          admin = { id: 999999, username: 'Admin', avatar: '👑', coins: 0, is_admin: 1 };
+        }
+        return { success: true, user: admin };
+      }
+      throw new Error('Invalid username or password');
+    }
+
+    try {
+      const res = await fetch('/api/users/admin-login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password })
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Invalid username or password');
+      }
+      return data;
+    } catch (err: any) {
+      if (username.trim().toLowerCase() === 'admin' && password === 'admin') {
+        return { success: true, user: { id: 1, username: 'Admin', avatar: '👑', is_admin: 1 } };
+      }
+      throw err;
+    }
+  }
+
+  async changePassword(userId: number, oldPassword: string, newPassword: string): Promise<any> {
+    const res = await fetch('/api/users/change-password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user_id: userId, old_password: oldPassword, new_password: newPassword })
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data.error || '修改密码失败');
+    }
+    return data;
+  }
+
   async getUsers(): Promise<any[]> {
     if (isForcedOffline()) return offlineStorage.getCachedUsers();
+    await this.ensureSyncedIfOnline();
     try {
       const res = await fetch('/api/users');
       if (res.ok) {
@@ -174,6 +239,7 @@ class ApiService {
   // ── 2. Islands / Stories API ──────────────────────────────────────────
   async getIslands(userId: number): Promise<any[]> {
     if (isForcedOffline()) return offlineStorage.getCachedIslands(userId);
+    await this.ensureSyncedIfOnline();
     try {
       const res = await fetch(`/api/islands?user_id=${userId}`);
       if (res.ok) {
@@ -197,9 +263,11 @@ class ApiService {
     user_id: number;
     island_id: number;
     stage: number;
+    completed_stage?: number;
     score: number;
     completed: boolean;
     mistakes?: string[];
+    stage1_answers?: string[];
   }): Promise<{ success: boolean; offline: boolean }> {
     // Update local cached progress immediately so next stage unlocks without network
     await offlineStorage.updateCachedStageProgress(
@@ -207,7 +275,9 @@ class ApiService {
       params.island_id,
       params.stage,
       params.score,
-      params.mistakes || []
+      params.mistakes || [],
+      params.stage1_answers,
+      params.completed_stage
     );
 
     if (this.isOnline()) {
@@ -307,10 +377,10 @@ class ApiService {
   }
 
   async getSongs(userId?: number): Promise<Song[]> {
-    if (isForcedOffline()) throw new Error('歌曲尚未支持离线播放，请切换到在线模式。');
+    if (isForcedOffline()) throw new Error('Songs require an online connection. Please switch to online mode.');
     const url = userId ? `/api/songs?user_id=${userId}` : '/api/songs';
     const response = await fetch(url);
-    if (!response.ok) throw new Error('无法加载歌曲列表');
+    if (!response.ok) throw new Error('Failed to load songs');
     return response.json();
   }
 
@@ -366,9 +436,9 @@ class ApiService {
     return data.segments || [];
   }
 
-  // ── 5. Cache All For Offline Button (一键下载离线题库) ─────────────────
+  // ── 5. Cache All For Offline Button ─────────────────
   async cacheAllForOffline(userId: number): Promise<{ success: boolean; storyCount: number; wordCount: number; illustrationCount?: number; error?: string }> {
-    if (isForcedOffline()) return { success: false, storyCount: 0, wordCount: 0, error: '请先切换到在线模式' };
+    if (isForcedOffline()) return { success: false, storyCount: 0, wordCount: 0, error: 'Please switch to online mode first' };
     try {
       // 1. Fetch and cache users
       const usersRes = await fetch('/api/users');
@@ -380,7 +450,7 @@ class ApiService {
       // 2. Fetch and cache islands & words
       const islandsRes = await fetch(`/api/islands?user_id=${userId}`);
       if (!islandsRes.ok) {
-        throw new Error('无法连接到服务器获取题库');
+        throw new Error('Cannot connect to server to fetch question bank');
       }
       const islands = await islandsRes.json();
       await offlineStorage.saveCachedIslands(userId, islands);
@@ -408,6 +478,24 @@ class ApiService {
         }
       } catch (vocabErr) {
         console.warn('Non-fatal: failed to download word books offline package:', vocabErr);
+      }
+
+      // 5. Fetch and cache Grammar Quest progress & history
+      try {
+        const grammarProgRes = await fetch(`/api/grammar/progress/${userId}`);
+        if (grammarProgRes.ok) {
+          const grammarProg = await grammarProgRes.json();
+          await offlineStorage.saveCachedGrammarProgress(userId, grammarProg);
+        }
+        for (const qId of ['unit1', 'unit2']) {
+          const histRes = await fetch(`/api/grammar/history/${userId}/${qId}`);
+          if (histRes.ok) {
+            const hist = await histRes.json();
+            await offlineStorage.saveCachedGrammarHistory(userId, qId, hist);
+          }
+        }
+      } catch (grammarErr) {
+        console.warn('Non-fatal: failed to cache grammar progress/history:', grammarErr);
       }
 
       let totalWords = 0;
@@ -446,7 +534,7 @@ class ApiService {
       }
 
       if (cachedIllustrationCount !== illustrationUrls.size) {
-        throw new Error('部分插图下载失败，请保持联网后重试');
+        throw new Error('Some illustrations failed to download. Please stay online and retry.');
       }
 
       // Update offline metadata
@@ -472,18 +560,28 @@ class ApiService {
         storyCount: 0,
         wordCount: 0,
         illustrationCount: 0,
-        error: err.message || '网络连接超时',
+        error: err.message || 'Network connection timed out',
       };
     }
   }
 
   // ── 6. Sync Pending Queue To Backend ──────────────────────────────────
   async syncOfflineQueue(): Promise<{ syncedCount: number; remainingCount: number }> {
-    if (this.isSyncing || !this.isOnline()) {
+    if (this.syncPromise) {
+      return this.syncPromise;
+    }
+    if (!this.isOnline()) {
       const pending = await offlineStorage.getPendingSyncActions();
       return { syncedCount: 0, remainingCount: pending.length };
     }
 
+    this.syncPromise = this._doSyncOfflineQueue().finally(() => {
+      this.syncPromise = null;
+    });
+    return this.syncPromise;
+  }
+
+  private async _doSyncOfflineQueue(): Promise<{ syncedCount: number; remainingCount: number }> {
     this.isSyncing = true;
     this.notifyStatus();
 
@@ -529,6 +627,27 @@ class ApiService {
               body: JSON.stringify(action.payload),
             });
             ok = res.ok;
+          } else if (action.type === 'word_book_progress') {
+            const res = await fetch(`/api/word-books/${action.payload.bookId}/progress`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(action.payload),
+            });
+            ok = res.ok;
+          } else if (action.type === 'grammar_submit') {
+            const res = await fetch('/api/grammar/submit', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(action.payload),
+            });
+            ok = res.ok;
+            if (ok) {
+              const data = await res.json().catch(() => null);
+              if (data?.user) {
+                localStorage.setItem('wordquest_current_user', JSON.stringify(data.user));
+                localStorage.setItem('wordquest_user', JSON.stringify(data.user));
+              }
+            }
           }
 
           if (ok && action.id !== undefined) {
@@ -574,7 +693,61 @@ class ApiService {
     return offlineStorage.getCachedWordBooks();
   }
 
-  async createWordBook(data: { category?: string; title: string; description?: string; tags?: string; sort_order?: number; user_ids?: number[] }): Promise<any> {
+  async recordWordBookProgress(bookId: number, userId: number, stage: number): Promise<any> {
+    const payload = { bookId, userId, stage };
+    await offlineStorage.updateCachedWordBookProgress(bookId, stage);
+
+    if (isForcedOffline()) {
+      await offlineStorage.enqueueSyncAction({
+        type: 'word_book_progress',
+        payload
+      });
+      return {
+        success: true,
+        offline: true,
+        book_id: bookId,
+        stage
+      };
+    }
+
+    try {
+      const res = await fetch(`/api/word-books/${bookId}/progress`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (res.ok) {
+        return await res.json();
+      }
+    } catch (e) {
+      console.warn('Failed to record word book progress online, enqueuing for offline sync:', e);
+    }
+
+    await offlineStorage.enqueueSyncAction({
+      type: 'word_book_progress',
+      payload
+    });
+    return {
+      success: true,
+      offline: true,
+      book_id: bookId,
+      stage
+    };
+  }
+
+  async getStoryGroups(): Promise<Array<{ id: number; name: string }>> {
+    try {
+      const res = await fetch('/api/groups');
+      if (res.ok) {
+        return await res.json();
+      }
+    } catch (e) {
+      console.warn('Failed to fetch story groups:', e);
+    }
+    return [];
+  }
+
+  async createWordBook(data: { category?: string; title: string; description?: string; tags?: string; sort_order?: number; user_ids?: number[]; island_id?: number }): Promise<any> {
     const res = await fetch('/api/word-books', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -583,6 +756,17 @@ class ApiService {
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
       throw new Error(err.error || 'Failed to create word book');
+    }
+    return res.json();
+  }
+
+  async syncStoryWordBooks(): Promise<any> {
+    const res = await fetch('/api/word-books/sync-stories', {
+      method: 'POST'
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to sync story word books');
     }
     return res.json();
   }
@@ -711,7 +895,29 @@ class ApiService {
     return res.json();
   }
 
-  async recordVocabularyProgress(vocabId: number, userId: number, mode: 'reading' | 'listening' | 'spelling', passed: boolean): Promise<any> {
+  async recordVocabularyProgress(
+    vocabId: number,
+    userId: number,
+    mode: 'reading' | 'listening' | 'spelling',
+    passed: boolean,
+    extra?: { answer?: string; durationMs?: number; clientId?: string }
+  ): Promise<any> {
+    const clientId = extra?.clientId || (
+      typeof crypto !== 'undefined' && crypto.randomUUID
+        ? crypto.randomUUID()
+        : `c_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`
+    );
+
+    const payload = {
+      vocabId,
+      userId,
+      mode,
+      passed,
+      answer: extra?.answer,
+      durationMs: extra?.durationMs,
+      clientId
+    };
+
     // 1. Update offline cache immediately
     await offlineStorage.updateCachedWordProgress(vocabId, mode, passed);
 
@@ -719,15 +925,12 @@ class ApiService {
     if (isForcedOffline()) {
       await offlineStorage.enqueueSyncAction({
         type: 'vocab_progress',
-        payload: { vocabId, userId, mode, passed }
+        payload
       });
       return {
         success: true,
         offline: true,
-        vocab_id: vocabId,
-        user_id: userId,
-        mode,
-        passed
+        ...payload
       };
     }
 
@@ -736,7 +939,7 @@ class ApiService {
       const res = await fetch(`/api/vocabulary-words/${vocabId}/progress`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId, mode, passed })
+        body: JSON.stringify(payload)
       });
       if (res.ok) {
         return res.json();
@@ -747,16 +950,46 @@ class ApiService {
 
     await offlineStorage.enqueueSyncAction({
       type: 'vocab_progress',
-      payload: { vocabId, userId, mode, passed }
+      payload
     });
     return {
       success: true,
       offline: true,
-      vocab_id: vocabId,
-      user_id: userId,
-      mode,
-      passed
+      ...payload
     };
+  }
+
+  async getVocabularyStats(
+    userId: number,
+    options?: { mode?: string; bookId?: number; sort?: string; minAttempts?: number }
+  ): Promise<any> {
+    const params = new URLSearchParams();
+    if (options?.mode) params.append('mode', options.mode);
+    if (options?.bookId) params.append('bookId', String(options.bookId));
+    if (options?.sort) params.append('sort', options.sort);
+    if (options?.minAttempts) params.append('minAttempts', String(options.minAttempts));
+
+    const res = await fetch(`/api/users/${userId}/vocabulary-stats?${params.toString()}`);
+    if (!res.ok) {
+      throw new Error('Failed to fetch vocabulary statistics');
+    }
+    return res.json();
+  }
+
+  async getPracticeWords(
+    userId: number,
+    options?: { mode?: string; bookId?: number; limit?: number }
+  ): Promise<any> {
+    const params = new URLSearchParams();
+    if (options?.mode) params.append('mode', options.mode);
+    if (options?.bookId) params.append('bookId', String(options.bookId));
+    if (options?.limit) params.append('limit', String(options.limit));
+
+    const res = await fetch(`/api/users/${userId}/vocabulary-stats/practice-words?${params.toString()}`);
+    if (!res.ok) {
+      throw new Error('Failed to fetch practice words');
+    }
+    return res.json();
   }
 
   async aiEnrichWords(words: string[], model?: string, cli?: string): Promise<any> {
@@ -770,6 +1003,121 @@ class ApiService {
       throw new Error(err.error || 'Failed to enrich words via AI');
     }
     return res.json();
+  }
+
+  async generateStoryFromVocab(
+    islandId?: number,
+    options?: {
+      words?: string[];
+      title?: string;
+      category?: string;
+      theme_style?: string;
+      target_level?: string;
+      page_count?: number;
+      question_count?: number;
+      model?: string;
+      cli?: string;
+      auto_save?: boolean;
+    }
+  ): Promise<any> {
+    const url = islandId ? `/api/islands/${islandId}/ai-generate-story` : '/api/islands/ai-generate-story';
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(options || {})
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to generate story from vocabulary');
+    }
+    return res.json();
+  }
+
+  // ==========================================
+  // Grammar Quiz & Comprehensive Training APIs
+  // ==========================================
+
+  async getGrammarProgress(userId: number): Promise<Record<string, any>> {
+    if (isForcedOffline()) {
+      return offlineStorage.getCachedGrammarProgress(userId);
+    }
+    await this.ensureSyncedIfOnline();
+    try {
+      const res = await fetch(`/api/grammar/progress/${userId}`);
+      if (res.ok) {
+        const data = await res.json();
+        await offlineStorage.saveCachedGrammarProgress(userId, data);
+        return data;
+      }
+    } catch (err) {
+      console.warn('Network unavailable, loading grammar progress from offline cache:', err);
+    }
+    return offlineStorage.getCachedGrammarProgress(userId);
+  }
+
+  async submitGrammarQuiz(data: {
+    userId: number;
+    category?: string;
+    quizId: string;
+    score: number;
+    totalQuestions: number;
+    correctCount: number;
+    userAnswers: Record<string, string>;
+    wrongDetails?: any[];
+  }): Promise<{
+    success: boolean;
+    offline?: boolean;
+    recordId: number;
+    score: number;
+    coinsAwarded: number;
+    starsAwarded: number;
+    isFirstPass: boolean;
+    user?: any;
+  }> {
+    if (this.isOnline()) {
+      try {
+        const res = await fetch('/api/grammar/submit', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data),
+        });
+        if (res.ok) {
+          const result = await res.json();
+          // Keep local offline cache in sync with authoritative server result
+          await offlineStorage.recordOfflineGrammarQuiz(data, result);
+          return result;
+        }
+      } catch (err) {
+        console.warn('Network error during grammar quiz submission, saving offline:', err);
+      }
+    }
+
+    // Offline fallback: update local cache immediately and enqueue for background sync
+    const offlineResult = await offlineStorage.recordOfflineGrammarQuiz(data);
+    await offlineStorage.enqueueSyncAction({
+      type: 'grammar_submit',
+      payload: data,
+    });
+    this.notifyStatus();
+    return offlineResult;
+  }
+
+  async getGrammarHistory(userId: number, quizId: string): Promise<any[]> {
+    if (isForcedOffline()) {
+      return offlineStorage.getCachedGrammarHistory(userId, quizId);
+    }
+    await this.ensureSyncedIfOnline();
+    try {
+      const res = await fetch(`/api/grammar/history/${userId}/${quizId}`);
+      if (res.ok) {
+        const data = await res.json();
+        await offlineStorage.saveCachedGrammarHistory(userId, quizId, data);
+        return data;
+      }
+    } catch (err) {
+      console.warn('Network unavailable, loading grammar history from offline cache:', err);
+    }
+    return offlineStorage.getCachedGrammarHistory(userId, quizId);
   }
 }
 

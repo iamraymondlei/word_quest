@@ -9,18 +9,25 @@ import time
 from typing import Any
 
 from app.config import settings
-from app.schemas import DEFAULT_SYSTEM_PROMPT, EnrichedWord, SongTranslationResult, StoryParseResult, WordBilingualResult
+from app.schemas import (
+    DEFAULT_SYSTEM_PROMPT,
+    EnrichedWord,
+    GeneratedStoryData,
+    QuestionItem,
+    SentencePair,
+    SongTranslationResult,
+    StoryPageItem,
+    StoryParseResult,
+    WordBilingualResult,
+)
 
 logger = logging.getLogger(__name__)
 
 # Fallback presets in case config file cannot be loaded
 DEFAULT_AGY_MODELS = [
-    {"id": "gemini-3.7-flash-high", "name": "Gemini 3.7 Flash (High)", "description": "High capability multimodal, recommended (Default)"},
-    {"id": "gemini-3.7-flash-medium", "name": "Gemini 3.7 Flash (Medium)", "description": "Medium reasoning effort"},
-    {"id": "gemini-3.7-flash-low", "name": "Gemini 3.7 Flash (Low)", "description": "Fastest low reasoning"},
-    {"id": "gemini-3.6-flash-high", "name": "Gemini 3.6 Flash (High)", "description": "High performance multimodal"},
-    {"id": "gemini-3.6-flash-medium", "name": "Gemini 3.6 Flash (Medium)", "description": "Balanced performance"},
-    {"id": "gemini-3.6-flash-low", "name": "Gemini 3.6 Flash (Low)", "description": "Lightweight multimodal"},
+    {"id": "gemini-3.8-flash-high", "name": "Gemini 3.8 Flash (High)", "description": "High capability multimodal, recommended (Default)"},
+    {"id": "gemini-3.8-flash-medium", "name": "Gemini 3.8 Flash (Medium)", "description": "Medium reasoning effort"},
+    {"id": "gemini-3.8-flash-low", "name": "Gemini 3.8 Flash (Low)", "description": "Fastest low reasoning"},
     {"id": "gemini-3.5-flash-high", "name": "Gemini 3.5 Flash (High)", "description": "Standard fast multimodal"},
     {"id": "gemini-3.1-pro-high", "name": "Gemini 3.1 Pro (High)", "description": "Strongest reasoning capability"},
 ]
@@ -31,13 +38,20 @@ DEFAULT_CODEX_MODELS = [
 ]
 
 LEGACY_AGY_MODEL_MAP = {
-    "gemini-2.5-flash": "gemini-3.7-flash-high",
-    "gemini-2.0-flash-lite": "gemini-3.7-flash-low",
-    "gemini-2.0-flash": "gemini-3.7-flash-medium",
+    "gemini-2.5-flash": "gemini-3.8-flash-high",
+    "gemini-2.0-flash-lite": "gemini-3.8-flash-low",
+    "gemini-2.0-flash": "gemini-3.8-flash-medium",
     "gemini-1.5-flash": "gemini-3.5-flash-high",
     "gemini-2.5-pro": "gemini-3.1-pro-high",
-    "gemini-3.7-flash": "gemini-3.7-flash-high",
-    "gemini-3.6-flash": "gemini-3.6-flash-high",
+    "gemini-3.7-flash": "gemini-3.8-flash-high",
+    "gemini-3.7-flash-high": "gemini-3.8-flash-high",
+    "gemini-3.7-flash-medium": "gemini-3.8-flash-medium",
+    "gemini-3.7-flash-low": "gemini-3.8-flash-low",
+    "gemini-3.8-flash": "gemini-3.8-flash-high",
+    "gemini-3.6-flash": "gemini-3.8-flash-high",
+    "gemini-3.6-flash-high": "gemini-3.8-flash-high",
+    "gemini-3.6-flash-medium": "gemini-3.8-flash-medium",
+    "gemini-3.6-flash-low": "gemini-3.8-flash-low",
     "gemini-3.5-flash": "gemini-3.5-flash-high",
     "gemini-3.1-pro": "gemini-3.1-pro-high",
 }
@@ -51,7 +65,7 @@ def load_models_config() -> dict:
     if not config_path or not os.path.exists(config_path):
         return {
             "agy": {
-                "default_model": "gemini-3.7-flash-high",
+                "default_model": "gemini-3.8-flash-high",
                 "models": DEFAULT_AGY_MODELS,
             },
             "codex": {
@@ -75,7 +89,7 @@ def load_models_config() -> dict:
         logger.error("Failed to read models config file (%s): %s", config_path, e)
         return {
             "agy": {
-                "default_model": "gemini-3.7-flash-high",
+                "default_model": "gemini-3.8-flash-high",
                 "models": DEFAULT_AGY_MODELS,
             },
             "codex": {
@@ -92,7 +106,7 @@ def get_cli_config(cli: str = "agy") -> dict:
     if cli_type in config:
         return config[cli_type]
     return {
-        "default_model": "gemini-3.7-flash-high" if cli_type == "agy" else "gpt-5.6-sol",
+        "default_model": "gemini-3.8-flash-high" if cli_type == "agy" else "gpt-5.6-sol",
         "models": DEFAULT_AGY_MODELS if cli_type == "agy" else DEFAULT_CODEX_MODELS,
     }
 
@@ -114,7 +128,7 @@ def normalize_codex_model(model_name: str | None) -> str:
 def normalize_agy_model(model_name: str | None) -> str:
     """Normalize model identifier for agy CLI according to config file."""
     cli_cfg = get_cli_config("agy")
-    default_m = cli_cfg.get("default_model", "gemini-3.7-flash-high")
+    default_m = cli_cfg.get("default_model", "gemini-3.8-flash-high")
     valid_ids = {m["id"] for m in cli_cfg.get("models", [])}
 
     if not model_name or not model_name.strip():
@@ -308,8 +322,8 @@ class GeminiParser:
 
         # Fast model selection for vocabulary enrichment (avoid high reasoning stalls)
         selected_model = model
-        if cli_type == "agy" and (not selected_model or selected_model in ("gemini-3.7-flash-high", "default")):
-            selected_model = "gemini-3.7-flash-low"
+        if cli_type == "agy" and (not selected_model or selected_model in ("gemini-3.8-flash-high", "gemini-3.7-flash-high", "default")):
+            selected_model = "gemini-3.8-flash-low"
 
         effective_model = normalize_agy_model(selected_model) if cli_type == "agy" else normalize_codex_model(selected_model)
 
@@ -447,6 +461,234 @@ class GeminiParser:
                     continue
                 raise ValueError(f"双语词根与词源生成失败: {exc}") from exc
 
+    async def generate_comprehension_questions(
+        self,
+        story_title: str,
+        story_text: str,
+        question_count: int = 5,
+        model: str | None = None,
+        cli: str = "agy",
+    ) -> list[QuestionItem]:
+        """
+        Generate reading comprehension questions for an English story using system Agent CLI.
+        """
+        cli_type = (cli or "agy").lower().strip()
+        if cli_type not in {"agy", "codex"}:
+            raise ValueError("cli must be 'agy' or 'codex'.")
+
+        effective_model = (
+            normalize_agy_model(model or settings.GEMINI_MODEL)
+            if cli_type == "agy"
+            else normalize_codex_model(model)
+        )
+
+        prompt = (
+            "You are an English education expert for elementary school children (RAZ Level B-E).\n"
+            f"Based on the following English story titled '{story_title}', generate exactly {question_count} reading comprehension questions in English.\n"
+            "Each question should:\n"
+            "- Test understanding of the narrative (who, what, when, where, why, or how).\n"
+            "- Include a 'hint' giving a concise clue to help the student find the answer in the story.\n"
+            "- Include an 'answer' providing a complete, natural English sentence answer.\n\n"
+            f"Story Text:\n{story_text}\n\n"
+            "Return ONLY valid JSON matching this exact schema without any markdown formatting or explanations:\n"
+            "{\n"
+            '  "questions": [\n'
+            '    {"question": "English question", "hint": "Clue to find answer", "answer": "Full English sentence answer"}\n'
+            "  ]\n"
+            "}"
+        )
+
+        if cli_type == "codex":
+            if not shutil.which("codex"):
+                raise ValueError("系统未找到 codex 命令。")
+            cmd = ["codex", "exec", "--dangerously-bypass-approvals-and-sandbox", "--ephemeral"]
+            if effective_model and effective_model.lower() not in ("default", "none"):
+                cmd.extend(["-m", effective_model])
+            cmd.append("-")
+            proc = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdin=asyncio.subprocess.PIPE,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            stdout, stderr = await asyncio.wait_for(
+                proc.communicate(input=prompt.encode("utf-8")), timeout=180
+            )
+        else:
+            if not shutil.which("agy"):
+                raise ValueError("系统未找到 agy 命令。")
+            cmd = ["agy", "--dangerously-skip-permissions", "--disable-slash-commands"]
+            if effective_model:
+                cmd.extend(["--model", effective_model])
+            cmd.extend(["-p", prompt])
+            proc = await asyncio.create_subprocess_exec(
+                *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+            )
+            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=180)
+
+        if len(stdout) + len(stderr) > settings.MAX_CLI_OUTPUT_BYTES:
+            raise ValueError("CLI 输出超过允许大小。")
+        if proc.returncode != 0:
+            raise ValueError(f"{cli_type} CLI Error: {stderr.decode().strip()}")
+
+        try:
+            parsed = _clean_and_parse_json(stdout.decode().strip())
+            q_list = parsed.get("questions", [])
+            return [QuestionItem.model_validate(q) for q in q_list]
+        except Exception as exc:
+            raise ValueError(f"问题生成结果不是有效 JSON: {exc}") from exc
+
+    async def generate_story_from_vocab(
+        self,
+        words: list[str],
+        title: str | None = None,
+        category: str | None = "General",
+        theme_style: str | None = "animal_tale",
+        target_level: str | None = "RAZ C-E",
+        page_count: int = 4,
+        question_count: int = 4,
+        model: str | None = None,
+        cli: str = "agy",
+    ) -> GeneratedStoryData:
+        """
+        Synthesize a child-friendly picture book story from target vocabulary words
+        using agy or codex CLI, returning structured pages with bilingual sentences,
+        illustration prompts, and reading comprehension questions.
+        """
+        cli_type = (cli or "agy").lower().strip()
+        if cli_type not in {"agy", "codex"}:
+            raise ValueError("cli must be 'agy' or 'codex'.")
+
+        effective_model = (
+            normalize_agy_model(model or settings.GEMINI_MODEL)
+            if cli_type == "agy"
+            else normalize_codex_model(model)
+        )
+
+        style_map = {
+            "animal_tale": "A heartwarming animal tale featuring charming animal characters, friendly interactions, and a gentle moral.",
+            "daily_life": "A relatable daily life situation (family, home, school, friendship, community) full of warmth and fun.",
+            "adventure": "An imaginative, exciting child-friendly adventure (exploring, discovering secrets, nature journey).",
+            "detective": "A playful mystery or detective quest (finding something lost, looking for clues, solving a playful riddle).",
+            "humor": "A lighthearted, funny, and whimsical story filled with silly mix-ups and cheerful surprises.",
+        }
+        chosen_style = style_map.get(theme_style or "animal_tale", style_map["animal_tale"])
+        clean_words = [w.strip() for w in words if w and w.strip()]
+        page_count = max(2, min(10, page_count or 4))
+        question_count = max(1, min(10, question_count or 4))
+
+        prompt = (
+            "You are a master children's picture book author and English language education specialist.\n"
+            "TASK: Synthesize a complete, engaging, child-friendly picture book story designed for Chinese elementary school students.\n"
+            f"Target Audience Reading Level: {target_level or 'RAZ C-E'} (vocabulary accessible, clear sentence patterns, engaging repetition).\n"
+            f"Story Theme / Style: {chosen_style}\n"
+            f"Category: {category or 'General'}\n"
+            f"Suggested Story Title or Seed: {title or 'An Exciting Picture Book Story'}\n"
+            f"Target Vocabulary to naturally incorporate: {json.dumps(clean_words, ensure_ascii=False)}\n"
+            f"Required Number of Pages: exactly {page_count} pages.\n"
+            f"Required Number of Comprehension Questions: exactly {question_count} questions.\n\n"
+            "CRITICAL STORYTELLING RULES:\n"
+            "1. Naturally weave as many of the target vocabulary words into the story narrative as possible, while keeping sentences natural and age-appropriate.\n"
+            f"2. Structure the story across exactly {page_count} chronological pages (Page 1 to Page {page_count}) with a clear beginning, development, climax/action, and happy resolution.\n"
+            "3. For EACH page:\n"
+            "   - 'illustration_prompt': A vivid, descriptive English prompt for generating a warm picture book illustration (e.g. 'A fluffy little rabbit sitting on a wooden kitchen chair holding a yellow spoon, soft watercolor style, warm lighting').\n"
+            "   - 'sentences': A list of sentences on this page. Each sentence must have:\n"
+            "     * 'en': The natural English sentence.\n"
+            "     * 'zh': A faithful, word-for-word / phrase-for-phrase aligned Chinese translation designed for 'Read Chinese & Speak English' (看中文说英文) recall practice:\n"
+            "       - Every English word or phrase MUST have a clear corresponding Chinese meaning in the translation. Do NOT omit pronouns (he/she/it/they/my/our), quantifiers (a/one, some, many), adjectives, adverbs, or prepositions.\n"
+            "       - Avoid free/idiomatic translations that drop English words, so the child can reconstruct every single English word just by looking at the Chinese sentence.\n"
+            "4. 'passage': The complete English story text, combining all pages with blank lines separating paragraphs.\n"
+            "5. 'theme': A concise 2-3 sentence Chinese summary explaining what the story is about and its educational/moral value.\n"
+            f"6. 'questions': Exactly {question_count} reading comprehension questions in English, each with 'question', 'hint' (clue to find answer), and 'answer' (complete English sentence answer).\n"
+            "7. 'target_words_covered': An array of the target vocabulary words that were actually incorporated into the story text.\n\n"
+            "STRICT FORMAT RULES:\n"
+            "Return ONLY valid JSON matching this schema without markdown code blocks, backticks, or extra commentary:\n"
+            "{\n"
+            '  "title": "Story Title",\n'
+            '  "theme": "中文主题概述与教育价值",\n'
+            '  "passage": "Full English story passage...",\n'
+            '  "target_words_covered": ["word1", "word2"],\n'
+            '  "pages": [\n'
+            '    {\n'
+            '      "page": 1,\n'
+            '      "illustration_prompt": "Illustration prompt for image generator...",\n'
+            '      "sentences": [\n'
+            '        {"en": "English sentence.", "zh": "中文逐词对应翻译。"}\n'
+            '      ]\n'
+            '    }\n'
+            '  ],\n'
+            '  "questions": [\n'
+            '    {"question": "English question?", "hint": "Clue", "answer": "Answer"}\n'
+            '  ]\n'
+            "}"
+        )
+
+        for attempt in range(2):
+            try:
+                if cli_type == "codex":
+                    if not shutil.which("codex"):
+                        raise ValueError("系统未找到 codex 命令。")
+                    cmd = ["codex", "exec", "--dangerously-bypass-approvals-and-sandbox", "--ephemeral"]
+                    if effective_model and effective_model.lower() not in ("default", "none"):
+                        cmd.extend(["-m", effective_model])
+                    cmd.append("-")
+                    proc = await asyncio.create_subprocess_exec(
+                        *cmd,
+                        stdin=asyncio.subprocess.PIPE,
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.PIPE,
+                    )
+                    stdout, stderr = await asyncio.wait_for(
+                        proc.communicate(input=prompt.encode("utf-8")), timeout=240
+                    )
+                else:
+                    if not shutil.which("agy"):
+                        raise ValueError("系统未找到 agy 命令。")
+                    cmd = ["agy", "--dangerously-skip-permissions", "--disable-slash-commands"]
+                    if effective_model:
+                        cmd.extend(["--model", effective_model])
+                    cmd.extend(["-p", prompt])
+                    proc = await asyncio.create_subprocess_exec(
+                        *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+                    )
+                    stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=240)
+
+                if len(stdout) + len(stderr) > settings.MAX_CLI_OUTPUT_BYTES:
+                    raise ValueError("CLI 输出超过允许大小。")
+                if proc.returncode != 0:
+                    raise ValueError(f"{cli_type} CLI Error: {stderr.decode().strip()}")
+
+                raw_out = stdout.decode().strip()
+                parsed = _clean_and_parse_json(raw_out, fallback_to_story=False)
+                if not isinstance(parsed, dict):
+                    raise ValueError("生成结果不是 JSON 对象")
+
+                # Ensure title fallback
+                if not parsed.get("title"):
+                    parsed["title"] = title or "A New Adventure"
+
+                # Ensure passage exists
+                if not parsed.get("passage") and parsed.get("pages"):
+                    p_texts = []
+                    for p in parsed.get("pages", []):
+                        s_texts = [s.get("en", "").strip() for s in p.get("sentences", []) if s.get("en")]
+                        if s_texts:
+                            p_texts.append(" ".join(s_texts))
+                    parsed["passage"] = "\n\n".join(p_texts)
+
+                # Ensure target_words_covered
+                if "target_words_covered" not in parsed:
+                    full_text_lower = (parsed.get("passage") or "").lower()
+                    parsed["target_words_covered"] = [w for w in clean_words if w.lower() in full_text_lower]
+
+                return GeneratedStoryData.model_validate(parsed)
+            except Exception as exc:
+                if attempt == 0:
+                    logger.warning("generate_story_from_vocab attempt 1 failed: %s. Retrying...", exc)
+                    await asyncio.sleep(2)
+                    continue
+                raise ValueError(f"AI 生成绘本失败: {exc}") from exc
+
     async def parse_images(
         self,
         images: list[tuple[bytes, str]],
@@ -500,9 +742,8 @@ class GeminiParser:
                 f"{{\n"
                 f'  "title": "Book Title",\n'
                 f'  "theme": "Short Chinese summary",\n'
-                f'  "vocabulary": [{{"word": "word", "phonetic": "/phonetic/", "meaning": "中文", "example_sentence": "sentence", "example_translation": "例句翻译"}}],\n'
-                f'  "pages": [{{"page": 1, "illustration_box": [100, 50, 600, 950], "sentences": [{{"en": "English sentence", "zh": "中文翻译"}}]}}],\n'
-                f'  "questions": [{{"question": "English Question", "hint": "Hint", "answer": "Answer"}}]\n'
+                f'  "vocabulary": ["pouch", "wallaby", "baby", "bilby"],\n'
+                f'  "pages": [{{"page": 1, "illustration_box": [100, 50, 600, 950], "sentences": [{{"en": "English sentence", "zh": "中文翻译"}}]}}]\n'
                 f"}}\n\n"
                 f"{formatted_prompt}"
             )
@@ -593,6 +834,30 @@ class GeminiParser:
             out_text = stdout.decode().strip()
             data = _clean_and_parse_json(out_text, fallback_to_story=True)
 
+            # Normalize raw vocabulary into standardized list of VocabularyItem dicts
+            raw_vocab = data.get("vocabulary", [])
+            normalized_vocab = []
+            if isinstance(raw_vocab, str):
+                tokens = [w.strip().lower() for w in re.split(r'[\n,;，；、]+', raw_vocab) if w.strip()]
+                normalized_vocab = [{"word": w, "phonetic": "", "meaning": "", "example_sentence": "", "example_translation": ""} for w in tokens]
+            elif isinstance(raw_vocab, list):
+                for item in raw_vocab:
+                    if isinstance(item, str):
+                        w = item.strip().lower()
+                        if w:
+                            normalized_vocab.append({"word": w, "phonetic": "", "meaning": "", "example_sentence": "", "example_translation": ""})
+                    elif isinstance(item, dict):
+                        w = str(item.get("word", "")).strip().lower()
+                        if w:
+                            normalized_vocab.append({
+                                "word": w,
+                                "phonetic": str(item.get("phonetic", "")),
+                                "meaning": str(item.get("meaning", "")),
+                                "example_sentence": str(item.get("example_sentence", "")),
+                                "example_translation": str(item.get("example_translation", ""))
+                            })
+            data["vocabulary"] = normalized_vocab
+
             # Crop illustrations and upload to MinIO
             import uuid
             story_prefix = f"story_{int(time.time())}_{uuid.uuid4().hex[:6]}"
@@ -611,14 +876,17 @@ class GeminiParser:
                             box=box,
                         )
                         page_num = page_item.get("page", p_idx + 1)
-                        filename = f"{story_prefix}_p{page_num}.webp"
-                        illustration_url = upload_illustration_bytes(
-                            image_bytes=cropped_webp,
-                            filename=filename,
-                            content_type="image/webp",
-                        )
-                        page_item["illustration_url"] = illustration_url
-                        logger.info("Page %d illustration saved: %s", page_num, illustration_url)
+                        if cropped_webp:
+                            filename = f"{story_prefix}_p{page_num}.webp"
+                            illustration_url = upload_illustration_bytes(
+                                image_bytes=cropped_webp,
+                                filename=filename,
+                                content_type="image/webp",
+                            )
+                            page_item["illustration_url"] = illustration_url
+                            logger.info("Page %d illustration saved: %s", page_num, illustration_url)
+                        else:
+                            page_item["illustration_url"] = None
                     except Exception as img_err:
                         logger.warning("Failed processing illustration for page %d: %s", p_idx + 1, img_err)
                         page_item["illustration_url"] = None

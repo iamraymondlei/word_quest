@@ -83,75 +83,75 @@ export interface BuddyCharacter {
 export const BUDDY_CHARACTERS: BuddyCharacter[] = [
   {
     key: 'dino',
-    name: '探险小恐龙',
+    name: 'Dino',
     enName: 'Dino Explorer',
     emoji: '🦕',
     color: '#06b6d4',
-    badge: '元气探险',
-    desc: '双足大步蹬地摆动，头戴探险帽前倾冲刺，后脚蹬地喷出烟尘'
+    badge: 'Explorer',
+    desc: 'Brisk stride with explorer cap and smoke dash sprint'
   },
   {
     key: 'fox',
-    name: '探险赤狐',
+    name: 'Fox',
     enName: 'Adventure Fox',
     emoji: '🦊',
     color: '#f97316',
-    badge: '灵巧敏捷',
-    desc: '低重心轻快腾跃，白尖大蓬松狐尾随跑摆动，尖尖狐耳破风'
+    badge: 'Agile',
+    desc: 'Nimble low leap with bushy tail trailing behind'
   },
   {
     key: 'ninja',
-    name: '暗影小忍者',
+    name: 'Ninja',
     enName: 'Shadow Ninja',
     emoji: '🥷',
     color: '#f43f5e',
-    badge: '极速破风',
-    desc: '双手后展破风冲刺（火影跑姿），脑后红发带飘扬，大跨步蹬地'
+    badge: 'Swift',
+    desc: 'Arm-back aerodynamic sprint with waving red headband'
   },
   {
     key: 'robot',
-    name: '发条复古机甲',
+    name: 'Robot',
     enName: 'Clockwork Bot',
     emoji: '🤖',
     color: '#f59e0b',
-    badge: '机械重装',
-    desc: '活塞双腿沉稳踏地，天线小灯脉冲闪烁，胸口能量核心发光'
+    badge: 'Mech',
+    desc: 'Steady piston stride with blinking antenna and glowing core'
   },
   {
     key: 'wizard',
-    name: '星光魔法学徒',
+    name: 'Wizard',
     enName: 'Wizard Apprentice',
     emoji: '🧙‍♂️',
     color: '#a855f7',
-    badge: '星光奇幻',
-    desc: '尖顶法师帽微仰，星光法杖手中紧握，法袍随风飘拂飞奔'
+    badge: 'Mage',
+    desc: 'Tilted wizard hat and glowing star wand with fluttering robe'
   },
   {
     key: 'cat',
-    name: '灵巧猫咪',
+    name: 'Cat',
     enName: 'Agile Feline',
     emoji: '🐱',
     color: '#10b981',
-    badge: '轻盈踏风',
-    desc: '尾巴高高翘起摇晃，尖猫耳敏锐警惕，四爪轻快踏风'
+    badge: 'Light',
+    desc: 'Upright tail and alert ears, sprinting lightly on paws'
   },
   {
     key: 'lion',
-    name: '勇气小狮王',
+    name: 'Lion',
     enName: 'Brave Lion Cub',
     emoji: '🦁',
     color: '#eab308',
-    badge: '威武霸气',
-    desc: '金黄鬃毛威武霸气，尾巴小绒球轻晃，四肢矫健狂奔'
+    badge: 'Brave',
+    desc: 'Golden mane and energetic stride with little tufted tail'
   },
   {
     key: 'rabbit',
-    name: '飞毛腿兔兔',
+    name: 'Rabbit',
     enName: 'Speedy Rabbit',
     emoji: '🐰',
     color: '#f472b6',
-    badge: '跳跃冲刺',
-    desc: '长长粉耳向后紧贴破风，短绒兔尾，强健大长腿蹬步飞奔'
+    badge: 'Speedy',
+    desc: 'Pinned-back long pink ears, fluffy tail, and fast jumps'
   }
 ];
 
@@ -385,75 +385,75 @@ export interface MonsterCharacter {
 export const MONSTER_CHARACTERS: MonsterCharacter[] = [
   {
     key: 'dragon',
-    name: '炼狱喷火巨龙',
+    name: 'Dragon',
     enName: 'Inferno Dragon',
     emoji: '🐉',
     color: '#ef4444',
-    badge: '烈焰龙威',
-    desc: '双翼高频煽动，下颚利齿咬合咆哮，健硕龙腿大步蹬地狂奔'
+    badge: 'Dragon Roar',
+    desc: 'Rapid flapping wings with roaring jaws and heavy sprint'
   },
   {
     key: 'ogre',
-    name: '狂暴食人魔',
+    name: 'Ogre',
     enName: 'Berserk Ogre',
     emoji: '👹',
     color: '#a855f7',
-    badge: '重装撼地',
-    desc: '头顶金独角，獠牙毕露，手握重拳，粗壮巨腿撼地踩踏'
+    badge: 'Ground Stomp',
+    desc: 'Golden horn, heavy fists, and ground-shaking strides'
   },
   {
     key: 'goblin',
-    name: '地牢哥布林',
+    name: 'Goblin',
     enName: 'Dungeon Goblin',
     emoji: '👺',
     color: '#10b981',
-    badge: '敏捷飞扑',
-    desc: '尖长大耳朵，手持匕首弯刀，小步快速窜跳飞扑'
+    badge: 'Agile Pounce',
+    desc: 'Long ears, curved dagger, and quick leaping steps'
   },
   {
     key: 'wolf',
-    name: '暗夜魔狼',
+    name: 'Direwolf',
     enName: 'Shadow Direwolf',
     emoji: '🐺',
     color: '#6366f1',
-    badge: '暗影疾风',
-    desc: '凶厉血红狼眸，背部幽紫鬃毛随风飘动，四爪狂奔飞扑'
+    badge: 'Shadow Rush',
+    desc: 'Crimson eyes and purple mane racing forward'
   },
   {
     key: 'mech',
-    name: '狂暴战斗机甲',
+    name: 'Rage Mech',
     enName: 'Rage Mech Stomper',
     emoji: '🤖',
     color: '#dc2626',
-    badge: '机械狂暴',
-    desc: '红色警报眼光芒闪烁，机械利爪突进，重型活塞腿踏地冲撞'
+    badge: 'Mech Frenzy',
+    desc: 'Red alert eyes and mechanical claws rushing ahead'
   },
   {
     key: 'ghost',
-    name: '城堡深渊怨灵',
+    name: 'Wraith',
     enName: 'Castle Phantom Wraith',
     emoji: '👻',
     color: '#c084fc',
-    badge: '深渊幽魂',
-    desc: '破烂斗篷尾部波浪俯冲，鬼爪向前抓挠，空洞双瞳发光追击'
+    badge: 'Abyss Specter',
+    desc: 'Tattered cloak with glowing spectral eyes pursuing forward'
   },
   {
     key: 'zombie',
-    name: '狂暴地牢僵尸',
+    name: 'Zombie',
     enName: 'Furious Zombie',
     emoji: '🧟',
     color: '#14b8a6',
-    badge: '不死狂潮',
-    desc: '双手前伸狂乱抓挠，双腿大跨步飞速追赶，暗青皮肤'
+    badge: 'Undead Surge',
+    desc: 'Outstretched arms sprinting in chaotic frenzy'
   },
   {
     key: 'spider',
-    name: '深渊暗影魔蛛',
+    name: 'Shadow Spider',
     enName: 'Abyssal Shadow Spider',
     emoji: '🕷️',
     color: '#f59e0b',
-    badge: '多足侵袭',
-    desc: '多对步足极速交替爬行，血红复眼闪烁，毒牙滴落荧光毒液'
+    badge: 'Leg Strike',
+    desc: 'Rapid crawling legs with glowing red eyes and venom'
   }
 ];
 
@@ -721,10 +721,10 @@ export const BuddySelectorModal: React.FC<BuddySelectorModalProps> = ({
             <span className="w-3.5 h-3.5 rounded-full bg-cyan-400 animate-pulse"></span>
             <div>
               <h2 className="text-xl font-black text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 via-teal-300 to-amber-300 tracking-wider">
-                选择你的跑酷探险伙伴 (CHOOSE YOUR BUDDY)
+                CHOOSE YOUR BUDDY
               </h2>
               <p className="text-xs text-slate-400 mt-0.5">
-                8 款侧身双腿可跑学员伙伴，每位均搭载真实物理蹬地冲刺与喷烟动效。
+                8 animated runner companions with physics sprint and dash fx.
               </p>
             </div>
           </div>
@@ -733,7 +733,7 @@ export const BuddySelectorModal: React.FC<BuddySelectorModalProps> = ({
             onClick={onClose}
             className="text-slate-400 hover:text-white p-2 rounded-xl bg-slate-900 border border-slate-800 hover:border-slate-700 transition cursor-pointer font-bold text-sm"
           >
-            ✕ 关闭
+            ✕ Close
           </button>
         </div>
 
@@ -754,7 +754,7 @@ export const BuddySelectorModal: React.FC<BuddySelectorModalProps> = ({
                 {/* Active Checkmark Badge */}
                 {isSelected && (
                   <div className="absolute top-2.5 right-2.5 bg-cyan-500 text-slate-950 text-[10px] font-black px-2 py-0.5 rounded-full shadow flex items-center gap-1 z-20">
-                    <span>✓</span> 当前出战
+                    <span>✓</span> Active
                   </div>
                 )}
 
@@ -795,11 +795,11 @@ export const BuddySelectorModal: React.FC<BuddySelectorModalProps> = ({
                   }`}
                 >
                   {loading && isSelected ? (
-                    <span>保存中...</span>
+                    <span>Saving...</span>
                   ) : isSelected ? (
-                    <span>★ 正在出战中</span>
+                    <span>★ Active</span>
                   ) : (
-                    <span>设为探险伙伴 ➔</span>
+                    <span>Select Buddy ➔</span>
                   )}
                 </button>
               </div>
@@ -809,13 +809,13 @@ export const BuddySelectorModal: React.FC<BuddySelectorModalProps> = ({
 
         {/* Modal Footer */}
         <div className="border-t border-slate-800/80 pt-4 flex items-center justify-between text-xs text-slate-400">
-          <span>💡 提示：选定伙伴后将在全岛 Story Chase 关卡及地图中实时以该角色冲刺跑酷！</span>
+          <span>💡 Tip: Selected companion will dash through all Story Chase typing levels!</span>
           <button
             type="button"
             onClick={onClose}
             className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold rounded-xl transition cursor-pointer"
           >
-            完成
+            Done
           </button>
         </div>
       </div>
@@ -1165,19 +1165,19 @@ export const DifficultyCard: React.FC<DifficultyCardProps> = ({
 
         {/* Badge & Mode Title */}
         <div className="flex flex-col items-center">
-          <span className="text-base font-black text-emerald-300 tracking-wide">慢速模式</span>
+          <span className="text-base font-black text-emerald-300 tracking-wide">Slow Mode</span>
           <span className="text-3xs text-emerald-400 font-bold uppercase tracking-wider mt-0.5">
             Breeze Explorer
           </span>
         </div>
 
         <p className="text-xs text-slate-300 line-clamp-2 max-w-[200px] leading-relaxed">
-          怪兽移动缓慢，适合初次打字与熟悉指法的小朋友
+          Monster moves slowly. Ideal for beginners learning key positions.
         </p>
 
         {/* Speed Pill */}
         <div className="mt-auto px-3 py-1 rounded-full bg-emerald-950/90 border border-emerald-500/40 text-xs font-bold text-emerald-300">
-          ⚡ {charsPerSec} 字符/秒
+          ⚡ {charsPerSec} char/s
         </div>
       </button>
     );
@@ -1205,19 +1205,19 @@ export const DifficultyCard: React.FC<DifficultyCardProps> = ({
 
         {/* Badge & Mode Title */}
         <div className="flex flex-col items-center">
-          <span className="text-base font-black text-amber-300 tracking-wide">中速模式</span>
+          <span className="text-base font-black text-amber-300 tracking-wide">Medium Mode</span>
           <span className="text-3xs text-amber-400 font-bold uppercase tracking-wider mt-0.5">
             Standard Adventure
           </span>
         </div>
 
         <p className="text-xs text-slate-300 line-clamp-2 max-w-[200px] leading-relaxed">
-          标准追击节奏，平衡打字速度与准确率的进阶挑战
+          Balanced chase pace. Great for building speed and accuracy.
         </p>
 
         {/* Speed Pill */}
         <div className="mt-auto px-3 py-1 rounded-full bg-amber-950/90 border border-amber-500/40 text-xs font-bold text-amber-300">
-          ⚡ {charsPerSec} 字符/秒
+          ⚡ {charsPerSec} char/s
         </div>
       </button>
     );
@@ -1250,19 +1250,19 @@ export const DifficultyCard: React.FC<DifficultyCardProps> = ({
 
       {/* Badge & Mode Title */}
       <div className="flex flex-col items-center">
-        <span className="text-base font-black text-purple-300 tracking-wide">极速冲刺</span>
+        <span className="text-base font-black text-purple-300 tracking-wide">Fast Mode</span>
         <span className="text-3xs text-purple-400 font-bold uppercase tracking-wider mt-0.5">
           Hyper Lightning
         </span>
       </div>
 
       <p className="text-xs text-slate-300 line-clamp-2 max-w-[200px] leading-relaxed">
-        怪兽紧追不舍！通关额外奖赏 +{speedBonus} 探险经验
+        Monster is hot on your heels! Earn +{speedBonus} bonus EXP on clear.
       </p>
 
       {/* Speed Pill */}
       <div className="mt-auto px-3 py-1 rounded-full bg-purple-950/90 border border-purple-500/40 text-xs font-bold text-purple-300">
-        ⚡ {charsPerSec} 字符/秒
+        ⚡ {charsPerSec} char/s
       </div>
     </button>
   );
@@ -1284,7 +1284,7 @@ export const PortalDoorBadge: React.FC<{
           ? 'bg-cyan-950/90 border-cyan-400 text-cyan-200 ring-2 ring-cyan-400/40 scale-105 shadow-md shadow-cyan-500/20'
           : 'bg-slate-900 border-slate-800 text-slate-600'
       }`}
-      title={isPassed ? `Page ${pageIndex + 1} 已开启通过` : `Page ${pageIndex + 1}`}
+      title={isPassed ? `Page ${pageIndex + 1} Cleared` : `Page ${pageIndex + 1}`}
     >
       <span className={`text-sm ${isPassed ? 'text-emerald-400' : isCurrent ? 'animate-spin text-cyan-400' : 'text-slate-600'}`}>
         {isPassed ? '🌀' : isCurrent ? '✨' : '🔒'}
@@ -1307,10 +1307,10 @@ export const TreasureChestBadge: React.FC<{
           ? 'bg-purple-950/80 border-purple-500 text-purple-300 ring-2 ring-purple-400/40'
           : 'bg-slate-900 border-slate-800 text-slate-600'
       }`}
-      title={isPassed ? '终点宝箱已开启！' : '终点藏宝箱'}
+      title={isPassed ? 'Finish Chest Unlocked!' : 'Finish Chest'}
     >
       <span className="text-base">{isPassed ? '🏆✨' : '🎁'}</span>
-      <span>FINISH 终点</span>
+      <span>FINISH</span>
     </div>
   );
 };

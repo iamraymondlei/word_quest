@@ -24,7 +24,7 @@ export interface GameSettingsMap {
 
 export const DEFAULT_AI_PROMPT_TEMPLATE = `You are an English education expert specializing in analyzing English picture books for elementary school students.
 
-Your target audience: Chinese elementary school students who can read RAZ (Reading A-Z) Level E books.
+Your target audience: Chinese elementary school students who are reading RAZ (Reading A-Z) Level B–E books.
 
 TASK:
 Analyze the provided picture book page images and return a structured JSON object matching the requested schema.
@@ -32,28 +32,21 @@ Analyze the provided picture book page images and return a structured JSON objec
 RULES:
 1. **title**: Extract the title of the picture book. If not visible, infer from content.
 2. **theme**: Write a concise Chinese summary (2-3 sentences) describing what the story is about and its educational value.
-3. **vocabulary**: Extract a comprehensive list of approximately 18-25 core practice vocabulary words (target ~20 words) from the story for typing and spelling practice.
-   - Prioritize key narrative words, verbs, adjectives, and nouns suitable for RAZ Level E learning.
-   - If the story has fewer than 20 rare words, include all meaningful action verbs, descriptive adjectives, and thematic nouns from the story sentences so the list reaches ~20 words.
+3. **vocabulary**: Extract a list of core practice vocabulary words (target ~18-25 words) from the story for typing and spelling practice (e.g. key nouns, verbs, adjectives).
    - Ensure all extracted vocabulary words actually appear in the story text.
-   - For each word provide:
-     - "word": the English word (lowercase)
-     - "phonetic": IPA phonetic transcription (e.g. /luːn/)
-     - "meaning": clear and accurate Chinese translation
-     - "example_sentence": an original sentence from the story containing this word
-     - "example_translation": the Chinese translation of the example sentence
-4. **pages**: For each image (in order), extract ONLY the core narrative/story text. DO NOT extract exercise questions, quizzes, captions, metadata, or activity questions (such as 'Activity 1', 'Questions:', or book reflection prompts) that are not part of the main story content. Split into individual sentences. For each sentence provide:
-   - "en": the original English sentence exactly as written
-   - "zh": natural, child-friendly Chinese translation
-5. **questions**: Generate exactly {question_count} comprehension questions in English. Each question should:
-   - Test understanding of the story (who, what, when, where, why, how)
-   - Be appropriate for the target reading level
-   - Include a "hint" (a clue to help the student find the answer)
-   - Include an "answer" (a complete English sentence)
-
+   - Output ONLY the list of lowercase English words (e.g. ["pouch", "wallaby", "baby", "bilby"]).
+   - Do NOT provide definitions, phonetics, translations, or example sentences during book import (these will be enriched later in the vocabulary editor).
+4. **pages**: For each image (in order):
+   - "illustration_box": Locate the main story illustration or photograph on this page and output its bounding box as [ymin, xmin, ymax, xmax] normalized integers from 0 to 1000. Exclude standalone text blocks, page numbers, and margins. If the page is text-only without any story picture, set to null.
+   - "sentences": Extract ONLY the core narrative/story text. DO NOT extract exercise questions, quizzes, captions, metadata, or activity questions (such as 'Activity 1', 'Questions:', or book reflection prompts) that are not part of the main story content. Split into individual sentences. For each sentence provide:
+     - "en": the original English sentence exactly as written
+     - "zh": a faithful, word-for-word / phrase-for-phrase aligned Chinese translation designed for "Read Chinese & Speak English" (看中文说英文) recall practice:
+       - **Every English word or phrase MUST have a clear corresponding Chinese meaning in the translation.** Do NOT omit, merge, or paraphrase away any words.
+       - Explicitly translate all pronouns (he/she/it/they/my/our/this/that), articles/quantifiers when meaningful (a/one, some, many, every), adjectives (e.g. little, big, good), adverbs (e.g. too, very, now, again, up, down, away), prepositions (e.g. in, on, into, with, for), and modal/auxiliary nuances (e.g. can, will, want to, have to).
+       - Avoid free/idiomatic translations that drop English words or add extra concepts not in the original sentence, so the student can reliably reconstruct every single English word just by looking at the Chinese sentence.
 IMPORTANT:
 - Page numbers start from 1 and correspond to the order of images provided.
-- Keep translations natural and age-appropriate for children.
+- Keep sentence translations faithful and complete: prioritize 1-to-1 word/phrase cueing over literary paraphrasing, while keeping the Chinese understandable for children.
 - If a page has no story text, still include it with an empty sentences array.
 - Strictly ignore page numbers, header/footer titles, or post-reading activity questions when building the "pages" content.`;
 

@@ -51,7 +51,7 @@ async function currentPageIsControlled(): Promise<boolean> {
 async function ensureOfflineWorkerReady(): Promise<void> {
   const serviceWorker = navigator.serviceWorker;
   if (!serviceWorker || !window.isSecureContext) {
-    throw new Error('iPad 未把本站视为安全网站。请安装并完全信任 WordQuest Local CA 证书。');
+    throw new Error('Connection not secure. Please ensure the local HTTPS certificate is trusted.');
   }
 
   // Surface registration failures directly instead of waiting forever on ready.
@@ -60,13 +60,13 @@ async function ensureOfflineWorkerReady(): Promise<void> {
     try {
       await serviceWorker.register('/sw.js', { scope: '/' });
     } catch (error) {
-      throw new Error(`离线程序注册失败：${error instanceof Error ? error.message : '请检查 HTTPS 证书'}`);
+      throw new Error(`Offline worker registration failed: ${error instanceof Error ? error.message : 'Check HTTPS certificate'}`);
     }
   }
 
   const registration = await Promise.race([
     serviceWorker.ready,
-    wait(15000).then(() => { throw new Error('离线程序未能激活。请保持联网并重新打开页面后重试。'); }),
+    wait(15000).then(() => { throw new Error('Offline worker failed to activate. Please stay online and refresh.'); }),
   ]);
   if (await supportsOfflineMode(registration.active)) return;
 
@@ -77,7 +77,7 @@ async function ensureOfflineWorkerReady(): Promise<void> {
     if (await supportsOfflineMode(registration.active)) return;
     await wait(500);
   }
-  throw new Error('离线程序尚未更新完成，请保持联网并重新打开页面后重试。');
+  throw new Error('Offline worker update incomplete. Please stay online and refresh.');
 }
 
 export async function setForcedOffline(enabled: boolean): Promise<void> {
@@ -114,13 +114,13 @@ export async function finishPendingOfflineSwitch(): Promise<void> {
   try {
     await ensureOfflineWorkerReady();
     if (!await currentPageIsControlled()) {
-      throw new Error('离线程序未能接管当前页面，请检查 iPad 的 HTTPS 证书后重新打开应用。');
+      throw new Error('Offline worker failed to control page. Check HTTPS certificate and reload.');
     }
     await setForcedOffline(true);
   } catch (error) {
     sessionStorage.setItem(
       SWITCH_ERROR_KEY,
-      error instanceof Error ? error.message : '离线程序启动失败，请保持联网后重试。'
+      error instanceof Error ? error.message : 'Failed to start offline mode. Please stay online and retry.'
     );
     window.location.reload();
   }

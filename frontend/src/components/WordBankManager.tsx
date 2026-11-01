@@ -43,10 +43,26 @@ export interface UserOption {
   is_admin?: number;
 }
 
-export const WordBankManager: React.FC = () => {
+export interface WordBankManagerProps {
+  initialBookId?: number | null;
+  initialCategory?: string | null;
+  storyTitle?: string | null;
+  onBack?: () => void;
+}
+
+export const WordBankManager: React.FC<WordBankManagerProps> = ({
+  initialBookId = null,
+  initialCategory = null,
+  storyTitle = null,
+  onBack
+}) => {
+  const isStoryMode = Boolean(storyTitle || onBack);
+
   // Books state
   const [books, setBooks] = useState<WordBook[]>([]);
   const [selectedBookId, setSelectedBookId] = useState<number | null>(() => {
+    if (initialBookId) return initialBookId;
+    if (storyTitle) return null;
     const saved = localStorage.getItem('wordquest_admin_selected_book_id');
     return saved ? Number(saved) : null;
   });
@@ -69,8 +85,8 @@ export const WordBankManager: React.FC = () => {
   const [directorySearch, setDirectorySearch] = useState<string>('');
 
   // Import inputs
-  const [rawWordsInput, setRawWordsInput] = useState<string>('curious, ancient, resilient, mysterious, courageous');
-  const [aiModel, setAiModel] = useState<string>('gemini-3.7-flash-low');
+  const [rawWordsInput, setRawWordsInput] = useState<string>('');
+  const [aiModel, setAiModel] = useState<string>('gemini-3.8-flash-low');
   const [aiCli, setAiCli] = useState<'agy' | 'codex'>('agy');
   const [isAiLoading, setIsAiLoading] = useState<boolean>(false);
   const [aiProgress, setAiProgress] = useState<{ current: number; total: number; percent: number; text: string } | null>(null);
@@ -102,25 +118,51 @@ export const WordBankManager: React.FC = () => {
   const [formSortOrder, setFormSortOrder] = useState<number>(0);
   const [formUserIds, setFormUserIds] = useState<number[]>([]);
 
+  // Story groups for category alignment (Phase 4)
+  const [storyGroups, setStoryGroups] = useState<Array<{ id: number; name: string }>>([]);
+
   // Group books by category
   const categoryGroups = useMemo(() => {
-    const groups: Record<string, WordBook[]> = {};
+    const rawGroups: Record<string, WordBook[]> = {};
     for (const b of books) {
       const cat = b.category?.trim() || 'General';
-      if (!groups[cat]) groups[cat] = [];
-      groups[cat].push(b);
+      if (!rawGroups[cat]) rawGroups[cat] = [];
+      rawGroups[cat].push(b);
+    }
+
+    // Sort categories: storyGroups first in order, then other categories alphabetically
+    const orderedCategories: string[] = [];
+    storyGroups.forEach((g) => {
+      const name = g.name?.trim();
+      if (name && rawGroups[name] && !orderedCategories.includes(name)) {
+        orderedCategories.push(name);
+      }
+    });
+
+    Object.keys(rawGroups).forEach((cat) => {
+      if (!orderedCategories.includes(cat)) {
+        orderedCategories.push(cat);
+      }
+    });
+
+    const groups: Record<string, WordBook[]> = {};
+    for (const cat of orderedCategories) {
+      groups[cat] = rawGroups[cat];
     }
     return groups;
-  }, [books]);
+  }, [books, storyGroups]);
 
-  // Existing distinct categories for autocompletion
+  // Existing distinct categories for autocompletion (Story Groups + custom categories)
   const existingCategories = useMemo(() => {
     const set = new Set<string>();
-    books.forEach(b => {
+    storyGroups.forEach((g) => {
+      if (g.name?.trim()) set.add(g.name.trim());
+    });
+    books.forEach((b) => {
       if (b.category?.trim()) set.add(b.category.trim());
     });
     return Array.from(set);
-  }, [books]);
+  }, [books, storyGroups]);
 
   // Chapters under currently active category
   const currentCategoryChapters = useMemo(() => {
@@ -135,17 +177,24 @@ export const WordBankManager: React.FC = () => {
       setActiveCategory(selectedBook.category.trim());
     } else if (books.length > 0) {
       const categories = Object.keys(categoryGroups);
-      if (categories.length > 0 && !categories.includes(activeCategory)) {
+      if (initialCategory && categories.includes(initialCategory.trim())) {
+        setActiveCategory(initialCategory.trim());
+      } else if (categories.length > 0 && !categories.includes(activeCategory)) {
         setActiveCategory(categories[0]);
       }
     }
-  }, [selectedBookId, selectedBook, books, categoryGroups, activeCategory]);
+  }, [selectedBookId, selectedBook, books, categoryGroups, activeCategory, initialCategory]);
 
   const handleSelectCategory = (cat: string) => {
     setActiveCategory(cat);
     const chapters = categoryGroups[cat] || [];
     if (chapters.length > 0) {
-      setSelectedBookId(chapters[0].id);
+      if (storyTitle) {
+        const match = chapters.find(c => c.title && c.title.trim() === storyTitle.trim());
+        setSelectedBookId(match ? match.id : null);
+      } else {
+        setSelectedBookId(chapters[0].id);
+      }
     } else {
       setSelectedBookId(null);
     }
@@ -161,6 +210,23 @@ export const WordBankManager: React.FC = () => {
     return Array.from(new Set(list)).length;
   }, [rawWordsInput]);
 
+  // Sync initialBookId / initialCategory from props
+  useEffect(() => {
+    if (initialBookId) {
+      setSelectedBookId(initialBookId);
+      const target = books.find(b => b.id === initialBookId);
+      if (target?.category) {
+        setActiveCategory(target.category.trim());
+      }
+    }
+  }, [initialBookId, books]);
+
+  useEffect(() => {
+    if (initialCategory) {
+      setActiveCategory(initialCategory.trim());
+    }
+  }, [initialCategory]);
+
   // Load books
   const loadBooks = async () => {
     setIsLoading(true);
@@ -168,10 +234,30 @@ export const WordBankManager: React.FC = () => {
       const data = await apiService.getWordBooks();
       setBooks(data);
       if (data.length > 0) {
-        setSelectedBookId(prev => {
-          if (prev && data.some(b => b.id === prev)) return prev;
-          return data[0].id;
-        });
+        if (initialBookId && data.some(b => b.id === initialBookId)) {
+          setSelectedBookId(initialBookId);
+          const target = data.find(b => b.id === initialBookId);
+          if (target?.category) setActiveCategory(target.category.trim());
+        } else if (storyTitle) {
+          // If editing a specific story, try to find the matching book by storyTitle
+          const target = data.find(b =>
+            (b.title && b.title.trim() === storyTitle.trim()) &&
+            (!initialCategory || (b.category || 'General').trim() === initialCategory.trim())
+          ) || data.find(b => b.title && b.title.trim() === storyTitle.trim());
+
+          if (target) {
+            setSelectedBookId(target.id);
+            if (target.category) setActiveCategory(target.category.trim());
+          } else {
+            // No matching book exists for this story yet: do NOT fallback to another story's book!
+            setSelectedBookId(null);
+          }
+        } else {
+          setSelectedBookId(prev => {
+            if (prev && data.some(b => b.id === prev)) return prev;
+            return data[0].id;
+          });
+        }
       } else {
         setSelectedBookId(null);
       }
@@ -192,23 +278,37 @@ export const WordBankManager: React.FC = () => {
     }
   };
 
+  // Load story groups for category alignment (Phase 4)
+  const loadStoryGroups = async () => {
+    try {
+      const groups = await apiService.getStoryGroups();
+      setStoryGroups(groups || []);
+    } catch (e) {
+      console.warn('Failed to load story groups for WordBankManager:', e);
+    }
+  };
+
   useEffect(() => {
     loadBooks();
     loadUsers();
+    loadStoryGroups();
   }, []);
 
   // Save selected book ID
   useEffect(() => {
-    if (selectedBookId) {
+    if (selectedBookId && !storyTitle) {
       localStorage.setItem('wordquest_admin_selected_book_id', String(selectedBookId));
     }
-  }, [selectedBookId]);
+  }, [selectedBookId, storyTitle]);
 
   // Load words when selected book changes
   const loadBookWords = async (bookId: number) => {
     try {
       const data = await apiService.getBookWords(bookId);
-      setWords(data || []);
+      const loadedWords = data || [];
+      setWords(loadedWords);
+      const existingWordList = Array.from(new Set(loadedWords.map((w: any) => w.word?.trim()).filter(Boolean)));
+      setRawWordsInput(existingWordList.join(', '));
     } catch (err: any) {
       setStatus({ type: 'error', text: err.message || '加载单词失败' });
     }
@@ -220,6 +320,7 @@ export const WordBankManager: React.FC = () => {
       loadBookWords(selectedBookId);
     } else {
       setWords([]);
+      setRawWordsInput('');
     }
   }, [selectedBookId]);
 
@@ -702,6 +803,232 @@ export const WordBankManager: React.FC = () => {
 
   return (
     <div className="flex flex-col gap-6 text-slate-200 font-sans pb-12">
+      {/* ───────────────────────────────────────────────────────────
+          Top Navigation: Story-Focused Context Banner OR Two-Tier Cascade
+          ─────────────────────────────────────────────────────────── */}
+      {isStoryMode ? (
+        <div className="bg-[#131B2E] border border-cyan-500/30 rounded-2xl p-4 shadow-xl flex items-center justify-between gap-4 flex-wrap">
+          <div className="flex items-center gap-3 flex-wrap">
+            {onBack && (
+              <button
+                type="button"
+                onClick={onBack}
+                className="px-4 py-2 bg-gradient-to-r from-cyan-950 to-slate-900 hover:from-cyan-900 hover:to-slate-800 border border-cyan-500/40 text-cyan-300 hover:text-cyan-200 text-xs font-mono font-bold rounded-xl transition-all cursor-pointer flex items-center gap-2 shadow-sm active:scale-95 shrink-0"
+              >
+                <span>←</span> <span>返回故事关卡库 (Back to Stories)</span>
+              </button>
+            )}
+
+            <div className="h-5 w-px bg-slate-700/80 hidden sm:block" />
+
+            <div className="flex items-center gap-2 flex-wrap text-xs font-mono">
+              <span className="text-slate-400 flex items-center gap-1 shrink-0">
+                <span>📁</span>
+                <span>所属系列:</span>
+              </span>
+              <span className="text-cyan-300 font-bold bg-cyan-950/70 px-2.5 py-1 rounded-lg border border-cyan-500/30">
+                {activeCategory || selectedBook?.category || initialCategory || 'General'}
+              </span>
+
+              <span className="text-slate-600">/</span>
+
+              <span className="text-slate-400 flex items-center gap-1 shrink-0">
+                <span>📖</span>
+                <span>故事关卡:</span>
+              </span>
+              <span className="text-indigo-200 font-bold bg-indigo-950/70 px-2.5 py-1 rounded-lg border border-indigo-500/30">
+                {storyTitle || selectedBook?.title || '未命名故事'}
+              </span>
+
+              {selectedBook && (
+                <span className="px-2.5 py-1 rounded-lg bg-emerald-950/80 border border-emerald-500/30 text-emerald-300 font-bold ml-1">
+                  {words.length} 词
+                </span>
+              )}
+            </div>
+          </div>
+
+          {selectedBook && (
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={() => openEditModal(selectedBook)}
+                className="text-xs bg-slate-800/80 hover:bg-slate-700 border border-slate-700 text-slate-300 hover:text-white font-bold px-3 py-1.5 rounded-xl transition-all flex items-center gap-1.5 cursor-pointer"
+                title="修改词单基本信息"
+              >
+                <span>✏️</span>
+                <span>编辑词单</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setAccessModalBook(selectedBook);
+                  setAccessModalUserIds(selectedBook.assigned_user_ids || []);
+                }}
+                className="text-xs bg-slate-800/80 hover:bg-slate-700 border border-slate-700 text-slate-300 hover:text-white font-bold px-3 py-1.5 rounded-xl transition-all flex items-center gap-1.5 cursor-pointer"
+                title="设置学员归属权限"
+              >
+                <span>👥</span>
+                <span>归属设置</span>
+              </button>
+            </div>
+          )}
+        </div>
+      ) : (
+        /* Top Two-Tier Cascade Navigation Bar (书本系列与章节两级横向导航) */
+        <div className="bg-slate-900/95 border border-slate-800/90 rounded-2xl p-4 shadow-xl flex flex-col gap-3.5 backdrop-blur-sm w-full">
+          {/* Tier 1: Books / Series Bar */}
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800/80 pb-3">
+            <div className="flex flex-wrap items-center gap-2 flex-1 min-w-0 py-0.5">
+              <span className="text-xs font-black text-slate-400 tracking-wider flex items-center gap-1.5 shrink-0 uppercase mr-1">
+                <span>📚</span>
+                <span>书本系列:</span>
+              </span>
+
+              {Object.keys(categoryGroups).length === 0 ? (
+                <span className="text-xs text-slate-500 italic">
+                  {isLoading ? '🛰️ 载入目录中...' : '暂无书本，请点击右侧“新建书本”'}
+                </span>
+              ) : (
+                Object.entries(categoryGroups).map(([categoryName, chapterList]) => {
+                  const isActive = activeCategory === categoryName;
+                  const totalWords = chapterList.reduce((acc, c) => acc + (c.word_count || 0), 0);
+                  return (
+                    <button
+                      key={categoryName}
+                      type="button"
+                      onClick={() => handleSelectCategory(categoryName)}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shrink-0 cursor-pointer ${
+                        isActive
+                          ? 'bg-cyan-500 text-slate-950 shadow-md shadow-cyan-500/20 font-black scale-102'
+                          : 'bg-slate-950/80 border border-slate-800 text-slate-300 hover:text-white hover:border-slate-700 hover:bg-slate-850'
+                      }`}
+                    >
+                      <span>{isActive ? '📖' : '📚'}</span>
+                      <span>{categoryName}</span>
+                      <span
+                        className={`text-[10px] px-1.5 py-0.5 rounded-md font-mono ${
+                          isActive
+                            ? 'bg-slate-950/20 text-slate-950 font-bold'
+                            : 'bg-slate-800/80 text-cyan-400'
+                        }`}
+                      >
+                        {chapterList.length}章 · {totalWords}词
+                      </span>
+                    </button>
+                  );
+                })
+              )}
+            </div>
+
+            <button
+              type="button"
+              onClick={() => openCreateModal('')}
+              className="text-xs bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/30 text-cyan-300 font-bold px-3 py-1.5 rounded-xl transition-all flex items-center gap-1.5 cursor-pointer shrink-0"
+              title="新建一本全新的词单书"
+            >
+              <span>➕</span>
+              <span>新建书本</span>
+            </button>
+          </div>
+
+          {/* Tier 2: Chapter Selector Pills Bar */}
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex flex-wrap items-center gap-2 flex-1 min-w-0 py-0.5">
+              <span className="text-xs font-black text-slate-400 tracking-wider flex items-center gap-1.5 shrink-0 uppercase mr-1">
+                <span>📄</span>
+                <span>章节目录:</span>
+              </span>
+
+              {currentCategoryChapters.length === 0 ? (
+                <span className="text-xs text-amber-400/80 italic">
+                  《{activeCategory}》系列下暂无章节，请点击右侧“新增章节”
+                </span>
+              ) : (
+                currentCategoryChapters.map((chapter) => {
+                  const isSelected = selectedBookId === chapter.id;
+                  return (
+                    <button
+                      key={chapter.id}
+                      type="button"
+                      onClick={() => setSelectedBookId(chapter.id)}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all flex items-center gap-1.5 shrink-0 cursor-pointer ${
+                        isSelected
+                          ? 'bg-gradient-to-r from-cyan-500/20 to-indigo-500/20 border border-cyan-400 text-white font-black shadow-md'
+                          : 'bg-slate-950/80 border border-slate-800/80 text-slate-300 hover:text-white hover:border-slate-700 hover:bg-slate-850'
+                      }`}
+                    >
+                      <span>{isSelected ? '🎯' : '📄'}</span>
+                      <span>{chapter.title}</span>
+                      <span
+                        className={`text-[10px] px-1.5 py-0.2 rounded font-mono ${
+                          isSelected
+                            ? 'bg-cyan-400 text-slate-950 font-bold'
+                            : 'bg-slate-800 text-slate-400'
+                        }`}
+                      >
+                        {chapter.word_count || 0}词
+                      </span>
+                    </button>
+                  );
+                })
+              )}
+            </div>
+
+            {/* Chapter Quick Actions */}
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={() => openCreateModal(activeCategory)}
+                className="text-xs bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 font-bold px-2.5 py-1.5 rounded-xl transition-all flex items-center gap-1 cursor-pointer"
+                title={`在《${activeCategory}》下新增章节`}
+              >
+                <span>➕</span>
+                <span>新增章节</span>
+              </button>
+
+              {selectedBook && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => openEditModal(selectedBook)}
+                    className="text-xs bg-slate-800/80 hover:bg-slate-700 border border-slate-700 text-slate-300 hover:text-white font-bold px-2.5 py-1.5 rounded-xl transition-all flex items-center gap-1 cursor-pointer"
+                    title="修改当前章节信息"
+                  >
+                    <span>✏️</span>
+                    <span>编辑本章</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAccessModalBook(selectedBook);
+                      setAccessModalUserIds(selectedBook.assigned_user_ids || []);
+                    }}
+                    className="text-xs bg-slate-800/80 hover:bg-slate-700 border border-slate-700 text-slate-300 hover:text-white font-bold px-2.5 py-1.5 rounded-xl transition-all flex items-center gap-1 cursor-pointer"
+                    title="设置学员归属权限"
+                  >
+                    <span>👥</span>
+                    <span>归属设置</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteBook(selectedBook.id, selectedBook.title)}
+                    className="text-xs bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 text-rose-300 font-bold px-2.5 py-1.5 rounded-xl transition-all flex items-center gap-1 cursor-pointer"
+                    title="删除当前章节"
+                  >
+                    <span>🗑️</span>
+                    <span>删除本章</span>
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Status banner */}
       {status && (
         <div
@@ -724,160 +1051,6 @@ export const WordBankManager: React.FC = () => {
           </button>
         </div>
       )}
-
-      {/* ───────────────────────────────────────────────────────────
-          Top Two-Tier Cascade Navigation Bar (书本系列与章节两级横向导航)
-          ─────────────────────────────────────────────────────────── */}
-      <div className="bg-slate-900/95 border border-slate-800/90 rounded-2xl p-4 shadow-xl flex flex-col gap-3.5 backdrop-blur-sm w-full">
-        {/* Tier 1: Books / Series Bar */}
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800/80 pb-3">
-          <div className="flex flex-wrap items-center gap-2 flex-1 min-w-0 py-0.5">
-            <span className="text-xs font-black text-slate-400 tracking-wider flex items-center gap-1.5 shrink-0 uppercase mr-1">
-              <span>📚</span>
-              <span>书本系列:</span>
-            </span>
-
-            {Object.keys(categoryGroups).length === 0 ? (
-              <span className="text-xs text-slate-500 italic">
-                {isLoading ? '🛰️ 载入目录中...' : '暂无书本，请点击右侧“新建书本”'}
-              </span>
-            ) : (
-              Object.entries(categoryGroups).map(([categoryName, chapterList]) => {
-                const isActive = activeCategory === categoryName;
-                const totalWords = chapterList.reduce((acc, c) => acc + (c.word_count || 0), 0);
-                return (
-                  <button
-                    key={categoryName}
-                    type="button"
-                    onClick={() => handleSelectCategory(categoryName)}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shrink-0 cursor-pointer ${
-                      isActive
-                        ? 'bg-cyan-500 text-slate-950 shadow-md shadow-cyan-500/20 font-black scale-102'
-                        : 'bg-slate-950/80 border border-slate-800 text-slate-300 hover:text-white hover:border-slate-700 hover:bg-slate-850'
-                    }`}
-                  >
-                    <span>{isActive ? '📖' : '📚'}</span>
-                    <span>{categoryName}</span>
-                    <span
-                      className={`text-[10px] px-1.5 py-0.5 rounded-md font-mono ${
-                        isActive
-                          ? 'bg-slate-950/20 text-slate-950 font-bold'
-                          : 'bg-slate-800/80 text-cyan-400'
-                      }`}
-                    >
-                      {chapterList.length}章 · {totalWords}词
-                    </span>
-                  </button>
-                );
-              })
-            )}
-          </div>
-
-          <button
-            type="button"
-            onClick={() => openCreateModal('')}
-            className="text-xs bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/30 text-cyan-300 font-bold px-3 py-1.5 rounded-xl transition-all flex items-center gap-1.5 cursor-pointer shrink-0"
-            title="新建一本全新的词单书"
-          >
-            <span>➕</span>
-            <span>新建书本</span>
-          </button>
-        </div>
-
-        {/* Tier 2: Chapter Selector Pills Bar */}
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex flex-wrap items-center gap-2 flex-1 min-w-0 py-0.5">
-            <span className="text-xs font-black text-slate-400 tracking-wider flex items-center gap-1.5 shrink-0 uppercase mr-1">
-              <span>📄</span>
-              <span>章节目录:</span>
-            </span>
-
-            {currentCategoryChapters.length === 0 ? (
-              <span className="text-xs text-amber-400/80 italic">
-                《{activeCategory}》系列下暂无章节，请点击右侧“新增章节”
-              </span>
-            ) : (
-              currentCategoryChapters.map((chapter) => {
-                const isSelected = selectedBookId === chapter.id;
-                return (
-                  <button
-                    key={chapter.id}
-                    type="button"
-                    onClick={() => setSelectedBookId(chapter.id)}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all flex items-center gap-1.5 shrink-0 cursor-pointer ${
-                      isSelected
-                        ? 'bg-gradient-to-r from-cyan-500/20 to-indigo-500/20 border border-cyan-400 text-white font-black shadow-md'
-                        : 'bg-slate-950/80 border border-slate-800/80 text-slate-300 hover:text-white hover:border-slate-700 hover:bg-slate-850'
-                    }`}
-                  >
-                    <span>{isSelected ? '🎯' : '📄'}</span>
-                    <span>{chapter.title}</span>
-                    <span
-                      className={`text-[10px] px-1.5 py-0.2 rounded font-mono ${
-                        isSelected
-                          ? 'bg-cyan-400 text-slate-950 font-bold'
-                          : 'bg-slate-800 text-slate-400'
-                      }`}
-                    >
-                      {chapter.word_count || 0}词
-                    </span>
-                  </button>
-                );
-              })
-            )}
-          </div>
-
-          {/* Chapter Quick Actions */}
-          <div className="flex items-center gap-2 shrink-0">
-            <button
-              type="button"
-              onClick={() => openCreateModal(activeCategory)}
-              className="text-xs bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 font-bold px-2.5 py-1.5 rounded-xl transition-all flex items-center gap-1 cursor-pointer"
-              title={`在《${activeCategory}》下新增章节`}
-            >
-              <span>➕</span>
-              <span>新增章节</span>
-            </button>
-
-            {selectedBook && (
-              <>
-                <button
-                  type="button"
-                  onClick={() => openEditModal(selectedBook)}
-                  className="text-xs bg-slate-800/80 hover:bg-slate-700 border border-slate-700 text-slate-300 hover:text-white font-bold px-2.5 py-1.5 rounded-xl transition-all flex items-center gap-1 cursor-pointer"
-                  title="修改当前章节信息"
-                >
-                  <span>✏️</span>
-                  <span>编辑本章</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    setAccessModalBook(selectedBook);
-                    setAccessModalUserIds(selectedBook.assigned_user_ids || []);
-                  }}
-                  className="text-xs bg-slate-800/80 hover:bg-slate-700 border border-slate-700 text-slate-300 hover:text-white font-bold px-2.5 py-1.5 rounded-xl transition-all flex items-center gap-1 cursor-pointer"
-                  title="设置学员归属权限"
-                >
-                  <span>👥</span>
-                  <span>归属设置</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => handleDeleteBook(selectedBook.id, selectedBook.title)}
-                  className="text-xs bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 text-rose-300 font-bold px-2.5 py-1.5 rounded-xl transition-all flex items-center gap-1 cursor-pointer"
-                  title="删除当前章节"
-                >
-                  <span>🗑️</span>
-                  <span>删除本章</span>
-                </button>
-              </>
-            )}
-          </div>
-        </div>
-      </div>
 
       {/* Main Full-Width Studio Workbench */}
       <main className="w-full flex flex-col gap-6">
@@ -1009,6 +1182,20 @@ export const WordBankManager: React.FC = () => {
                         <span className="text-[11px] font-mono px-2 py-0.5 rounded-full bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 font-bold">
                           已识别 {parsedWordsCount} 个生词
                         </span>
+                        {words.length > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const existingWordList = Array.from(new Set(words.map((w) => w.word?.trim()).filter(Boolean)));
+                              setRawWordsInput(existingWordList.join(', '));
+                            }}
+                            title="重新载入本章节当前已有的所有词条"
+                            className="text-[11px] font-mono px-2 py-0.5 rounded-full bg-slate-800/80 hover:bg-slate-700 border border-slate-700 text-slate-300 transition-all flex items-center gap-1 cursor-pointer"
+                          >
+                            <span>↻</span>
+                            <span>重置为本章词条</span>
+                          </button>
+                        )}
                       </div>
 
                       {/* AI CLI & Model Settings */}
@@ -1027,9 +1214,9 @@ export const WordBankManager: React.FC = () => {
                           onChange={(e) => setAiModel(e.target.value)}
                           className="bg-slate-900 border border-slate-700 text-slate-200 text-xs px-2.5 py-1 rounded-lg outline-none focus:border-cyan-400 cursor-pointer font-mono"
                         >
-                          <option value="gemini-3.7-flash-low">Gemini 3.7 Flash (极速 Low · 推荐)</option>
-                          <option value="gemini-3.7-flash-high">Gemini 3.7 Flash (High)</option>
-                          <option value="gemini-3.7-flash-medium">Gemini 3.7 Flash (Medium)</option>
+                          <option value="gemini-3.8-flash-low">Gemini 3.8 Flash (极速 Low · 推荐)</option>
+                          <option value="gemini-3.8-flash-high">Gemini 3.8 Flash (High)</option>
+                          <option value="gemini-3.8-flash-medium">Gemini 3.8 Flash (Medium)</option>
                           <option value="gemini-3.6-flash-low">Gemini 3.6 Flash (Low)</option>
                         </select>
                       </div>
@@ -1462,9 +1649,13 @@ export const WordBankManager: React.FC = () => {
           ) : (
             <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-16 text-center text-slate-500 space-y-4">
               <div className="text-5xl">📚</div>
-              <h3 className="text-slate-300 font-bold text-base">请在上方选择或创建章节词单</h3>
+              <h3 className="text-slate-300 font-bold text-base">
+                {storyTitle ? `故事《${storyTitle}》专属生词库暂未添加单词` : '请在上方选择或创建章节词单'}
+              </h3>
               <p className="text-xs text-slate-500 max-w-md mx-auto">
-                已启用全宽横向排版，为英文例句、地道中文翻译与词源构词提供 100% 充裕空间。
+                {storyTitle
+                  ? '本故事专属生词库已准备就绪，切换至「生词导入与 AI 赋能工作台」即可一键批量录入！'
+                  : '已启用全宽横向排版，为英文例句、地道中文翻译与词源构词提供 100% 充裕空间。'}
               </p>
               <button
                 type="button"
@@ -1472,7 +1663,7 @@ export const WordBankManager: React.FC = () => {
                 className="mt-2 px-4 py-2 bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-xs rounded-xl shadow-md transition-all cursor-pointer inline-flex items-center gap-1.5"
               >
                 <span>➕</span>
-                <span>为《{activeCategory}》新建章节</span>
+                <span>{storyTitle ? `为《${storyTitle}》创建专属章节` : `为《${activeCategory}》新建章节`}</span>
               </button>
             </div>
           )}

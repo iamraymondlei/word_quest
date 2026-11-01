@@ -1,16 +1,21 @@
 {
   "agy": {
-    "default_model": "gemini-3.7-flash-high",
+    "default_model": "gemini-3.8-flash-high",
     "models": [
       {
-        "id": "gemini-3.7-flash-low",
-        "name": "Gemini 3.7 Flash (Low)",
-        "description": "Fastest low reasoning"
+        "id": "gemini-3.8-flash-high",
+        "name": "Gemini 3.8 Flash (High)",
+        "description": "High capability multimodal, recommended (Default)"
       },
       {
-        "id": "gemini-3.6-flash-low",
-        "name": "Gemini 3.6 Flash (Low)",
-        "description": "Lightweight multimodal"
+        "id": "gemini-3.8-flash-medium",
+        "name": "Gemini 3.8 Flash (Medium)",
+        "description": "Medium reasoning effort"
+      },
+      {
+        "id": "gemini-3.8-flash-low",
+        "name": "Gemini 3.8 Flash (Low)",
+        "description": "Fastest low reasoning"
       }
     ]
   },

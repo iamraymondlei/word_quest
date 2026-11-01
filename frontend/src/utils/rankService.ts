@@ -80,13 +80,13 @@ export const CAREER_TIERS: RankTier[] = [
   {
     id: 'T1',
     order: 1,
-    name: '启航学员',
+    name: 'Cadet',
     nameEn: 'Cadet',
     badge: '🧭',
-    summary: '踏入单词冒险岛，探索经典英语绘本，打下扎实听说读拼基石。',
+    summary: 'Begin your adventure on Word Quest Island. Read classic picture books and build solid English fundamentals.',
     minExp: 0,
     maxExp: 130000,
-    perkSummary: '解锁萌宠伙伴 Rex 🦖 / Bop 🐰 · 原著绘本双语原声跟读',
+    perkSummary: 'Unlock companions Rex 🦖 & Bop 🐰 · Read aloud with bilingual audio',
     theme: {
       badgeBg: 'bg-cyan-950/80',
       badgeBorder: 'border-cyan-500/50',
@@ -103,58 +103,58 @@ export const CAREER_TIERS: RankTier[] = [
         minExp: 0,
         maxExp: 15000,
         span: 15000,
-        title: '启航学员 Lv.1',
-        description: '初识星际绘本，稳健踏出英语探险第一步。',
-        perk: '基础探险徽章'
+        title: 'Cadet Lv.1',
+        description: 'Explore storybooks and take your first confident steps in English.',
+        perk: 'Basic Explorer Badge'
       },
       {
         level: 2,
         minExp: 15000,
         maxExp: 40000,
         span: 25000,
-        title: '启航学员 Lv.2',
-        description: '熟练掌握自然拼读与初级词汇，阅读渐入佳境。',
-        perk: '解锁双倍复习加成提示'
+        title: 'Cadet Lv.2',
+        description: 'Master phonics and early vocabulary with growing fluency.',
+        perk: 'Double Review Bonus Tip'
       },
       {
         level: 3,
         minExp: 40000,
         maxExp: 70000,
         span: 30000,
-        title: '启航学员 Lv.3',
-        description: '绘本连贯朗读进阶，听力与口语反应更加敏捷。',
-        perk: '专属青铜探险身份框'
+        title: 'Cadet Lv.3',
+        description: 'Advance your read-aloud skills with sharper listening and speaking reflexes.',
+        perk: 'Bronze Explorer Frame'
       },
       {
         level: 4,
         minExp: 70000,
         maxExp: 100000,
         span: 30000,
-        title: '启航学员 Lv.4',
-        description: '高频核心词汇库大扩容，冲刺 1 阶大圆满！',
-        perk: '解锁城堡追逐极速技能'
+        title: 'Cadet Lv.4',
+        description: 'Expand your core word bank and gear up for tier mastery!',
+        perk: 'Castle Chase Speed Boost'
       },
       {
         level: 5,
         minExp: 100000,
         maxExp: 130000,
         span: 30000,
-        title: '启航学员 Lv.5',
-        description: '第 1 职阶极境大圆满，开启星轨游侠转职试炼。',
-        perk: '星轨转职试炼认证'
+        title: 'Cadet Lv.5',
+        description: 'Complete Tier 1 mastery and unlock the Ranger Trial.',
+        perk: 'Ranger Trial Certification'
       }
     ]
   },
   {
     id: 'T2',
     order: 2,
-    name: '星轨游侠',
+    name: 'Ranger',
     nameEn: 'Ranger',
     badge: '🏹',
-    summary: '突破初阶壁垒，掌握千词大关，如同在星轨中自由穿梭的神箭手。',
+    summary: 'Break through foundational limits and master 1,000+ words like a nimble space ranger.',
     minExp: 130000,
     maxExp: 400000,
-    perkSummary: '解锁星轨伙伴 Leo 🦁 / Spark ⚡ · 翡翠流光微舱外环 · 太空防卫专属护盾',
+    perkSummary: 'Unlock companions Leo 🦁 & Spark ⚡ · Emerald aura ring · Space Defender shield',
     theme: {
       badgeBg: 'bg-emerald-950/80',
       badgeBorder: 'border-emerald-500/50',
@@ -171,58 +171,58 @@ export const CAREER_TIERS: RankTier[] = [
         minExp: 130000,
         maxExp: 170000,
         span: 40000,
-        title: '星轨游侠 Lv.1',
-        description: '成功破茧成蝶！成为全站首位踏入第 2 职阶的领跑先锋。',
-        perk: '翡翠星轨专属徽章'
+        title: 'Ranger Lv.1',
+        description: 'Step into Tier 2 as a leading vanguard across the island.',
+        perk: 'Emerald Ranger Badge'
       },
       {
         level: 2,
         minExp: 170000,
         maxExp: 220000,
         span: 50000,
-        title: '星轨游侠 Lv.2',
-        description: '中阶星域稳步积累，单词盲拼准确率达 95% 以上。',
-        perk: '太空战机连击音效'
+        title: 'Ranger Lv.2',
+        description: 'Build intermediate vocab with 95%+ spelling accuracy.',
+        perk: 'Arcade Combo Sound Effects'
       },
       {
         level: 3,
         minExp: 220000,
         maxExp: 275000,
         span: 55000,
-        title: '星轨游侠 Lv.3',
-        description: '词法句型融会贯通，自主阅读长篇冒险绘本毫无障碍。',
-        perk: '绿野游侠动态头像框'
+        title: 'Ranger Lv.3',
+        description: 'Integrate syntax and grammar to read full stories independently.',
+        perk: 'Emerald Animated Frame'
       },
       {
         level: 4,
         minExp: 275000,
         maxExp: 335000,
         span: 60000,
-        title: '星轨游侠 Lv.4',
-        description: '深谙生词构词拆解，词汇宝库收录突破两千词大关。',
-        perk: '探索加速光环'
+        title: 'Ranger Lv.4',
+        description: 'Deconstruct root words and expand vocabulary past 2,000 words.',
+        perk: 'Quest Acceleration Aura'
       },
       {
         level: 5,
         minExp: 335000,
         maxExp: 400000,
         span: 65000,
-        title: '星轨游侠 Lv.5',
-        description: '游侠巅峰圆满！具备带领小队穿梭深空星云的深厚底蕴。',
-        perk: '深空跃迁准入许可'
+        title: 'Ranger Lv.5',
+        description: 'Achieve Ranger mastery and prepare to navigate deep space nebulas.',
+        perk: 'Deep Space Warp Permit'
       }
     ]
   },
   {
     id: 'T3',
     order: 3,
-    name: '深空先锋',
+    name: 'Vanguard',
     nameEn: 'Vanguard',
     badge: '⚡',
-    summary: '征战深空星海，应对复杂句型与高级词汇，听辨与阅读母语化。',
+    summary: 'Conquer deep space challenges with complex sentences and native-like reading speed.',
     minExp: 400000,
     maxExp: 1000000,
-    perkSummary: '解锁深空伙伴 Cyber-Mecha · 紫晶雷电外环 · 高阶词汇秒级速记特权',
+    perkSummary: 'Unlock Cyber-Mecha · Amethyst lightning aura · Instant vocab recall',
     theme: {
       badgeBg: 'bg-purple-950/80',
       badgeBorder: 'border-purple-500/50',
@@ -239,58 +239,58 @@ export const CAREER_TIERS: RankTier[] = [
         minExp: 400000,
         maxExp: 500000,
         span: 100000,
-        title: '深空先锋 Lv.1',
-        description: '踏入深空先锋领域，开启高级段落深度理解探险。',
-        perk: '紫晶雷电先锋徽章'
+        title: 'Vanguard Lv.1',
+        description: 'Enter the Vanguard frontier with deep comprehension of advanced passages.',
+        perk: 'Amethyst Vanguard Badge'
       },
       {
         level: 2,
         minExp: 500000,
         maxExp: 610000,
         span: 110000,
-        title: '深空先锋 Lv.2',
-        description: '英文思维逐步建立，长难句段落速读一目十行。',
-        perk: '深空探索加速'
+        title: 'Vanguard Lv.2',
+        description: 'Think naturally in English and scan lengthy passages effortlessly.',
+        perk: 'Deep Space Speed Boost'
       },
       {
         level: 3,
         minExp: 610000,
         maxExp: 730000,
         span: 120000,
-        title: '深空先锋 Lv.3',
-        description: '语调语流精准地道，口语录音评分屡创全站新高。',
-        perk: '先锋专属动态铭牌'
+        title: 'Vanguard Lv.3',
+        description: 'Deliver authentic intonation and rhythm with top-tier oral scores.',
+        perk: 'Vanguard Dynamic Nameplate'
       },
       {
         level: 4,
         minExp: 730000,
         maxExp: 860000,
         span: 130000,
-        title: '深空先锋 Lv.4',
-        description: '单词拼写盲打达到职业电竞级手速，百词通关零失误。',
-        perk: '紫晶粒子轨迹特效'
+        title: 'Vanguard Lv.4',
+        description: 'Achieve lightning typing precision across hundreds of words.',
+        perk: 'Amethyst Particle Trail'
       },
       {
         level: 5,
         minExp: 860000,
         maxExp: 1000000,
         span: 140000,
-        title: '深空先锋 Lv.5',
-        description: '跨越百万经验门槛！成就深空全域瞩目传奇学者。',
-        perk: '星系领航官受勋礼'
+        title: 'Vanguard Lv.5',
+        description: 'Surpass 1,000,000 EXP and stand out as an acclaimed explorer!',
+        perk: 'Navigator Honor Ceremony'
       }
     ]
   },
   {
     id: 'T4',
     order: 4,
-    name: '星系领航官',
+    name: 'Navigator',
     nameEn: 'Navigator',
     badge: '🌌',
-    summary: '掌控全星系知识星图，全本原著自主品读，探险队长级风范。',
+    summary: 'Command the galactic knowledge map and read full chapter books with captain poise.',
     minExp: 1000000,
     maxExp: 2500000,
-    perkSummary: '解锁星系领航伙伴 Golden-Dragon · 黄金流光星云边框 · 全图通关金牌徽章',
+    perkSummary: 'Unlock Golden-Dragon · Golden nebula frame · Golden master badge',
     theme: {
       badgeBg: 'bg-amber-950/80',
       badgeBorder: 'border-amber-500/50',
@@ -307,58 +307,58 @@ export const CAREER_TIERS: RankTier[] = [
         minExp: 1000000,
         maxExp: 1250000,
         span: 250000,
-        title: '星系领航官 Lv.1',
-        description: '身披黄金领航勋章，自主掌舵阅读长篇章节书。',
-        perk: '黄金领航官边框'
+        title: 'Navigator Lv.1',
+        description: 'Wear the golden navigator insignia and helm long chapter books.',
+        perk: 'Golden Navigator Frame'
       },
       {
         level: 2,
         minExp: 1250000,
         maxExp: 1520000,
         span: 270000,
-        title: '星系领航官 Lv.2',
-        description: '英语阅读如同母语般自然流利，理解深刻透彻。',
-        perk: '星系流星轨迹'
+        title: 'Navigator Lv.2',
+        description: 'Read English with native fluency and profound comprehension.',
+        perk: 'Meteor Trail Effect'
       },
       {
         level: 3,
         minExp: 1520000,
         maxExp: 1810000,
         span: 290000,
-        title: '星系领航官 Lv.3',
-        description: '听力秒级条件反射，无需翻译直接进入情景思维。',
-        perk: '星系智慧光冠'
+        title: 'Navigator Lv.3',
+        description: 'Understand instantly without translation, thinking directly in context.',
+        perk: 'Galactic Wisdom Crown'
       },
       {
         level: 4,
         minExp: 1810000,
         maxExp: 2130000,
         span: 320000,
-        title: '星系领航官 Lv.4',
-        description: '星系全域绘本大满贯，词汇储备达三千五百词以上。',
-        perk: '领航官金色披风'
+        title: 'Navigator Lv.4',
+        description: 'Complete the entire galaxy of storybooks with 3,500+ words.',
+        perk: 'Golden Navigator Cape'
       },
       {
         level: 5,
         minExp: 2130000,
         maxExp: 2500000,
         span: 370000,
-        title: '星系领航官 Lv.5',
-        description: '登顶星系天花板！即将跨入至高无上的宇宙传奇殿堂。',
-        perk: '宇宙传奇殿堂钥匙'
+        title: 'Navigator Lv.5',
+        description: 'Reach the galactic summit and unlock the gateway to Legend.',
+        perk: 'Cosmic Legend Key'
       }
     ]
   },
   {
     id: 'T5',
     order: 5,
-    name: '宇宙传奇',
+    name: 'Legend',
     nameEn: 'Legend',
     badge: '👑',
-    summary: '登峰造极，学贯星海。成为万众敬仰的单词冒险岛巅峰传奇大师！',
+    summary: 'Reach the pinnacle of mastery as a revered legend across all Word Quest islands!',
     minExp: 2500000,
     maxExp: Infinity,
-    perkSummary: '解锁全特效幻彩霓虹动态外环 · 宇宙至尊传奇神座 · 全岛屿免锁畅游',
+    perkSummary: 'Unlock Neon Prism Ring · Cosmic Throne · Free island access',
     theme: {
       badgeBg: 'bg-rose-950/80',
       badgeBorder: 'border-rose-500/50',
@@ -375,45 +375,45 @@ export const CAREER_TIERS: RankTier[] = [
         minExp: 2500000,
         maxExp: 3000000,
         span: 500000,
-        title: '宇宙传奇 Lv.1',
-        description: '步入传奇圣殿！佩戴至尊皇冠，享受全站膜拜。',
-        perk: '幻彩霓虹传奇皇冠'
+        title: 'Legend Lv.1',
+        description: 'Step into the Hall of Legends crowned with supreme honor.',
+        perk: 'Neon Legend Crown'
       },
       {
         level: 2,
         minExp: 3000000,
         maxExp: 3600000,
         span: 600000,
-        title: '宇宙传奇 Lv.2',
-        description: '殿堂级学者荣誉，英语认知与表达全面达标国际母语同龄段。',
-        perk: '宇宙粒子环绕'
+        title: 'Legend Lv.2',
+        description: 'Master international grade-level reading, writing, and speaking.',
+        perk: 'Cosmic Particle Orbit'
       },
       {
         level: 3,
         minExp: 3600000,
         maxExp: 4300000,
         span: 700000,
-        title: '宇宙传奇 Lv.3',
-        description: '通晓文学与科学双域原版读物，思想与语言并驾齐驱。',
-        perk: '全域至尊荣耀'
+        title: 'Legend Lv.3',
+        description: 'Explore literature and science classics with ease and insight.',
+        perk: 'Omni-Realm Prestige'
       },
       {
         level: 4,
         minExp: 4300000,
         maxExp: 5100000,
         span: 800000,
-        title: '宇宙传奇 Lv.4',
-        description: '星河霸主风采，每一次挑战都是完美的艺术级展示。',
-        perk: '宇宙神话徽标'
+        title: 'Legend Lv.4',
+        description: 'Display artistic mastery in every quest, challenge, and race.',
+        perk: 'Mythic Cosmic Insignia'
       },
       {
         level: 5,
         minExp: 5100000,
         maxExp: Infinity,
         span: 1000000,
-        title: '宇宙传奇 Lv.5 (极境满星)',
-        description: '巅峰永恒传奇！五大职阶全满贯，解锁全服唯一至尊终极特权。',
-        perk: '终极满星永恒荣耀'
+        title: 'Legend Lv.5 (Max)',
+        description: 'Eternal Legend! All 5 tiers mastered with ultimate lifetime prestige.',
+        perk: 'Eternal Master Glory'
       }
     ]
   }
@@ -469,8 +469,8 @@ export function calcRankProgress(coins: number = 0): RankProgress {
   const currentTierIndex = CAREER_TIERS.findIndex(t => t.id === matchedTier.id);
   const nextTier = currentTierIndex < CAREER_TIERS.length - 1 ? CAREER_TIERS[currentTierIndex + 1] : undefined;
 
-  const fullTitle = `${matchedTier.badge} ${matchedTier.name} Lv.${matchedLevelConfig.level}`;
-  const shortTitle = `${matchedTier.name} Lv.${matchedLevelConfig.level}`;
+  const fullTitle = `${matchedTier.badge} ${matchedTier.nameEn} Lv.${matchedLevelConfig.level}`;
+  const shortTitle = `${matchedTier.nameEn} Lv.${matchedLevelConfig.level}`;
 
   return {
     tierId: matchedTier.id,

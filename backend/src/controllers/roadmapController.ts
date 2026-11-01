@@ -624,6 +624,45 @@ export const INITIAL_ROADMAP_ITEMS = [
     priority: 'HIGH'
   },
 
+  // ==========================================
+  // Phase 12: 单词宝库学情记录与生词弱项攻坚体系
+  // ==========================================
+  {
+    id: 'TASK-12.1',
+    title: '单词宝库学情记录与生词弱项攻坚体系 (Vocabulary Progress Tracking & Weak Words Mastery System)',
+    category: 'gameplay',
+    category_label: '学情追踪与挑战游戏',
+    status: 'COMPLETED',
+    version: 'v2.9.5 (已上线)',
+    date_str: '2026-10-03',
+    summary: '【排期确定】针对单词宝库“看句选义”与“听音拼写”模式，建立作答流水明细与独立模式掌握汇总双层架构；实现客户端 ID (UUID) 幂等去重防重复累加、离线队列补传与旧版平滑兼容；在管理端与学员端提供生词榜（不熟悉度排序）与错词专项强化练题闭环。',
+    steps_json: [
+      '数据架构双层升级：新增 vocabulary_attempts 作答明细流水表（记录 client_id, user_id, vocab_id, mode, is_correct, answer, duration_ms）与 user_vocabulary_mode_stats 模式汇总表（记录 correct_count, error_count, streak 连对数, last_result, last_practiced_at），保留原有 user_vocabulary_progress 兼容已有标记与经验发放。',
+      '客户端唯一 ID 幂等与去重机制：作答时客户端生成 UUID (clientId)，服务端在事务中先 INSERT IGNORE 写入流水表，命中唯一键冲突则判定重复提交并返回 duplicate 标识，避免网络抖动或离线重复同步造成作答次数与经验金币虚高；首个版本对缺失 clientId 的旧请求采取平滑放行兜底。',
+      '离线断网与后台自动补传增强：升级 offlineStorage.ts 与 apiService.ts，断网时作答记录携带 clientId 写入本地 IndexedDB 缓存并入队 vocab_progress 同步队列，联网后静默原子同步；本地离线缓存同步累加计数，确保弱网与无网环境下本地学情立即可见。',
+      '动态不熟悉度算法与掌握状态判定：设计加权不熟悉度公式（总答题 ≥ 2 次生效，综合错误率、最近答错时效衰减与连对折扣），连续答对 3 次触发该模式已掌握（mastered=1）；答错实时清零 streak 连击。',
+      '双端学情看板与生词榜：后端提供 GET /api/users/:userId/vocabulary-stats 接口；Admin 管理后台呈现全量指标与错误率透视分析；学员端呈现温和鼓励式的“需要多练的单词”清单，保护儿童学习自信心。',
+      '错词专项攻坚挑战通道：新增错词练习出题接口 GET /api/users/:userId/vocabulary-stats/practice-words，高优提取弱项单词并无缝接入看句选义与听音拼写引擎，实现“练-错-记-查-攻坚”的完整教学闭环。'
+    ],
+    affected_files_json: [
+      'db/init.sql',
+      'backend/src/controllers/wordBookController.ts',
+      'backend/src/controllers/roadmapController.ts',
+      'frontend/src/components/ProjectRoadmap.tsx',
+      'frontend/src/components/ParentDashboard.tsx',
+      'frontend/src/components/WordBankMap.tsx',
+      'frontend/src/components/WordBankModal.tsx',
+      'frontend/src/utils/apiService.ts',
+      'frontend/src/utils/offlineStorage.ts',
+      'docs/DATA_MODEL.md',
+      'docs/API.md',
+      'docs/REQUIREMENTS.md'
+    ],
+    technical_notes: '1. 去重与事务保障：利用 (user_id, client_id) 联合唯一约束保证幂等，汇总表通过 ON DUPLICATE KEY UPDATE 实现单行原子递增，彻底消除高频连击并发丢更新的问题；\\n2. 兼容性设计：旧版 user_vocabulary_progress 的 error_count 保持继续累加，不破坏已有逻辑；缺失 clientId 的旧离线客户端由服务端自动补全 UUID，保障过渡期版本平稳；\\n3. 离线一致性：Web Speech 原生发音与本地 IndexedDB 保证即使纯单机离线也能正常练习与记录，联网后增量幂等合并；\\n4. 心理学与双端体验差异化：管理端透视客观错误率与错词频次，学员端采用正向激励语态（“攻坚星词”、“多练几次就能拿下”），避免产生挫败感；\\n5. 测试数据库隔离：所有后端自动化测试严格运行于专用 TEST_DB_NAME，杜绝污染正式数据。',
+    verification: '1. 在看句选义或听音拼写中连续答题，MySQL vocabulary_attempts 流水表精准记录每题答案、耗时与 clientId；\\n2. 模拟弱网与断网（PWA 离线模式），在本地完成答题并在 IndexedDB 中暂存，恢复网络后自动触发队列同步；\\n3. 抓包拦截重复发送相同 clientId 的同步请求，后端返回 duplicate: true，答对/答错次数与经验金币不重复累加；\\n4. 同一单词连续答对 3 次，模式 streak 达到 3 且自动标记掌握；答错 1 次，streak 归零并正确增加 error_count；\\n5. 访问 Admin 后台与学员端，生词榜按不熟悉度精准排序，且能一键启动错词专练挑战；\\n6. 运行 cd backend && npm test 与 cd frontend && npm run build 顺利通过。',
+    priority: 'HIGH'
+  },
+
   // 确定加入 (CONFIRMED)
   {
     id: 'FEAT-CONFIRM-01',
@@ -992,6 +1031,35 @@ export const getRoadmapItems = async (req: Request, res: Response) => {
           rewardPlan.technical_notes,
           rewardPlan.verification,
           rewardPlan.priority || 'HIGH'
+        ]
+      );
+    }
+    // Ensure TASK-12.1 is inserted or updated in project_roadmap_tasks
+    const vocabTrackingPlan = INITIAL_ROADMAP_ITEMS.find((item) => item.id === 'TASK-12.1');
+    if (vocabTrackingPlan) {
+      await pool.query(
+        `INSERT INTO project_roadmap_tasks
+         (id, title, category, category_label, status, version, date_str, summary, steps_json, affected_files_json, technical_notes, verification, priority)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON DUPLICATE KEY UPDATE
+           title = VALUES(title), category = VALUES(category), category_label = VALUES(category_label),
+           status = VALUES(status), version = VALUES(version), date_str = VALUES(date_str),
+           summary = VALUES(summary), steps_json = VALUES(steps_json), affected_files_json = VALUES(affected_files_json),
+           technical_notes = VALUES(technical_notes), verification = VALUES(verification), priority = VALUES(priority)`,
+        [
+          vocabTrackingPlan.id,
+          vocabTrackingPlan.title,
+          vocabTrackingPlan.category,
+          vocabTrackingPlan.category_label,
+          vocabTrackingPlan.status,
+          vocabTrackingPlan.version,
+          vocabTrackingPlan.date_str,
+          vocabTrackingPlan.summary,
+          JSON.stringify(vocabTrackingPlan.steps_json),
+          JSON.stringify(vocabTrackingPlan.affected_files_json),
+          vocabTrackingPlan.technical_notes,
+          vocabTrackingPlan.verification,
+          vocabTrackingPlan.priority || 'HIGH'
         ]
       );
     }

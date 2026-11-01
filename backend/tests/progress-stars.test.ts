@@ -29,7 +29,7 @@ describe('Progress star accounting', () => {
   it('awards exactly one star for each completed subtask and ignores an uncompleted subtask', async () => {
     queryMock.mockImplementation(async (sql: string, params?: unknown[]) => {
       if (sql.includes('INSERT INTO user_island_progress')) {
-        expect(params).toEqual([21, 7, 4, 4]);
+        expect(params).toEqual([21, 7, 4, 4, null]);
         return [{ affectedRows: 1 }];
       }
       if (sql.includes('UPDATE users u') && sql.includes('WHERE u.id = ?')) {
@@ -102,7 +102,7 @@ describe('Progress star accounting', () => {
     expect(calculationSql).toContain('WHEN unlocked_stage = 3 THEN 3');
     expect(calculationSql).toContain('WHEN unlocked_stage = 4 THEN 7');
     expect(calculationSql).toContain('WHEN unlocked_stage >= 5 THEN 15');
-    expect(calculationSql).toContain(')) & 15');
+    expect(calculationSql).toContain(')) & 31');
     expect(calculationSql).toContain(
       'SET u.stars = COALESCE(prog.total_subtasks, 0)'
     );
@@ -157,7 +157,7 @@ describe('Progress star accounting', () => {
     expect(queryMock).toHaveBeenCalledTimes(1);
     const sql = queryMock.mock.calls[0][0] as string;
     expect(sql).toContain('SET u.stars = COALESCE(prog.total_subtasks, 0)');
-    expect(sql).toContain(')) & 15');
+    expect(sql).toContain(')) & 31');
     expect(sql).not.toMatch(/SET\s+u\.stars\s*=\s*u\.stars\s*\+/i);
   });
 
@@ -189,7 +189,7 @@ describe('Progress star accounting', () => {
 
     const aggregateSql = queryMock.mock.calls[1][0] as string;
     expect(aggregateSql).toContain('BIT_COUNT');
-    expect(aggregateSql).toContain(')) & 15');
+    expect(aggregateSql).toContain(')) & 31');
     expect(queryMock.mock.calls[1][1]).toEqual([73]);
   });
 

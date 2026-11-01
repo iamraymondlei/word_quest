@@ -14,7 +14,7 @@ class Settings:
     """Application settings loaded from environment variables."""
 
     # Model Configuration
-    GEMINI_MODEL: str = os.getenv("GEMINI_MODEL", "gemini-3.7-flash-high")
+    GEMINI_MODEL: str = os.getenv("GEMINI_MODEL", "gemini-3.8-flash-high")
     MODELS_CONFIG_PATH: str = os.getenv(
         "MODELS_CONFIG_PATH",
         os.path.join(os.path.dirname(__file__), "models_config.json")

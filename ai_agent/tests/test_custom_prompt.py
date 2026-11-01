@@ -105,7 +105,7 @@ async def test_missing_or_blank_prompt_forwards_none_for_default_fallback(
 
 def test_parser_default_prompt_uses_canonical_schema_template():
     assert SYSTEM_PROMPT == DEFAULT_SYSTEM_PROMPT
-    assert "{question_count}" in SYSTEM_PROMPT
+    assert "vocabulary" in SYSTEM_PROMPT
     assert "English education expert" in SYSTEM_PROMPT
 
 

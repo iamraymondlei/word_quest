@@ -8,52 +8,71 @@ import { SuspenseState } from './components/SuspenseState';
 import { FormBoundary } from './components/FormBoundary';
 import { WordBankMap } from './components/WordBankMap';
 import { SongAdventureMap } from './components/SongAdventureMap';
+import { TypingAdventureMap } from './components/TypingAdventureMap';
 import { AppSidebar, SidebarMode } from './components/AppSidebar';
 import { apiService } from './utils/apiService';
 import { OfflineSyncBadge } from './components/OfflineSyncBadge';
+import { ThinkChecklist } from './components/ThinkChecklist';
+import { GrammarAdventureMap } from './components/GrammarAdventureMap';
 import './index.css';
 
-type Mode = 'map' | 'admin' | 'game' | 'vocab' | 'songs';
+type Mode = 'map' | 'admin' | 'game' | 'vocab' | 'songs' | 'typing' | 'think' | 'grammar';
 
 export type ThemeType = 'cyber' | 'bright';
 export type FontScaleType = '100' | '115' | '130';
 
 const App: React.FC = () => {
-  const [currentPath, setCurrentPath] = useState<string>(() => window.location.pathname);
+  const [currentPath, setCurrentPath] = useState<string>(() => {
+    const p = window.location.pathname;
+    if (p === '/admin') {
+      const isAuth = sessionStorage.getItem('wordquest_admin_authenticated') === 'true';
+      const savedUser = localStorage.getItem('wordquest_user');
+      const parsedUser = savedUser ? JSON.parse(savedUser) : null;
+      if (isAuth && parsedUser?.is_admin === 1) {
+        return '/admin';
+      }
+      if (typeof window !== 'undefined') {
+        window.history.replaceState({}, '', '/');
+      }
+      return '/';
+    }
+    return p;
+  });
   const [selectedSongId, setSelectedSongId] = useState<number | null>(() => {
     const match = window.location.pathname.match(/^\/songs\/(\d+)/);
     return match ? Number(match[1]) : null;
   });
+  const [returnMode, setReturnMode] = useState<'map' | 'typing'>('map');
+  const [isFocusDrillOpen, setIsFocusDrillOpen] = useState<boolean>(false);
+  const [currentUser, setCurrentUser] = useState<any>(() => {
+    const saved = localStorage.getItem('wordquest_user') || localStorage.getItem('melearn_user');
+    return saved ? JSON.parse(saved) : null;
+  });
+  const [isAdminAuthenticated, setIsAdminAuthenticated] = useState<boolean>(() => {
+    return sessionStorage.getItem('wordquest_admin_authenticated') === 'true';
+  });
+
   const [mode, setMode] = useState<Mode>(() => {
     const p = window.location.pathname;
     if (p === '/vocab') return 'vocab';
+    if (p === '/typing') return 'typing';
     if (p.startsWith('/songs')) return 'songs';
-    if (p === '/admin') return 'admin';
+    if (p === '/think') return 'think';
+    if (p === '/grammar') return 'grammar';
+    if (p === '/admin') {
+      const isAuth = sessionStorage.getItem('wordquest_admin_authenticated') === 'true';
+      const savedUser = localStorage.getItem('wordquest_user');
+      const parsedUser = savedUser ? JSON.parse(savedUser) : null;
+      if (isAuth && parsedUser?.is_admin === 1) {
+        return 'admin';
+      }
+      if (typeof window !== 'undefined') {
+        window.history.replaceState({}, '', '/');
+      }
+      return 'map';
+    }
     return 'map';
   });
-
-  useEffect(() => {
-    const handlePopState = () => {
-      const p = window.location.pathname;
-      setCurrentPath(p);
-      if (p === '/') {
-        setMode('map');
-        setSelectedSongId(null);
-      } else if (p === '/vocab') {
-        setMode('vocab');
-        setSelectedSongId(null);
-      } else if (p.startsWith('/songs')) {
-        setMode('songs');
-        const match = p.match(/^\/songs\/(\d+)/);
-        setSelectedSongId(match ? Number(match[1]) : null);
-      } else if (p === '/admin') {
-        setMode('admin');
-        setSelectedSongId(null);
-      }
-    };
-    window.addEventListener('popstate', handlePopState);
-    return () => window.removeEventListener('popstate', handlePopState);
-  }, []);
 
   const navigateTo = (path: string) => {
     if (window.location.pathname !== path) {
@@ -62,22 +81,57 @@ const App: React.FC = () => {
     setCurrentPath(path);
   };
 
-  const [currentUser, setCurrentUser] = useState<any>(() => {
-    const saved = localStorage.getItem('wordquest_user') || localStorage.getItem('melearn_user');
-    return saved ? JSON.parse(saved) : null;
-  });
+  useEffect(() => {
+    const handlePopState = () => {
+      const p = window.location.pathname;
+      setCurrentPath(p);
+      if (p === '/') {
+        setMode('map');
+        setSelectedSongId(null);
+      } else if (p === '/typing') {
+        setMode('typing');
+        setSelectedSongId(null);
+      } else if (p === '/vocab') {
+        setMode('vocab');
+        setSelectedSongId(null);
+      } else if (p === '/think') {
+        setMode('think');
+        setSelectedSongId(null);
+      } else if (p === '/grammar') {
+        setMode('grammar');
+        setSelectedSongId(null);
+      } else if (p.startsWith('/songs')) {
+        setMode('songs');
+        const match = p.match(/^\/songs\/(\d+)/);
+        setSelectedSongId(match ? Number(match[1]) : null);
+      } else if (p === '/admin') {
+        const isAuth = sessionStorage.getItem('wordquest_admin_authenticated') === 'true';
+        if (isAuth && currentUser?.is_admin === 1) {
+          setMode('admin');
+          setSelectedSongId(null);
+        } else {
+          setMode('map');
+          setSelectedSongId(null);
+          navigateTo('/');
+        }
+      }
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, [currentUser]);
   const [islands, setIslands] = useState<Island[]>([]);
   const [selectedIsland, setSelectedIsland] = useState<Island | null>(null);
   const [gameMode, setGameMode] = useState<'story' | 'listening' | 'translation' | 'falling' | null>(null);
+  const [selectedSubMode, setSelectedSubMode] = useState<'reading' | 'testing' | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
   const [showVersionModal, setShowVersionModal] = useState<boolean>(false);
   const [versionHistory, setVersionHistory] = useState<any[]>([]);
 
   const [theme] = useState<ThemeType>('cyber');
   const [fontScale, setFontScale] = useState<FontScaleType>(() => {
-    const saved = localStorage.getItem('wordquest_font_scale') || localStorage.getItem('melearn_font_scale');
+    const saved = localStorage.getItem('wordquest_font_scale_v2');
     if (saved === '100' || saved === '115' || saved === '130') return saved as FontScaleType;
-    return '130';
+    return '100';
   });
 
   useEffect(() => {
@@ -86,7 +140,7 @@ const App: React.FC = () => {
     const rootFontSize = fontScale === '130' ? '20.8px' : fontScale === '115' ? '18.4px' : '16px';
     document.documentElement.style.fontSize = rootFontSize;
     localStorage.setItem('wordquest_theme', theme);
-    localStorage.setItem('wordquest_font_scale', fontScale);
+    localStorage.setItem('wordquest_font_scale_v2', fontScale);
   }, [theme, fontScale]);
 
   const totalStars = React.useMemo(() => {
@@ -99,7 +153,7 @@ const App: React.FC = () => {
         else if (stage === 4) mask = 7;
         else if (stage >= 5) mask = 15;
       }
-      const stars = (mask & 1 ? 1 : 0) + (mask & 2 ? 1 : 0) + (mask & 4 ? 1 : 0) + (mask & 8 ? 1 : 0);
+      const stars = (mask & 1 ? 1 : 0) + (mask & 2 ? 1 : 0) + (mask & 4 ? 1 : 0) + (mask & 8 ? 1 : 0) + (mask & 16 ? 1 : 0);
       return acc + stars;
     }, 0);
   }, [islands]);
@@ -153,34 +207,57 @@ const App: React.FC = () => {
   const handleLogin = (user: any) => {
     setCurrentUser(user);
     localStorage.setItem('wordquest_user', JSON.stringify(user));
+    if (user.is_admin === 1 || user.username?.toLowerCase() === 'admin') {
+      setIsAdminAuthenticated(true);
+      sessionStorage.setItem('wordquest_admin_authenticated', 'true');
+    } else {
+      setIsAdminAuthenticated(false);
+      sessionStorage.removeItem('wordquest_admin_authenticated');
+    }
+    // Always enter the frontend adventure map on login (never directly enter admin dashboard)
+    setMode('map');
+    setSelectedSongId(null);
+    navigateTo('/');
   };
 
   const handleLogout = () => {
+    sessionStorage.removeItem('wordquest_admin_authenticated');
+    setIsAdminAuthenticated(false);
     setCurrentUser(null);
     localStorage.removeItem('wordquest_user');
     localStorage.removeItem('melearn_user');
     setMode('map');
     setSelectedIsland(null);
     setGameMode(null);
+    setSelectedSubMode(null);
     setSelectedSongId(null);
+    navigateTo('/');
   };
 
-  const handleStartGame = (island: Island, mode: 'story' | 'listening' | 'translation' | 'falling') => {
+  const handleStartGame = (
+    island: Island,
+    mode: 'story' | 'listening' | 'translation' | 'falling',
+    subMode?: 'reading' | 'testing'
+  ) => {
     if (!island.words || island.words.length === 0) {
-      alert('⚠️ 该岛屿目前没有单词，请联系家长在后台导入单词 CSV！');
+      alert('⚠️ This story has no words yet. Please import words in the Parent Portal.');
       return;
     }
-    console.log('Starting game mode:', mode);
+    console.log('Starting game mode:', mode, subMode);
     setSelectedIsland(island);
     setGameMode(mode);
+    setSelectedSubMode(subMode || null);
     setMode('game');
   };
 
   const handleGameBack = () => {
-    setMode('map');
+    const targetMode = returnMode === 'typing' ? 'typing' : 'map';
+    setMode(targetMode);
     setSelectedIsland(null);
     setGameMode(null);
+    setSelectedSubMode(null);
     setSelectedSongId(null);
+    navigateTo(targetMode === 'typing' ? '/typing' : '/');
     if (currentUser) {
       loadIslands(currentUser.id, false);
       refreshUserProfile();
@@ -194,6 +271,20 @@ const App: React.FC = () => {
     if (currentUser) {
       loadIslands(currentUser.id, false);
     }
+  };
+
+  const handleAdminLogout = () => {
+    sessionStorage.removeItem('wordquest_admin_authenticated');
+    localStorage.setItem('wordquest_admin_tab_v2', 'dashboard');
+    setIsAdminAuthenticated(false);
+    if (currentUser?.is_admin === 1 || currentUser?.username?.toLowerCase() === 'admin') {
+      setCurrentUser(null);
+      localStorage.removeItem('wordquest_user');
+      localStorage.removeItem('wordquest_current_user');
+    }
+    setMode('map');
+    setSelectedSongId(null);
+    navigateTo('/');
   };
 
   // Listen for Escape key to close version modal
@@ -333,17 +424,33 @@ const App: React.FC = () => {
     );
   };
 
+  // Guard /admin route: strictly require authenticated Admin user
+  const isAuthorizedAdmin = isAdminAuthenticated && currentUser?.is_admin === 1;
+
   if (currentPath === '/admin' || mode === 'admin') {
-    return (
-      <div className="app-container relative">
-        <FormBoundary>
-          <ParentDashboard onBack={handleBackToMap} />
-        </FormBoundary>
-        {renderOfflineBadge()}
-        {renderDevBadge()}
-        {renderVersionModal()}
-      </div>
-    );
+    if (isAuthorizedAdmin && mode === 'admin') {
+      return (
+        <div className="app-container relative">
+          <FormBoundary>
+            <ParentDashboard onBack={handleBackToMap} onLogout={handleAdminLogout} />
+          </FormBoundary>
+          {renderOfflineBadge()}
+          {renderDevBadge()}
+          {renderVersionModal()}
+        </div>
+      );
+    }
+
+    // Block unauthorized address bar entry: rewrite URL to / and reset mode
+    if (typeof window !== 'undefined' && window.location.pathname === '/admin') {
+      window.history.replaceState({}, '', '/');
+    }
+    if (currentPath !== '/') {
+      setCurrentPath('/');
+    }
+    if (mode !== 'map') {
+      setMode('map');
+    }
   }
 
   const adminSongPreview = new URLSearchParams(window.location.search).get('preview') === 'admin'
@@ -373,9 +480,7 @@ const App: React.FC = () => {
       <div className="app-container relative">
         <SuspenseState isLoading={false}>
           <FormBoundary>
-            <UserSelect
-              onLogin={handleLogin}
-            />
+            <UserSelect onLogin={handleLogin} />
           </FormBoundary>
         </SuspenseState>
         {renderDevBadge()}
@@ -391,20 +496,37 @@ const App: React.FC = () => {
   if (mode === 'game' && selectedIsland && gameMode) {
     return (
       <div className="app-container relative">
-        <GamePlay
-          island={selectedIsland}
-          gameMode={gameMode}
-          currentUser={currentUser}
-          theme={theme}
-          fontScale={fontScale}
-          onFontScaleChange={setFontScale}
-          onBack={handleGameBack}
-          onProgressUpdated={() => {
-            if (currentUser) {
-              loadIslands(currentUser.id, false);
-            }
-          }}
-        />
+        <FormBoundary
+          fallback={
+            <div className="p-8 text-center text-rose-400 bg-slate-900 border border-rose-500/30 rounded-xl m-6 max-w-lg mx-auto">
+              <h2 className="text-lg font-bold mb-2">⚠️ 游戏界面遇到异常</h2>
+              <p className="text-sm text-slate-300 mb-4">发生了一个小错误，点击下方按钮可返回故事选择页或重试。</p>
+              <button
+                type="button"
+                onClick={handleGameBack}
+                className="px-4 py-2 bg-rose-600 hover:bg-rose-500 text-white rounded-lg font-bold cursor-pointer"
+              >
+                返回故事地图
+              </button>
+            </div>
+          }
+        >
+          <GamePlay
+            island={selectedIsland}
+            gameMode={gameMode}
+            initialMatchingSubMode={selectedSubMode || undefined}
+            currentUser={currentUser}
+            theme={theme}
+            fontScale={fontScale}
+            onFontScaleChange={setFontScale}
+            onBack={handleGameBack}
+            onProgressUpdated={() => {
+              if (currentUser) {
+                loadIslands(currentUser.id, false);
+              }
+            }}
+          />
+        </FormBoundary>
         {renderOfflineBadge()}
         {renderDevBadge()}
         {renderVersionModal()}
@@ -412,30 +534,21 @@ const App: React.FC = () => {
     );
   }
 
-  if (isSongRoute && activeSongId !== null) {
-    return (
-      <div className="app-container relative">
-        <SongLearning
-          songId={activeSongId}
-          userId={currentUser.id}
-          isAdmin={currentUser.is_admin === 1}
-          onBack={() => {
-            setSelectedSongId(null);
-            setMode('songs');
-            navigateTo('/songs');
-          }}
-        />
-        {renderDevBadge()}
-        {renderVersionModal()}
-      </div>
-    );
-  }
-
   const currentSidebarMode: SidebarMode =
-    mode === 'vocab' || currentPath === '/vocab'
+    isFocusDrillOpen
+      ? 'focus'
+      : mode === 'typing' || currentPath === '/typing'
+      ? 'typing'
+      : mode === 'vocab' || currentPath === '/vocab'
       ? 'vocab'
       : isSongRoute
       ? 'songs'
+      : mode === 'think' || currentPath === '/think'
+      ? 'think'
+      : mode === 'grammar' || currentPath === '/grammar'
+      ? 'grammar'
+      : mode === 'admin' || currentPath === '/admin'
+      ? 'admin'
       : 'map';
 
   return (
@@ -444,18 +557,47 @@ const App: React.FC = () => {
         currentMode={currentSidebarMode}
         onNavigate={(navMode) => {
           if (navMode === 'map') {
+            setIsFocusDrillOpen(false);
             setMode('map');
             setSelectedSongId(null);
             navigateTo('/');
             if (currentUser) loadIslands(currentUser.id, false);
+          } else if (navMode === 'admin') {
+            setIsFocusDrillOpen(false);
+            setMode('admin');
+            setSelectedSongId(null);
+            navigateTo('/admin');
+          } else if (navMode === 'typing') {
+            setIsFocusDrillOpen(false);
+            setMode('typing');
+            setSelectedSongId(null);
+            navigateTo('/typing');
+            if (currentUser) loadIslands(currentUser.id, false);
           } else if (navMode === 'vocab') {
+            setIsFocusDrillOpen(false);
+            setMode('vocab');
+            setSelectedSongId(null);
+            navigateTo('/vocab');
+          } else if (navMode === 'focus') {
+            setIsFocusDrillOpen(true);
             setMode('vocab');
             setSelectedSongId(null);
             navigateTo('/vocab');
           } else if (navMode === 'songs') {
+            setIsFocusDrillOpen(false);
             setMode('songs');
             setSelectedSongId(null);
             navigateTo('/songs');
+          } else if (navMode === 'think') {
+            setIsFocusDrillOpen(false);
+            setMode('think');
+            setSelectedSongId(null);
+            navigateTo('/think');
+          } else if (navMode === 'grammar') {
+            setIsFocusDrillOpen(false);
+            setMode('grammar');
+            setSelectedSongId(null);
+            navigateTo('/grammar');
           }
         }}
         currentUser={currentUser}
@@ -463,10 +605,6 @@ const App: React.FC = () => {
         fontScale={fontScale}
         onFontScaleChange={setFontScale}
         onLogout={handleLogout}
-        onOpenAdmin={() => {
-          setMode('admin');
-          navigateTo('/admin');
-        }}
         onUpdateUser={(updatedUser) => {
           setCurrentUser(updatedUser);
           localStorage.setItem('wordquest_current_user', JSON.stringify(updatedUser));
@@ -477,7 +615,7 @@ const App: React.FC = () => {
 
       {/* Main Content Canvas (Scrollable viewport) */}
       <main className="flex-1 h-full overflow-y-auto overflow-x-hidden relative">
-        {mode === 'map' && currentPath !== '/vocab' && !isSongRoute && (
+        {mode === 'map' && currentPath !== '/vocab' && currentPath !== '/typing' && currentPath !== '/think' && currentPath !== '/grammar' && !isSongRoute && (
           <SuspenseState isLoading={loading}>
             <AdventureMap
               islands={islands}
@@ -485,7 +623,10 @@ const App: React.FC = () => {
               theme={theme}
               fontScale={fontScale}
               onFontScaleChange={setFontScale}
-              onStartGame={handleStartGame}
+              onStartGame={(island, gMode, subMode) => {
+                setReturnMode('map');
+                handleStartGame(island, gMode, subMode);
+              }}
               onLogout={handleLogout}
               onOpenWordBank={() => {
                 setMode('vocab');
@@ -507,6 +648,29 @@ const App: React.FC = () => {
           </SuspenseState>
         )}
 
+        {(mode === 'typing' || currentPath === '/typing') && !isSongRoute && (
+          <SuspenseState isLoading={loading}>
+            <TypingAdventureMap
+              islands={islands}
+              currentUser={currentUser}
+              theme={theme}
+              fontScale={fontScale}
+              onFontScaleChange={setFontScale}
+              onStartGame={(island, gMode) => {
+                setReturnMode('typing');
+                handleStartGame(island, gMode);
+              }}
+              onLogout={handleLogout}
+              onUpdateUser={(updatedUser) => {
+                setCurrentUser(updatedUser);
+                localStorage.setItem('wordquest_current_user', JSON.stringify(updatedUser));
+                localStorage.setItem('wordquest_user', JSON.stringify(updatedUser));
+              }}
+              hideHeader={true}
+            />
+          </SuspenseState>
+        )}
+
         {(mode === 'vocab' || currentPath === '/vocab') && !isSongRoute && (
           <WordBankMap
             currentUser={currentUser}
@@ -514,11 +678,13 @@ const App: React.FC = () => {
             fontScale={fontScale}
             onFontScaleChange={setFontScale}
             onBackToStories={() => {
+              setIsFocusDrillOpen(false);
               setMode('map');
               setSelectedSongId(null);
               navigateTo('/');
             }}
             onOpenSongs={() => {
+              setIsFocusDrillOpen(false);
               setMode('songs');
               setSelectedSongId(null);
               navigateTo('/songs');
@@ -530,6 +696,8 @@ const App: React.FC = () => {
               localStorage.setItem('wordquest_user', JSON.stringify(updatedUser));
             }}
             hideHeader={true}
+            autoOpenWeakWords={isFocusDrillOpen}
+            onCloseWeakWords={() => setIsFocusDrillOpen(false)}
           />
         )}
 
@@ -561,6 +729,46 @@ const App: React.FC = () => {
               localStorage.setItem('wordquest_user', JSON.stringify(updatedUser));
             }}
             hideHeader={true}
+          />
+        )}
+
+        {isSongRoute && activeSongId !== null && (
+          <SongLearning
+            songId={activeSongId}
+            userId={currentUser.id}
+            isAdmin={currentUser.is_admin === 1}
+            onBack={() => {
+              setSelectedSongId(null);
+              setMode('songs');
+              navigateTo('/songs');
+            }}
+          />
+        )}
+
+        {(mode === 'think' || currentPath === '/think') && (
+          <ThinkChecklist
+            currentUser={currentUser}
+            onBackToStories={() => {
+              setMode('map');
+              setSelectedSongId(null);
+              navigateTo('/');
+            }}
+          />
+        )}
+
+        {(mode === 'grammar' || currentPath === '/grammar') && (
+          <GrammarAdventureMap
+            currentUser={currentUser}
+            onUpdateUser={(updatedUser) => {
+              setCurrentUser(updatedUser);
+              localStorage.setItem('wordquest_current_user', JSON.stringify(updatedUser));
+              localStorage.setItem('wordquest_user', JSON.stringify(updatedUser));
+            }}
+            onBackToStories={() => {
+              setMode('map');
+              setSelectedSongId(null);
+              navigateTo('/');
+            }}
           />
         )}
       </main>

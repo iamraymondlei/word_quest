@@ -35,6 +35,8 @@ describe('Island and Words API Tests', () => {
 
   beforeEach(async () => {
     // Clear all tables to ensure clean slate, including progress tables referencing foreign keys
+    await pool.query('DELETE FROM user_vocabulary_mode_stats');
+    await pool.query('DELETE FROM word_books');
     await pool.query('DELETE FROM user_word_progress');
     await pool.query('DELETE FROM user_island_progress');
     await pool.query('DELETE FROM words');

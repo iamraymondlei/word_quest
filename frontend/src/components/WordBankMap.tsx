@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import './AdventureMap.css';
 import { OfflineSyncBadge } from './OfflineSyncBadge';
 import { apiService } from '../utils/apiService';
+import { isIPadOrTabletDevice } from '../utils/device';
 import {
   BUDDY_CHARACTERS,
   normalizeBuddyKey,
@@ -27,10 +28,13 @@ export interface VocabularyWord {
   antonyms?: string;
   synonyms?: string;
   etymology?: string;
-  reading_passed?: number;
-  spelling_passed?: number;
-  mastered?: number;
+  reading_passed?: number | boolean;
+  spelling_passed?: number | boolean;
+  mastered?: number | boolean;
   error_count?: number;
+  correct_count?: number;
+  weak_score?: number;
+  streak?: number;
 }
 
 export interface WordBook {
@@ -43,6 +47,7 @@ export interface WordBook {
   word_count?: number;
   mastered_count?: number;
   started_count?: number;
+  completed_stages_mask?: number;
   assigned_user_ids?: number[];
 }
 
@@ -65,6 +70,8 @@ interface WordBankMapProps {
   onLogout?: () => void;
   onUpdateUser?: (updatedUser: any) => void;
   hideHeader?: boolean;
+  autoOpenWeakWords?: boolean;
+  onCloseWeakWords?: () => void;
 }
 
 type StageMode = 'learn' | 'reading' | 'spelling';
@@ -143,7 +150,9 @@ export const WordBankMap: React.FC<WordBankMapProps> = ({
   onOpenSongs,
   onLogout,
   onUpdateUser,
-  hideHeader = false
+  hideHeader = false,
+  autoOpenWeakWords,
+  onCloseWeakWords
 }) => {
   // Books & Category state
   const [books, setBooks] = useState<WordBook[]>([]);
@@ -158,14 +167,35 @@ export const WordBankMap: React.FC<WordBankMapProps> = ({
     }
   });
 
-  // Card Folding State
-  const [collapsedCardIds, setCollapsedCardIds] = useState<Set<number>>(() => new Set());
+  const [hideThreeStars, setHideThreeStars] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('wordquest_hide_completed_vocab_books') === 'true';
+    } catch {
+      return false;
+    }
+  });
+
+  const toggleHideThreeStars = () => {
+    setHideThreeStars(prev => {
+      const next = !prev;
+      try {
+        localStorage.setItem('wordquest_hide_completed_vocab_books', String(next));
+      } catch {}
+      return next;
+    });
+  };
 
   // Active Stage Game State (null = on Map View, non-null = playing chapter stage)
   const [activePlayingBook, setActivePlayingBook] = useState<WordBook | null>(null);
   const [activeStage, setActiveStage] = useState<StageMode | null>(null);
   const [chapterWords, setChapterWords] = useState<VocabularyWord[]>([]);
   const [loadingWords, setLoadingWords] = useState<boolean>(false);
+  const [learnCompleted, setLearnCompleted] = useState<boolean>(false);
+
+  // Weak words targeted practice modal (TASK-12.1)
+  const [showWeakWordsModal, setShowWeakWordsModal] = useState<boolean>(false);
+  const [weakWordsList, setWeakWordsList] = useState<any[]>([]);
+  const [loadingWeakWords, setLoadingWeakWords] = useState<boolean>(false);
 
   // General feedback toast
   const [toastMsg, setToastMsg] = useState<string | null>(null);
@@ -185,7 +215,7 @@ export const WordBankMap: React.FC<WordBankMapProps> = ({
   // Audio synthesis helper with dual language (en-US / Cantonese zh-HK) support
   const playSpeech = useCallback((text: string, lang: 'en' | 'yue' | 'zh' = 'en') => {
     playBilingualSpeech(text, lang, () => {
-      showToast(`🔊 [无法发音]: 设备不支持 Web Speech`);
+      showToast(`🔊 [Cannot speak]: Speech not supported on this device`);
     });
   }, []);
 
@@ -278,43 +308,42 @@ export const WordBankMap: React.FC<WordBankMapProps> = ({
   };
 
   const displayedBooks = useMemo(() => {
-    if (selectedCategory === null) return books;
-    return books.filter(b => ((b.category && b.category.trim()) || 'General') === selectedCategory);
-  }, [books, selectedCategory]);
+    let list = selectedCategory === null ? books : books.filter(b => ((b.category && b.category.trim()) || 'General') === selectedCategory);
+    if (hideThreeStars) {
+      list = list.filter(b => {
+        const mask = b.completed_stages_mask || 0;
+        const stars = (mask & 1 ? 1 : 0) + (mask & 2 ? 1 : 0) + (mask & 4 ? 1 : 0);
+        return stars < 3;
+      });
+    }
+    return list;
+  }, [books, selectedCategory, hideThreeStars]);
 
   const currentCategoryStat = selectedCategory !== null
     ? (categoryStats[selectedCategory] || { count: 0, totalWords: 0, masteredWords: 0, startedWords: 0 })
     : allStats;
 
-  // Toggle Collapse All Cards
-  const allAreCollapsed = displayedBooks.length > 0 && displayedBooks.every(b => collapsedCardIds.has(b.id));
-
-  const handleToggleCollapseAll = () => {
-    if (allAreCollapsed) {
-      setCollapsedCardIds(new Set());
-    } else {
-      setCollapsedCardIds(new Set(displayedBooks.map(b => b.id)));
-    }
-  };
-
-  const toggleCardCollapse = (e: React.MouseEvent, id: number) => {
-    e.stopPropagation();
-    setCollapsedCardIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  };
-
   // Launch Stage Gameplay
   const handleStartStage = async (book: WordBook, stage: StageMode) => {
     if ((book.word_count || 0) === 0) {
-      showToast('⚠️ 当前章节词单尚未录入单词，请先在家长后台导入！');
+      showToast('⚠️ No words in this chapter yet. Please import words in Parent Portal!');
       return;
     }
     setActivePlayingBook(book);
     setActiveStage(stage);
+    setLearnCompleted(false);
+
+    if (book.id === -1) {
+      // Virtual weak words drill mode
+      setLearnIdx(0);
+      if (stage === 'reading') {
+        initQuizRound(chapterWords);
+      } else if (stage === 'spelling') {
+        initSpellingRound(chapterWords);
+      }
+      return;
+    }
+
     setLoadingWords(true);
     try {
       const data = await apiService.getBookWords(book.id, currentUser.id);
@@ -328,10 +357,44 @@ export const WordBankMap: React.FC<WordBankMapProps> = ({
       }
     } catch (err) {
       console.error('Failed to load words for chapter stage:', err);
-      showToast('⚠️ 加载章节单词失败');
+      showToast('⚠️ Failed to load chapter words');
     } finally {
       setLoadingWords(false);
     }
+  };
+
+  // Completion recording helper for Stage 1, 2, 3
+  const recordStageCompletion = async (stage: 1 | 2 | 3) => {
+    if (!activePlayingBook || activePlayingBook.id <= 0) return;
+    try {
+      const res = await apiService.recordWordBookProgress(activePlayingBook.id, currentUser.id, stage);
+      if (res) {
+        const stageBit = 1 << (stage - 1);
+        const newMask = res.completed_stages_mask ?? (((activePlayingBook.completed_stages_mask || 0) | stageBit) & 7);
+        setActivePlayingBook(prev => prev ? { ...prev, completed_stages_mask: newMask } : null);
+        setBooks(prev => prev.map(b => b.id === activePlayingBook.id ? { ...b, completed_stages_mask: newMask } : b));
+
+        if (res.is_new_clear) {
+          const addedStars = res.stars_awarded ?? 1;
+          const addedCoins = res.coins_awarded ?? 50;
+          const updatedStars = (currentUser.stars || 0) + addedStars;
+          const updatedCoins = (currentUser.coins || 0) + addedCoins;
+          onUpdateUser?.({
+            ...currentUser,
+            stars: updatedStars,
+            coins: updatedCoins
+          });
+          showToast(`⭐ Stage Cleared! +1 Star! +${addedCoins} EXP!`);
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to record word book stage completion:', e);
+    }
+  };
+
+  const handleFinishLearn = async () => {
+    setLearnCompleted(true);
+    await recordStageCompletion(1);
   };
 
   // Back to Map from stage
@@ -340,6 +403,7 @@ export const WordBankMap: React.FC<WordBankMapProps> = ({
     setActiveStage(null);
     setChapterWords([]);
     setShowWordDrawer(false);
+    setLearnCompleted(false);
     await loadBooks();
   };
 
@@ -471,8 +535,8 @@ export const WordBankMap: React.FC<WordBankMapProps> = ({
     if (quizAnswered || !currentQuizWord) return;
     setQuizAnswered(true);
     setCombo(0);
-    showToast('⏱️ 时间到！已记录错题');
-    await apiService.recordVocabularyProgress(currentQuizWord.id, currentUser.id, 'reading', false);
+    showToast("⏱️ Time's up! Missed question recorded");
+    await apiService.recordVocabularyProgress(currentQuizWord.id, currentUser.id, 'reading', false, { answer: 'TIMEOUT' });
     setTimeout(() => {
       advanceQuizQuestion();
     }, 1800);
@@ -493,9 +557,9 @@ export const WordBankMap: React.FC<WordBankMapProps> = ({
       setRoundCoins(prev => prev + earnedCoins);
       const updatedCoins = currentUser.coins + earnedCoins;
       onUpdateUser?.({ ...currentUser, coins: updatedCoins });
-      showToast(isNewlyPassed ? `🎯 正确！Combo x${nextCombo} +${earnedCoins} 经验` : `🎯 温故知新！Combo x${nextCombo} +${earnedCoins} 经验`);
+      showToast(isNewlyPassed ? `🎯 Correct! Combo x${nextCombo} +${earnedCoins} EXP` : `🎯 Review Correct! Combo x${nextCombo} +${earnedCoins} EXP`);
       playWordAudio(currentQuizWord.word);
-      apiService.recordVocabularyProgress(currentQuizWord.id, currentUser.id, 'reading', true).then(res => {
+      apiService.recordVocabularyProgress(currentQuizWord.id, currentUser.id, 'reading', true, { answer: option.text }).then(res => {
         if (res && typeof res.coins_awarded === 'number' && res.coins_awarded !== earnedCoins) {
           // Sync exact server awarded amount if different
           const diff = res.coins_awarded - earnedCoins;
@@ -504,8 +568,8 @@ export const WordBankMap: React.FC<WordBankMapProps> = ({
       }).catch(() => {});
     } else {
       setCombo(0);
-      showToast(`❌ 选错啦，正确释义：${currentQuizWord.translation}`);
-      await apiService.recordVocabularyProgress(currentQuizWord.id, currentUser.id, 'reading', false);
+      showToast(`❌ Incorrect! Correct meaning: ${currentQuizWord.translation}`);
+      await apiService.recordVocabularyProgress(currentQuizWord.id, currentUser.id, 'reading', false, { answer: option.text });
     }
 
     setTimeout(() => {
@@ -518,6 +582,7 @@ export const WordBankMap: React.FC<WordBankMapProps> = ({
       setQuizIdx(prev => prev + 1);
     } else {
       setQuizCompleted(true);
+      recordStageCompletion(2);
     }
   };
 
@@ -542,24 +607,58 @@ export const WordBankMap: React.FC<WordBankMapProps> = ({
   };
 
   const currentSpellWord = spellList[spellIdx] || null;
+  const isTablet = useMemo(() => isIPadOrTabletDevice(), []);
 
   useEffect(() => {
     if (activeStage === 'spelling' && currentSpellWord && !spellCompleted) {
       setTypedValue('');
       setSpellAnswered(false);
       setSpellIsCorrect(null);
-      playWordAudio(currentSpellWord.word);
-      setTimeout(() => spellInputRef.current?.focus(), 150);
+
+      // Safe audio play
+      try {
+        playWordAudio(currentSpellWord.word);
+      } catch (err) {
+        console.warn('Auto playWordAudio skipped:', err);
+      }
+
+      // On desktop PC with physical keyboard, auto-focus input for convenience.
+      // On iPad / touch devices, DO NOT force programmatic focus in setTimeout (blocks iOS WebKit & freezes audio session).
+      if (!isTablet) {
+        setTimeout(() => {
+          spellInputRef.current?.focus();
+        }, 150);
+      }
     }
-  }, [activeStage, spellIdx, currentSpellWord, spellCompleted, playWordAudio]);
+  }, [activeStage, spellIdx, currentSpellWord, spellCompleted, playWordAudio, isTablet]);
 
-  const handleSpellingChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const processSpellingInput = (rawVal: string) => {
     if (spellAnswered || !currentSpellWord) return;
-    const val = e.target.value.toLowerCase().replace(/[^a-z-]/g, '');
-    setTypedValue(val);
-
     const targetClean = currentSpellWord.word.trim().toLowerCase();
-    if (val === targetClean) {
+
+    // Allow a-z, spaces, hyphens, and apostrophes
+    let cleanVal = rawVal.toLowerCase().replace(/[^a-z\s\-']/g, '');
+
+    // Prevent leading spaces or multiple consecutive spaces
+    cleanVal = cleanVal.replace(/^\s+/, '').replace(/\s{2,}/g, ' ');
+
+    // Smart auto-completion of separators (space, hyphen, apostrophe):
+    // If target has a separator at the current position, and user typed the next letter directly:
+    // e.g. target is "ice cream" (pos 3 is ' '), child typed "icec" (len 4) -> auto-insert space -> "ice c"
+    if (cleanVal.length > 0 && cleanVal.length <= targetClean.length) {
+      const prevIdx = cleanVal.length - 1;
+      const expectedSep = targetClean[prevIdx];
+      if ((expectedSep === ' ' || expectedSep === '-' || expectedSep === "'") && cleanVal[prevIdx] !== expectedSep) {
+        cleanVal = cleanVal.slice(0, prevIdx) + expectedSep + cleanVal.slice(prevIdx);
+      }
+    }
+
+    if (cleanVal.length > targetClean.length) {
+      cleanVal = cleanVal.slice(0, targetClean.length);
+    }
+    setTypedValue(cleanVal);
+
+    if (cleanVal === targetClean) {
       setSpellAnswered(true);
       setSpellIsCorrect(true);
       const isNewlyPassed = !currentSpellWord.spelling_passed;
@@ -568,9 +667,9 @@ export const WordBankMap: React.FC<WordBankMapProps> = ({
       setRoundCoins(prev => prev + earnedCoins);
       const updatedCoins = currentUser.coins + earnedCoins;
       onUpdateUser?.({ ...currentUser, coins: updatedCoins });
-      showToast(isNewlyPassed ? `🎉 拼写完美匹配！+${earnedCoins} 经验` : `🎉 拼写复习达标！+${earnedCoins} 经验`);
+      showToast(isNewlyPassed ? `🎉 Perfect spelling! +${earnedCoins} EXP` : `🎉 Review spelling cleared! +${earnedCoins} EXP`);
       playWordAudio(currentSpellWord.word);
-      apiService.recordVocabularyProgress(currentSpellWord.id, currentUser.id, 'spelling', true).then(res => {
+      apiService.recordVocabularyProgress(currentSpellWord.id, currentUser.id, 'spelling', true, { answer: cleanVal }).then(res => {
         if (res && typeof res.coins_awarded === 'number' && res.coins_awarded !== earnedCoins) {
           const diff = res.coins_awarded - earnedCoins;
           onUpdateUser?.({ ...currentUser, coins: updatedCoins + diff });
@@ -582,13 +681,91 @@ export const WordBankMap: React.FC<WordBankMapProps> = ({
     }
   };
 
+  const handleSpellingChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    processSpellingInput(e.target.value);
+  };
+
+  const handleVirtualKeyInput = (char: string) => {
+    if (spellAnswered || !currentSpellWord) return;
+    const targetClean = currentSpellWord.word.trim().toLowerCase();
+    if (typedValue.length >= targetClean.length) return;
+    const nextVal = typedValue + char.toLowerCase();
+    processSpellingInput(nextVal);
+  };
+
+  const handleVirtualBackspace = () => {
+    if (spellAnswered) return;
+    setTypedValue(prev => prev.slice(0, -1));
+  };
+
+  const handleVirtualClear = () => {
+    if (spellAnswered) return;
+    setTypedValue('');
+  };
+
+  // Global physical keyboard capture for Spelling mode
+  useEffect(() => {
+    if (activeStage !== 'spelling' || spellAnswered || !currentSpellWord) return;
+
+    const handleSpellingKeyDown = (e: KeyboardEvent) => {
+      // Allow browser shortcuts (Cmd/Ctrl/Alt)
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+
+      // Space key
+      if (e.key === ' ' || e.code === 'Space') {
+        e.preventDefault();
+        e.stopPropagation();
+        handleVirtualKeyInput(' ');
+        return;
+      }
+
+      // Backspace key
+      if (e.key === 'Backspace') {
+        e.preventDefault();
+        e.stopPropagation();
+        handleVirtualBackspace();
+        return;
+      }
+
+      // Letters a-z
+      if (/^[a-zA-Z]$/.test(e.key)) {
+        if (document.activeElement !== spellInputRef.current) {
+          e.preventDefault();
+          handleVirtualKeyInput(e.key.toLowerCase());
+        }
+        return;
+      }
+
+      // Hyphen '-'
+      if (e.key === '-') {
+        if (document.activeElement !== spellInputRef.current) {
+          e.preventDefault();
+          handleVirtualKeyInput('-');
+        }
+        return;
+      }
+
+      // Apostrophe "'"
+      if (e.key === "'") {
+        if (document.activeElement !== spellInputRef.current) {
+          e.preventDefault();
+          handleVirtualKeyInput("'");
+        }
+        return;
+      }
+    };
+
+    window.addEventListener('keydown', handleSpellingKeyDown, true);
+    return () => window.removeEventListener('keydown', handleSpellingKeyDown, true);
+  }, [activeStage, spellAnswered, currentSpellWord, typedValue]);
+
   const handleSkipSpelling = async () => {
     if (spellAnswered || !currentSpellWord) return;
     setSpellAnswered(true);
     setSpellIsCorrect(false);
     setTypedValue(currentSpellWord.word.toLowerCase());
-    showToast(`💡 正确拼写为: ${currentSpellWord.word}`);
-    await apiService.recordVocabularyProgress(currentSpellWord.id, currentUser.id, 'spelling', false);
+    showToast(`💡 Correct spelling: ${currentSpellWord.word}`);
+    await apiService.recordVocabularyProgress(currentSpellWord.id, currentUser.id, 'spelling', false, { answer: typedValue || 'SKIP' });
     setTimeout(() => {
       advanceSpellingWord();
     }, 2000);
@@ -599,7 +776,64 @@ export const WordBankMap: React.FC<WordBankMapProps> = ({
       setSpellIdx(prev => prev + 1);
     } else {
       setSpellCompleted(true);
+      recordStageCompletion(3);
     }
+  };
+
+  const handleOpenWeakWordsModal = async (targetBookId?: number) => {
+    setShowWeakWordsModal(true);
+    setLoadingWeakWords(true);
+    try {
+      const bId = targetBookId !== undefined ? targetBookId : (activePlayingBook && activePlayingBook.id > 0 ? activePlayingBook.id : undefined);
+      const res = await apiService.getPracticeWords(currentUser.id, {
+        bookId: bId,
+        limit: 15
+      });
+      if (res && Array.isArray(res.words)) {
+        setWeakWordsList(res.words);
+      } else {
+        setWeakWordsList([]);
+      }
+    } catch (e) {
+      console.warn('Failed to load weak practice words:', e);
+      setWeakWordsList([]);
+    } finally {
+      setLoadingWeakWords(false);
+    }
+  };
+
+  const handleCloseWeakWordsModal = () => {
+    setShowWeakWordsModal(false);
+    onCloseWeakWords?.();
+  };
+
+  useEffect(() => {
+    if (autoOpenWeakWords) {
+      handleOpenWeakWordsModal();
+    }
+  }, [autoOpenWeakWords]);
+
+  const handleStartWeakPractice = (mode: 'reading' | 'spelling') => {
+    if (weakWordsList.length === 0) return;
+    setShowWeakWordsModal(false);
+    if (!activePlayingBook || activePlayingBook.id === -1) {
+      setActivePlayingBook({
+        id: -1,
+        title: '🎯 Focus Stars',
+        category: 'Focus Drill',
+        description: 'Targeted practice for weak words',
+        word_count: weakWordsList.length,
+        mastered_count: 0
+      } as any);
+    }
+    setChapterWords(weakWordsList as any);
+    setActiveStage(mode);
+    if (mode === 'reading') {
+      initQuizRound(weakWordsList as any);
+    } else {
+      initSpellingRound(weakWordsList as any);
+    }
+    showToast(`🔥 Focus Drill: Selected ${weakWordsList.length} priority words!`);
   };
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -616,10 +850,10 @@ export const WordBankMap: React.FC<WordBankMapProps> = ({
                 type="button"
                 onClick={handleBackToMap}
                 className="px-3.5 py-2 rounded-xl bg-slate-900 border border-white/10 hover:border-cyan-400 text-cyan-300 hover:text-white text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-sm hover:scale-102"
-                title="返回章节探索地图"
+                title="Back to Chapter Map"
               >
                 <span>‹</span>
-                <span>返回章节地图</span>
+                <span>Map</span>
               </button>
 
               <div className="flex items-center gap-2">
@@ -634,44 +868,73 @@ export const WordBankMap: React.FC<WordBankMapProps> = ({
                 <span className="text-xs font-bold text-cyan-300 truncate max-w-[180px] sm:max-w-[260px]">
                   {activePlayingBook.title}
                 </span>
+                {(() => {
+                  const m = activePlayingBook.completed_stages_mask || 0;
+                  const s = (m & 1 ? 1 : 0) + (m & 2 ? 1 : 0) + (m & 4 ? 1 : 0);
+                  return (
+                    <span className="text-xs font-mono text-amber-300 hidden sm:inline ml-1 tracking-wider">
+                      {s === 3 ? '⭐⭐⭐' : s === 2 ? '⭐⭐☆' : s === 1 ? '⭐☆☆' : '☆☆☆'}
+                    </span>
+                  );
+                })()}
               </div>
             </div>
 
             {/* Quick Switch Stage Pills & Coin Counter */}
             <div className="flex items-center gap-2 sm:gap-4 flex-wrap">
               <div className="flex items-center p-1 rounded-xl bg-[#070b14] border border-white/10 text-xs font-bold">
+                {(() => {
+                  const m = activePlayingBook.completed_stages_mask || 0;
+                  return (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => handleStartStage(activePlayingBook, 'learn')}
+                        className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer flex items-center gap-1 ${
+                          activeStage === 'learn'
+                            ? 'bg-[#00f0ff] text-slate-950 font-black shadow-[0_0_12px_rgba(0,240,255,0.4)]'
+                            : 'text-slate-400 hover:text-white'
+                        }`}
+                      >
+                        <span>01 Study</span>
+                        {(m & 1) !== 0 && <span className="text-amber-300 text-[10px]">⭐</span>}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleStartStage(activePlayingBook, 'reading')}
+                        className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer flex items-center gap-1 ${
+                          activeStage === 'reading'
+                            ? 'bg-amber-400 text-slate-950 font-black shadow-[0_0_12px_rgba(251,191,36,0.4)]'
+                            : 'text-slate-400 hover:text-white'
+                        }`}
+                      >
+                        <span>02 Quiz</span>
+                        {(m & 2) !== 0 && <span className="text-amber-300 text-[10px]">⭐</span>}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleStartStage(activePlayingBook, 'spelling')}
+                        className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer flex items-center gap-1 ${
+                          activeStage === 'spelling'
+                            ? 'bg-purple-400 text-slate-950 font-black shadow-[0_0_12px_rgba(168,85,247,0.4)]'
+                            : 'text-slate-400 hover:text-white'
+                        }`}
+                      >
+                        <span>03 Spelling</span>
+                        {(m & 4) !== 0 && <span className="text-amber-300 text-[10px]">⭐</span>}
+                      </button>
+                    </>
+                  );
+                })()}
+
                 <button
                   type="button"
-                  onClick={() => handleStartStage(activePlayingBook, 'learn')}
-                  className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
-                    activeStage === 'learn'
-                      ? 'bg-[#00f0ff] text-slate-950 font-black shadow-[0_0_12px_rgba(0,240,255,0.4)]'
-                      : 'text-slate-400 hover:text-white'
-                  }`}
+                  onClick={() => handleOpenWeakWordsModal()}
+                  className="px-3 py-1.5 rounded-lg border border-amber-500/40 bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-sm hover:shadow-[0_0_12px_rgba(245,158,11,0.3)]"
+                  title="View priority words and start focus drill"
                 >
-                  01 学单词
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleStartStage(activePlayingBook, 'reading')}
-                  className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
-                    activeStage === 'reading'
-                      ? 'bg-amber-400 text-slate-950 font-black shadow-[0_0_12px_rgba(251,191,36,0.4)]'
-                      : 'text-slate-400 hover:text-white'
-                  }`}
-                >
-                  02 看句选义
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleStartStage(activePlayingBook, 'spelling')}
-                  className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
-                    activeStage === 'spelling'
-                      ? 'bg-purple-400 text-slate-950 font-black shadow-[0_0_12px_rgba(168,85,247,0.4)]'
-                      : 'text-slate-400 hover:text-white'
-                  }`}
-                >
-                  03 听音拼写
+                  <span>🎯</span>
+                  <span>Focus Words</span>
                 </button>
               </div>
 
@@ -695,30 +958,75 @@ export const WordBankMap: React.FC<WordBankMapProps> = ({
           <main className="w-full flex flex-col gap-6">
             {loadingWords ? (
               <div className="py-24 text-center text-slate-500 animate-pulse text-sm">
-                🛰️ 正在载入章节词库能量包...
+                🛰️ Loading chapter vocabulary...
               </div>
             ) : chapterWords.length === 0 ? (
               <div className="theme-card p-12 rounded-2xl text-center border theme-border space-y-4">
                 <div className="text-4xl">📭</div>
-                <h3 className="text-slate-200 font-bold text-base">此章节暂未录入生词</h3>
+                <h3 className="text-slate-200 font-bold text-base">No words in this chapter yet</h3>
                 <button
                   type="button"
                   onClick={handleBackToMap}
                   className="px-4 py-2 bg-cyan-500 text-slate-950 font-bold text-xs rounded-xl shadow-md cursor-pointer hover:bg-cyan-400 transition-all"
                 >
-                  ← 返回章节地图
+                  ← Back to Map
                 </button>
               </div>
             ) : (
               <>
                 {/* ── STAGE 1: 学单词探索卡片 ── */}
-                {activeStage === 'learn' && currentLearnWord && (
-                  <div className="space-y-6">
+                {activeStage === 'learn' && (
+                  learnCompleted ? (
+                    <div className="theme-card border border-emerald-500/40 rounded-2xl p-8 text-center space-y-5 shadow-2xl">
+                      <div className="text-5xl">🏆</div>
+                      <h3 className="text-2xl font-black text-white">Chapter Explored!</h3>
+                      <p className="text-xs text-slate-400">
+                        You explored all <strong className="text-emerald-300">{chapterWords.length}</strong> key words in this chapter
+                      </p>
+                      <div className="flex items-center justify-center gap-6 py-4">
+                        <div className="p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300">
+                          <div className="text-[10px] uppercase font-bold text-emerald-400/80">Stage Star</div>
+                          <div className="text-2xl font-black">⭐ +1</div>
+                        </div>
+                        <div className="p-4 rounded-xl bg-cyan-500/10 border border-cyan-500/30 text-cyan-300">
+                          <div className="text-[10px] uppercase font-bold text-cyan-400/80">Reward (EXP)</div>
+                          <div className="text-2xl font-black">+50</div>
+                        </div>
+                      </div>
+                      <div className="flex items-center justify-center gap-3 flex-wrap">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setLearnIdx(0);
+                            setLearnCompleted(false);
+                          }}
+                          className="px-6 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs uppercase tracking-wider transition-all cursor-pointer shadow-lg"
+                        >
+                          🔄 Review Again
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleStartStage(activePlayingBook, 'reading')}
+                          className="px-6 py-2.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-amber-300 font-bold text-xs transition-all cursor-pointer"
+                        >
+                          ⚡ Go to Quiz
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleBackToMap}
+                          className="px-6 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs transition-all cursor-pointer"
+                        >
+                          ← Back to Map
+                        </button>
+                      </div>
+                    </div>
+                  ) : currentLearnWord ? (
+                    <div className="space-y-6">
                     {/* ── 1. Top Word Quick Picker Bar ── */}
                     <div className="bg-[#0d1424]/90 border border-white/10 p-2 sm:p-2.5 rounded-2xl shadow-xl backdrop-blur-md flex items-center gap-2 sm:gap-3">
                       <div className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-cyan-950/60 border border-cyan-500/40 text-[#00f0ff] text-xs font-bold font-mono">
                         <span>🧭</span>
-                        <span>快速选词</span>
+                        <span>Quick Select</span>
                       </div>
 
                       {/* Scrollable Pills Container */}
@@ -761,10 +1069,10 @@ export const WordBankMap: React.FC<WordBankMapProps> = ({
                         type="button"
                         onClick={() => setShowWordDrawer(true)}
                         className="shrink-0 px-3.5 py-1.5 rounded-xl bg-indigo-500/20 hover:bg-indigo-500/30 border border-indigo-400/40 text-indigo-300 hover:text-white text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer active:scale-95"
-                        title="展开全章所有单词目录列表"
+                        title="View all words list"
                       >
                         <span>📋</span>
-                        <span className="hidden sm:inline">全词目录</span>
+                        <span className="hidden sm:inline">Word List</span>
                         <span className="text-[10px] font-mono opacity-80">({chapterWords.length})</span>
                       </button>
                     </div>
@@ -779,11 +1087,11 @@ export const WordBankMap: React.FC<WordBankMapProps> = ({
                         <div className="absolute top-4 right-5 sm:top-6 sm:right-7 flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold font-mono transition-all">
                           {currentLearnWord.mastered ? (
                             <span className="px-3 py-1 rounded-full bg-emerald-500/20 border border-emerald-400/40 text-emerald-300 text-xs font-bold flex items-center gap-1 shadow-sm">
-                              ✓ 已掌握
+                              ✓ Mastered
                             </span>
                           ) : (
                             <span className="px-3 py-1 rounded-full bg-slate-800/80 border border-slate-700 text-slate-400 text-xs">
-                              🌱 探索中
+                              🌱 Exploring
                             </span>
                           )}
                         </div>
@@ -798,7 +1106,7 @@ export const WordBankMap: React.FC<WordBankMapProps> = ({
                           <h1
                             onClick={() => playWordAudio(currentLearnWord.word)}
                             className="text-5xl sm:text-7xl md:text-8xl font-black text-white tracking-tight cursor-pointer hover:text-cyan-200 transition-colors drop-shadow-md inline-block"
-                            title="点击播放标准发音"
+                            title="Play standard audio"
                           >
                             {currentLearnWord.word}
                           </h1>
@@ -831,7 +1139,7 @@ export const WordBankMap: React.FC<WordBankMapProps> = ({
                             type="button"
                             onClick={() => playWordAudio(currentLearnWord.word)}
                             className="w-14 h-14 sm:w-16 sm:h-16 rounded-full bg-gradient-to-tr from-[#00f0ff] to-[#38bdf8] text-slate-950 flex items-center justify-center text-2xl sm:text-3xl transition-transform duration-200 cursor-pointer shadow-[0_0_28px_rgba(0,240,255,0.65),0_8px_20px_rgba(0,0,0,0.6)] hover:scale-105 active:scale-90 group"
-                            title="播放标准真人发音 (快捷键: 空格 Space)"
+                            title="Play pronunciation (Space)"
                           >
                             <span className="group-hover:scale-110 transition-transform">🔊</span>
                           </button>
@@ -846,7 +1154,7 @@ export const WordBankMap: React.FC<WordBankMapProps> = ({
                         <div className="flex items-center justify-between pb-3 border-b border-white/10">
                           <h3 className="text-sm uppercase tracking-wider font-extrabold text-amber-400 flex items-center gap-2">
                             <span className="text-lg">✨</span>
-                            <span>生动情境例句 (Sentences)</span>
+                            <span>Context Sentences</span>
                           </h3>
                           <button
                             type="button"
@@ -855,7 +1163,7 @@ export const WordBankMap: React.FC<WordBankMapProps> = ({
                               if (sList.length > 0) playWordAudio(sList[0].en);
                             }}
                             className="w-8 h-8 rounded-full bg-cyan-500/10 hover:bg-cyan-500/20 text-[#00f0ff] flex items-center justify-center text-sm transition-colors cursor-pointer"
-                            title="朗读当前例句"
+                            title="Listen to sentence"
                           >
                             🔊
                           </button>
@@ -863,7 +1171,7 @@ export const WordBankMap: React.FC<WordBankMapProps> = ({
                         {(() => {
                           const sList = getWordSentences(currentLearnWord);
                           if (sList.length === 0) {
-                            return <p className="text-sm text-slate-500 italic py-4">暂无例句，可在后台 AI 丰富</p>;
+                            return <p className="text-sm text-slate-500 italic py-4">No example sentences yet</p>;
                           }
                           return (
                             <div className="space-y-4 pt-1">
@@ -877,7 +1185,7 @@ export const WordBankMap: React.FC<WordBankMapProps> = ({
                                       type="button"
                                       onClick={() => playWordAudio(item.en)}
                                       className="p-1.5 rounded-xl text-[#00f0ff] hover:bg-cyan-500/20 text-sm shrink-0 cursor-pointer transition-colors"
-                                      title="朗读此例句"
+                                      title="Listen to sentence"
                                     >
                                       🔊
                                     </button>
@@ -903,7 +1211,7 @@ export const WordBankMap: React.FC<WordBankMapProps> = ({
                               <div className="flex items-center justify-between gap-2">
                                 <h3 className="text-sm uppercase tracking-wider font-extrabold text-emerald-400 flex items-center gap-2">
                                   <span className="text-lg">🧩</span>
-                                  <span>构词奥秘 (Roots & Affixes)</span>
+                                  <span>Roots & Affixes</span>
                                 </h3>
                                 <div className="flex items-center gap-1.5 shrink-0">
                                   {roots.en && (
@@ -911,7 +1219,7 @@ export const WordBankMap: React.FC<WordBankMapProps> = ({
                                       type="button"
                                       onClick={() => playSpeech(roots.en, 'en')}
                                       className="px-2.5 py-1 rounded-xl bg-cyan-500/10 hover:bg-cyan-500/20 text-[#00f0ff] border border-cyan-500/30 text-xs font-bold flex items-center gap-1 transition-all active:scale-95 cursor-pointer"
-                                      title="朗读构词英文说明"
+                                      title="Listen to English notes"
                                     >
                                       <span>🔊</span>
                                       <span>EN</span>
@@ -922,10 +1230,10 @@ export const WordBankMap: React.FC<WordBankMapProps> = ({
                                       type="button"
                                       onClick={() => playSpeech(roots.zh, 'yue')}
                                       className="px-2.5 py-1 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-xs font-bold flex items-center gap-1 transition-all active:scale-95 cursor-pointer"
-                                      title="朗读构词粤语解析"
+                                      title="Listen to Cantonese notes"
                                     >
                                       <span>🔊</span>
-                                      <span>粤语</span>
+                                      <span>Yue</span>
                                     </button>
                                   )}
                                 </div>
@@ -943,7 +1251,7 @@ export const WordBankMap: React.FC<WordBankMapProps> = ({
                                 )}
                                 {!hasContent && (
                                   <p className="text-sm text-slate-400 italic">
-                                    词根拆解尚未生成，可通过后台 AI 智能丰富
+                                    Roots breakdown not generated yet
                                   </p>
                                 )}
                               </div>
@@ -956,17 +1264,17 @@ export const WordBankMap: React.FC<WordBankMapProps> = ({
                           <div className="space-y-2.5">
                             <h3 className="text-sm uppercase tracking-wider font-extrabold text-rose-400 flex items-center gap-2">
                               <span className="text-lg">⚖️</span>
-                              <span>同义 / 反义联想</span>
+                              <span>Synonyms & Antonyms</span>
                             </h3>
                             <div className="flex flex-wrap gap-2.5 text-sm">
                               {currentLearnWord.antonyms && (
                                 <span className="px-3 py-1.5 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 font-semibold">
-                                  反: {currentLearnWord.antonyms}
+                                  Ant: {currentLearnWord.antonyms}
                                 </span>
                               )}
                               {currentLearnWord.synonyms && (
                                 <span className="px-3 py-1.5 rounded-xl bg-indigo-500/10 border border-indigo-500/30 text-indigo-300 font-semibold">
-                                  同: {currentLearnWord.synonyms}
+                                  Syn: {currentLearnWord.synonyms}
                                 </span>
                               )}
                             </div>
@@ -982,7 +1290,7 @@ export const WordBankMap: React.FC<WordBankMapProps> = ({
                               <div className="flex items-center justify-between gap-2">
                                 <h3 className="text-sm uppercase tracking-wider font-extrabold text-purple-400 flex items-center gap-2">
                                   <span className="text-lg">📜</span>
-                                  <span>词源与记忆挂钩 (Etymology)</span>
+                                  <span>Etymology & Memory</span>
                                 </h3>
                                 <div className="flex items-center gap-1.5 shrink-0">
                                   {etym.en && (
@@ -990,7 +1298,7 @@ export const WordBankMap: React.FC<WordBankMapProps> = ({
                                       type="button"
                                       onClick={() => playSpeech(etym.en, 'en')}
                                       className="px-2.5 py-1 rounded-xl bg-purple-500/10 hover:bg-purple-500/20 text-purple-300 border border-purple-500/30 text-xs font-bold flex items-center gap-1 transition-all active:scale-95 cursor-pointer"
-                                      title="朗读词源英文故事"
+                                      title="Listen to English story"
                                     >
                                       <span>🔊</span>
                                       <span>EN</span>
@@ -1001,10 +1309,10 @@ export const WordBankMap: React.FC<WordBankMapProps> = ({
                                       type="button"
                                       onClick={() => playSpeech(etym.zh, 'yue')}
                                       className="px-2.5 py-1 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 text-xs font-bold flex items-center gap-1 transition-all active:scale-95 cursor-pointer"
-                                      title="朗读词源粤语故事"
+                                      title="Listen to Cantonese story"
                                     >
                                       <span>🔊</span>
-                                      <span>粤语</span>
+                                      <span>Yue</span>
                                     </button>
                                   )}
                                 </div>
@@ -1052,22 +1360,32 @@ export const WordBankMap: React.FC<WordBankMapProps> = ({
                           onClick={() => setShowWordDrawer(true)}
                           className="px-4 py-3 rounded-2xl bg-[#121a2f] hover:bg-[#18233e] border border-cyan-500/40 text-cyan-300 text-sm font-bold flex items-center gap-2.5 cursor-pointer transition-all active:scale-95"
                         >
-                          <span>All Words Directory</span>
+                          <span>Word List</span>
                           <div className="w-8 h-4.5 rounded-full bg-cyan-950 border border-cyan-400 flex items-center px-0.5">
                             <div className="w-3.5 h-3.5 rounded-full bg-cyan-400" />
                           </div>
                         </button>
 
-                        <button
-                          type="button"
-                          onClick={() => setLearnIdx(prev => Math.min(chapterWords.length - 1, prev + 1))}
-                          disabled={learnIdx === chapterWords.length - 1}
-                          className="px-7 py-3 rounded-2xl bg-[#00f0ff] hover:bg-[#38bdf8] text-slate-950 text-sm font-black flex items-center gap-2 cursor-pointer transition-all active:scale-95 shadow-[0_0_20px_rgba(0,240,255,0.4)] disabled:opacity-30 disabled:pointer-events-none"
-                        >
-                          <span>Next</span>
-                          <span>›</span>
-                          <span className="text-[10px] font-mono text-slate-900 hidden sm:inline">(Right)</span>
-                        </button>
+                        {learnIdx === chapterWords.length - 1 ? (
+                          <button
+                            type="button"
+                            onClick={handleFinishLearn}
+                            className="px-7 py-3 rounded-2xl bg-gradient-to-r from-emerald-500 to-cyan-400 hover:from-emerald-400 hover:to-cyan-300 text-slate-950 text-sm font-black flex items-center gap-2 cursor-pointer transition-all active:scale-95 shadow-[0_0_25px_rgba(16,185,129,0.5)] animate-pulse"
+                          >
+                            <span>Complete & Claim ⭐ (+50 EXP)</span>
+                            <span>✓</span>
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => setLearnIdx(prev => Math.min(chapterWords.length - 1, prev + 1))}
+                            className="px-7 py-3 rounded-2xl bg-[#00f0ff] hover:bg-[#38bdf8] text-slate-950 text-sm font-black flex items-center gap-2 cursor-pointer transition-all active:scale-95 shadow-[0_0_20px_rgba(0,240,255,0.4)]"
+                          >
+                            <span>Next</span>
+                            <span>›</span>
+                            <span className="text-[10px] font-mono text-slate-900 hidden sm:inline">(Right)</span>
+                          </button>
+                        )}
                       </div>
                     </div>
 
@@ -1079,10 +1397,10 @@ export const WordBankMap: React.FC<WordBankMapProps> = ({
                           <div className="p-6 sm:p-7 border-b border-white/10 flex items-center justify-between gap-4 bg-[#0a0f1d]/80">
                             <div>
                               <h2 className="text-2xl sm:text-3xl font-black text-[#00f0ff] tracking-tight flex items-center gap-2">
-                                <span>All Words Directory</span>
+                                <span>Word List</span>
                               </h2>
                               <p className="text-xs sm:text-sm font-mono text-slate-400 mt-1">
-                                {activePlayingBook.title} · {chapterWords.length} Words · 点击任意单词卡片直接跳转
+                                {activePlayingBook.title} · {chapterWords.length} Words · Tap any card to jump
                               </p>
                             </div>
                             <button
@@ -1090,7 +1408,7 @@ export const WordBankMap: React.FC<WordBankMapProps> = ({
                               onClick={() => setShowWordDrawer(false)}
                               className="px-4 py-2 rounded-xl bg-slate-800/80 hover:bg-slate-700 border border-white/10 text-slate-300 hover:text-white text-xs sm:text-sm font-bold flex items-center gap-1.5 transition-colors cursor-pointer active:scale-95"
                             >
-                              <span>Back to Card</span>
+                              <span>Back</span>
                               <span>✕</span>
                             </button>
                           </div>
@@ -1151,16 +1469,17 @@ export const WordBankMap: React.FC<WordBankMapProps> = ({
                           {/* Modal Footer */}
                           <div className="p-4 sm:p-5 border-t border-white/10 bg-[#0a0f1d]/80 flex items-center justify-between text-xs text-slate-400">
                             <div>
-                              键盘支持：<kbd className="px-2 py-0.5 rounded bg-slate-800 border border-slate-700 text-slate-300">Esc</kbd> 关闭目录 · <kbd className="px-2 py-0.5 rounded bg-slate-800 border border-slate-700 text-slate-300">Space</kbd> 听发音
+                              Keyboard: <kbd className="px-2 py-0.5 rounded bg-slate-800 border border-slate-700 text-slate-300">Esc</kbd> Close · <kbd className="px-2 py-0.5 rounded bg-slate-800 border border-slate-700 text-slate-300">Space</kbd> Audio
                             </div>
                             <div className="text-cyan-300 font-mono font-bold">
-                              当前选中：#{String(learnIdx + 1).padStart(2, '0')} {currentLearnWord.word}
+                              Selected: #{String(learnIdx + 1).padStart(2, '0')} {currentLearnWord.word}
                             </div>
                           </div>
                         </div>
                       </div>
                     )}
                   </div>
+                  ) : null
                 )}
 
                 {/* ── STAGE 2: 看句选义 语境推断关卡 ── */}
@@ -1169,13 +1488,17 @@ export const WordBankMap: React.FC<WordBankMapProps> = ({
                     {quizCompleted ? (
                       <div className="theme-card border border-cyan-500/40 rounded-2xl p-8 text-center space-y-5 shadow-2xl">
                         <div className="text-5xl">🏆</div>
-                        <h3 className="text-2xl font-black text-white">本轮挑战完成！</h3>
+                        <h3 className="text-2xl font-black text-white">Round Complete!</h3>
                         <p className="text-xs text-slate-400">
-                          共完成了 <strong className="text-cyan-300">{quizList.length}</strong> 道语境词汇挑战关卡
+                          Completed <strong className="text-cyan-300">{quizList.length}</strong> context quiz questions
                         </p>
                         <div className="flex items-center justify-center gap-6 py-4">
+                          <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300">
+                            <div className="text-[10px] uppercase font-bold text-amber-400/80">Stage Star</div>
+                            <div className="text-2xl font-black">⭐ +1</div>
+                          </div>
                           <div className="p-4 rounded-xl bg-cyan-500/10 border border-cyan-500/30 text-cyan-300">
-                            <div className="text-[10px] uppercase font-bold text-cyan-400/80">收获经验 (EXP)</div>
+                            <div className="text-[10px] uppercase font-bold text-cyan-400/80">Reward (EXP)</div>
                             <div className="text-2xl font-black">+{roundCoins}</div>
                           </div>
                         </div>
@@ -1185,21 +1508,21 @@ export const WordBankMap: React.FC<WordBankMapProps> = ({
                             onClick={() => initQuizRound(chapterWords)}
                             className="px-6 py-2.5 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-black text-xs uppercase tracking-wider transition-all cursor-pointer shadow-lg"
                           >
-                            🔄 再战一轮
+                            🔄 Play Again
                           </button>
                           <button
                             type="button"
                             onClick={() => handleStartStage(activePlayingBook, 'spelling')}
                             className="px-6 py-2.5 rounded-xl bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/40 text-purple-300 font-bold text-xs transition-all cursor-pointer"
                           >
-                            ✍️ 前往拼写闯关
+                            ✍️ Go to Spelling
                           </button>
                           <button
                             type="button"
                             onClick={handleBackToMap}
                             className="px-6 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs transition-all cursor-pointer"
                           >
-                            ← 返回章节地图
+                            ← Back to Map
                           </button>
                         </div>
                       </div>
@@ -1208,7 +1531,7 @@ export const WordBankMap: React.FC<WordBankMapProps> = ({
                         {/* Stats & Timer Header */}
                         <div className="flex items-center justify-between text-xs font-mono">
                           <span className="text-slate-400">
-                            第 <strong className="text-cyan-400">{quizIdx + 1}</strong> / {quizList.length} 题
+                            Question <strong className="text-cyan-400">{quizIdx + 1}</strong> / {quizList.length}
                           </span>
                           {combo > 1 && (
                             <span className="text-rose-400 font-black animate-pulse">
@@ -1216,7 +1539,7 @@ export const WordBankMap: React.FC<WordBankMapProps> = ({
                             </span>
                           )}
                           <span className="text-amber-400 font-bold">
-                            ⏱️ 倒计时: {timeLeft}s
+                            ⏱️ Timer: {timeLeft}s
                           </span>
                         </div>
 
@@ -1232,7 +1555,7 @@ export const WordBankMap: React.FC<WordBankMapProps> = ({
                         <div className="py-6 px-5 rounded-2xl bg-slate-950/70 border border-slate-800 text-center space-y-4">
                           <div className="text-[10px] text-amber-400 uppercase tracking-widest font-black flex items-center justify-center gap-2">
                             <span>🔍</span>
-                            <span>CONTEXTUAL READING // 阅读语境句子，选出高亮词的正确中文意思</span>
+                            <span>CONTEXTUAL READING // Read sentence and pick correct meaning</span>
                           </div>
 
                           {/* Sentence display with highlighted target word */}
@@ -1246,19 +1569,19 @@ export const WordBankMap: React.FC<WordBankMapProps> = ({
                               type="button"
                               onClick={() => playWordAudio(getSentenceForWord(currentQuizWord))}
                               className="px-4 py-1.5 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold inline-flex items-center gap-1.5 transition-all cursor-pointer"
-                              title="朗读完整例句"
+                              title="Listen to full sentence"
                             >
                               <span>🔊</span>
-                              <span>朗读整句</span>
+                              <span>Sentence</span>
                             </button>
                             <button
                               type="button"
                               onClick={() => playWordAudio(currentQuizWord.word)}
                               className="px-4 py-1.5 rounded-full bg-cyan-950/80 border border-cyan-500/40 text-cyan-300 text-xs font-bold inline-flex items-center gap-1.5 transition-all cursor-pointer"
-                              title="单读生词"
+                              title="Listen to target word"
                             >
                               <span>🎯</span>
-                              <span>仅读目标词</span>
+                              <span>Word</span>
                             </button>
                           </div>
                         </div>
@@ -1307,13 +1630,17 @@ export const WordBankMap: React.FC<WordBankMapProps> = ({
                     {spellCompleted ? (
                       <div className="theme-card border border-purple-500/40 rounded-2xl p-8 text-center space-y-5 shadow-2xl">
                         <div className="text-5xl">🎖️</div>
-                        <h3 className="text-2xl font-black text-white">拼写大挑战达成！</h3>
+                        <h3 className="text-2xl font-black text-white">Spelling Challenge Cleared!</h3>
                         <p className="text-xs text-slate-400">
-                          本轮完成了 <strong className="text-purple-300">{spellList.length}</strong> 个单词盲听盲打记忆
+                          Completed <strong className="text-purple-300">{spellList.length}</strong> spelling challenges
                         </p>
                         <div className="flex items-center justify-center gap-6 py-4">
                           <div className="p-4 rounded-xl bg-purple-500/10 border border-purple-500/30 text-purple-300">
-                            <div className="text-[10px] uppercase font-bold text-purple-400/80">经验奖励 (EXP)</div>
+                            <div className="text-[10px] uppercase font-bold text-purple-400/80">Stage Star</div>
+                            <div className="text-2xl font-black">⭐ +1</div>
+                          </div>
+                          <div className="p-4 rounded-xl bg-purple-500/10 border border-purple-500/30 text-purple-300">
+                            <div className="text-[10px] uppercase font-bold text-purple-400/80">Reward (EXP)</div>
                             <div className="text-2xl font-black">+{roundCoins}</div>
                           </div>
                         </div>
@@ -1323,14 +1650,14 @@ export const WordBankMap: React.FC<WordBankMapProps> = ({
                             onClick={() => initSpellingRound(chapterWords)}
                             className="px-6 py-2.5 rounded-xl bg-purple-500 hover:bg-purple-400 text-slate-950 font-black text-xs uppercase tracking-wider transition-all cursor-pointer shadow-lg"
                           >
-                            🔄 再战一轮拼写
+                            🔄 Play Again
                           </button>
                           <button
                             type="button"
                             onClick={handleBackToMap}
                             className="px-6 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs transition-all cursor-pointer"
                           >
-                            ← 返回章节地图
+                            ← Back to Map
                           </button>
                         </div>
                       </div>
@@ -1338,26 +1665,26 @@ export const WordBankMap: React.FC<WordBankMapProps> = ({
                       <div className="theme-card border theme-border rounded-2xl p-6 sm:p-8 space-y-6 shadow-2xl">
                         <div className="flex items-center justify-between text-xs font-mono">
                           <span className="text-slate-400">
-                            第 <strong className="text-purple-400">{spellIdx + 1}</strong> / {spellList.length} 词
+                            Word <strong className="text-purple-400">{spellIdx + 1}</strong> / {spellList.length}
                           </span>
                           <span className="text-xs text-purple-300 font-bold">
-                            ✍️ 听音输入英文字母
+                            ✍️ Listen & type the word
                           </span>
                         </div>
 
                         {/* Pronunciation & Prompt Stage */}
-                        <div className="py-8 px-6 rounded-2xl bg-slate-950/70 border border-slate-800 text-center space-y-4">
+                        <div className="py-6 px-5 sm:px-6 rounded-2xl bg-slate-950/70 border border-slate-800 text-center space-y-4">
                           <button
                             type="button"
                             onClick={() => playWordAudio(currentSpellWord.word)}
                             className="w-16 h-16 rounded-full bg-purple-500/20 border-2 border-purple-400 text-purple-300 hover:bg-purple-400 hover:text-slate-950 text-2xl mx-auto flex items-center justify-center transition-all cursor-pointer shadow-[0_0_25px_rgba(168,85,247,0.3)] active:scale-95"
-                            title="重新播放发音"
+                            title="Replay audio"
                           >
                             🔊
                           </button>
-                          <p className="text-xs text-slate-400 font-mono">点击喇叭重新播放发音</p>
+                          <p className="text-xs text-slate-400 font-mono">Tap speaker to replay audio</p>
 
-                          <div className="space-y-1 pt-2">
+                          <div className="space-y-1">
                             {currentSpellWord.phonetic && (
                               <div className="text-xs text-cyan-400 font-mono">
                                 [{currentSpellWord.phonetic}]
@@ -1367,47 +1694,248 @@ export const WordBankMap: React.FC<WordBankMapProps> = ({
                               {currentSpellWord.translation}
                             </div>
                           </div>
+
+                          {/* Letter Slots Box Display */}
+                          <div className="flex items-center justify-center gap-1.5 sm:gap-2.5 flex-wrap pt-2">
+                            {currentSpellWord.word.split('').map((targetLetter, i) => {
+                              const isHyphen = targetLetter === '-';
+                              const isSpace = targetLetter === ' ';
+                              const isApostrophe = targetLetter === "'";
+                              const typedChar = typedValue[i] || '';
+                              const isFilled = Boolean(typedChar);
+                              const isCurrent = i === typedValue.length && !spellAnswered;
+
+                              // Special renderer for Space in multi-word phrases
+                              if (isSpace) {
+                                const isSpaceFilled = typedChar === ' ';
+                                return (
+                                  <div
+                                    key={i}
+                                    className={`w-7 sm:w-12 h-11 sm:h-14 flex flex-col items-center justify-center select-none transition-all ${
+                                      isCurrent
+                                        ? 'border-2 border-dashed border-cyan-400 bg-cyan-950/50 text-cyan-300 animate-pulse ring-2 ring-cyan-400/50 rounded-xl'
+                                        : isSpaceFilled || spellAnswered
+                                        ? 'border-2 border-emerald-500/60 bg-emerald-950/40 text-emerald-300 rounded-xl shadow-[0_0_12px_rgba(16,185,129,0.35)]'
+                                        : 'border-2 border-dashed border-slate-700 bg-slate-900/40 text-slate-600 rounded-xl'
+                                    }`}
+                                    title={isCurrent ? "Current slot: Press [SPACE]" : "Space"}
+                                  >
+                                    <span className="text-xs sm:text-sm font-mono font-black leading-none">
+                                      {isSpaceFilled || spellAnswered ? '✓' : '␣'}
+                                    </span>
+                                    <span className="text-[8px] sm:text-[9px] font-mono font-bold uppercase mt-1 opacity-90">
+                                      SPACE
+                                    </span>
+                                  </div>
+                                );
+                              }
+
+                              // Special renderer for Hyphen
+                              if (isHyphen) {
+                                return (
+                                  <div
+                                    key={i}
+                                    className="w-4 sm:w-6 h-11 sm:h-14 flex items-center justify-center font-bold text-slate-400 font-mono text-xl sm:text-2xl select-none"
+                                  >
+                                    -
+                                  </div>
+                                );
+                              }
+
+                              // Special renderer for Apostrophe
+                              if (isApostrophe) {
+                                return (
+                                  <div
+                                    key={i}
+                                    className="w-3 sm:w-5 h-11 sm:h-14 flex items-center justify-center font-bold text-slate-400 font-mono text-xl sm:text-2xl select-none"
+                                  >
+                                    '
+                                  </div>
+                                );
+                              }
+
+                              let slotStyle = 'border-purple-500/40 bg-slate-900/50 text-purple-300';
+                              if (spellIsCorrect === true) {
+                                slotStyle = 'border-emerald-400 bg-emerald-500/20 text-emerald-300 scale-105 shadow-[0_0_15px_rgba(52,211,153,0.4)]';
+                              } else if (spellIsCorrect === false) {
+                                slotStyle = 'border-amber-400 bg-amber-500/20 text-amber-300';
+                              } else if (isFilled) {
+                                slotStyle = 'border-purple-400 bg-purple-500/10 text-white shadow-[0_0_10px_rgba(168,85,247,0.3)]';
+                              } else if (isCurrent) {
+                                slotStyle = 'border-cyan-400 bg-cyan-950/40 text-cyan-300 animate-pulse ring-2 ring-cyan-400/50';
+                              }
+
+                              return (
+                                <div
+                                  key={i}
+                                  className={`w-9 h-11 sm:w-12 sm:h-14 rounded-xl border-2 flex items-center justify-center text-lg sm:text-2xl font-black font-mono shadow-inner transition-all duration-200 select-none ${slotStyle}`}
+                                >
+                                  {spellAnswered ? targetLetter : typedChar || (isCurrent ? '•' : '')}
+                                </div>
+                              );
+                            })}
+                          </div>
                         </div>
 
-                        {/* Typing Arena Input */}
-                        <div className="max-w-xl mx-auto w-full space-y-3">
+                        {/* ── 儿童触控拼写软键盘 (iPad / 移动端原生防卡死虚拟键盘) ── */}
+                        <div className="w-full max-w-xl mx-auto space-y-1.5 sm:space-y-2 select-none">
+                          {/* Row 1 */}
+                          <div className="flex justify-center gap-1 sm:gap-1.5">
+                            {['Q','W','E','R','T','Y','U','I','O','P'].map(k => (
+                              <button
+                                key={k}
+                                type="button"
+                                disabled={spellAnswered}
+                                onClick={() => handleVirtualKeyInput(k)}
+                                className="flex-1 max-w-[48px] h-10 sm:h-12 rounded-xl bg-slate-800/90 hover:bg-purple-600 active:bg-purple-500 active:scale-95 border border-slate-700/80 hover:border-purple-400 text-white font-mono font-bold text-sm sm:text-base shadow-sm transition-all cursor-pointer disabled:opacity-30 touch-manipulation"
+                              >
+                                {k}
+                              </button>
+                            ))}
+                          </div>
+
+                          {/* Row 2 */}
+                          <div className="flex justify-center gap-1 sm:gap-1.5 px-2">
+                            {['A','S','D','F','G','H','J','K','L'].map(k => (
+                              <button
+                                key={k}
+                                type="button"
+                                disabled={spellAnswered}
+                                onClick={() => handleVirtualKeyInput(k)}
+                                className="flex-1 max-w-[48px] h-10 sm:h-12 rounded-xl bg-slate-800/90 hover:bg-purple-600 active:bg-purple-500 active:scale-95 border border-slate-700/80 hover:border-purple-400 text-white font-mono font-bold text-sm sm:text-base shadow-sm transition-all cursor-pointer disabled:opacity-30 touch-manipulation"
+                              >
+                                {k}
+                              </button>
+                            ))}
+                          </div>
+
+                          {/* Row 3 */}
+                          <div className="flex justify-center gap-1 sm:gap-1.5">
+                            {/* Backspace */}
+                            <button
+                              type="button"
+                              disabled={spellAnswered || typedValue.length === 0}
+                              onClick={handleVirtualBackspace}
+                              className="px-2.5 sm:px-3 h-10 sm:h-12 rounded-xl bg-rose-950/40 hover:bg-rose-900/60 active:scale-95 border border-rose-500/40 text-rose-300 font-mono font-bold text-xs sm:text-sm flex items-center justify-center gap-1 shadow-sm transition-all cursor-pointer disabled:opacity-20 touch-manipulation"
+                              title="Backspace"
+                            >
+                              <span>⌫</span>
+                              <span className="hidden sm:inline">Del</span>
+                            </button>
+
+                            {['Z','X','C','V','B','N','M'].map(k => (
+                              <button
+                                key={k}
+                                type="button"
+                                disabled={spellAnswered}
+                                onClick={() => handleVirtualKeyInput(k)}
+                                className="flex-1 max-w-[48px] h-10 sm:h-12 rounded-xl bg-slate-800/90 hover:bg-purple-600 active:bg-purple-500 active:scale-95 border border-slate-700/80 hover:border-purple-400 text-white font-mono font-bold text-sm sm:text-base shadow-sm transition-all cursor-pointer disabled:opacity-30 touch-manipulation"
+                              >
+                                {k}
+                              </button>
+                            ))}
+
+                            {/* If target word has hyphen, include hyphen button */}
+                            {currentSpellWord.word.includes('-') && (
+                              <button
+                                type="button"
+                                disabled={spellAnswered}
+                                onClick={() => handleVirtualKeyInput('-')}
+                                className="w-8 sm:w-10 h-10 sm:h-12 rounded-xl bg-slate-800/90 hover:bg-purple-600 active:scale-95 border border-slate-700 text-white font-mono font-bold text-sm shadow-sm transition-all cursor-pointer touch-manipulation"
+                              >
+                                -
+                              </button>
+                            )}
+
+                            {/* Clear */}
+                            <button
+                              type="button"
+                              disabled={spellAnswered || typedValue.length === 0}
+                              onClick={handleVirtualClear}
+                              className="px-2 sm:px-3 h-10 sm:h-12 rounded-xl bg-amber-950/40 hover:bg-amber-900/60 active:scale-95 border border-amber-500/40 text-amber-300 font-mono font-bold text-xs sm:text-sm flex items-center justify-center gap-1 shadow-sm transition-all cursor-pointer disabled:opacity-20 touch-manipulation"
+                              title="Clear all"
+                            >
+                              <span>🗑️</span>
+                            </button>
+                          </div>
+
+                          {/* Row 4: Space bar & Apostrophe (for phrases and contracted words) */}
+                          {(currentSpellWord.word.includes(' ') || currentSpellWord.word.includes("'")) && (
+                            <div className="flex justify-center gap-1.5 sm:gap-2 pt-0.5">
+                              {currentSpellWord.word.includes("'") && (
+                                <button
+                                  type="button"
+                                  disabled={spellAnswered}
+                                  onClick={() => handleVirtualKeyInput("'")}
+                                  className="w-10 sm:w-12 h-10 sm:h-12 rounded-xl bg-slate-800/90 hover:bg-purple-600 active:scale-95 border border-slate-700 text-white font-mono font-bold text-base shadow-sm transition-all cursor-pointer touch-manipulation"
+                                  title="Apostrophe"
+                                >
+                                  '
+                                </button>
+                              )}
+                              {currentSpellWord.word.includes(' ') && (
+                                <button
+                                  type="button"
+                                  disabled={spellAnswered}
+                                  onClick={() => handleVirtualKeyInput(' ')}
+                                  className="flex-1 max-w-sm h-10 sm:h-12 rounded-xl bg-slate-800/90 hover:bg-purple-600 active:bg-purple-500 active:scale-98 border border-purple-500/40 hover:border-purple-300 text-purple-300 hover:text-white font-mono font-bold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-sm transition-all cursor-pointer disabled:opacity-30 touch-manipulation"
+                                  title="Space"
+                                >
+                                  <span className="text-base leading-none">␣</span>
+                                  <span>SPACE</span>
+                                </button>
+                              )}
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Physical Keyboard / System Keyboard Input (Optimized for iPad & Physical Keyboards) */}
+                        <div className="max-w-xl mx-auto w-full pt-1 space-y-2">
                           <div className="relative">
                             <input
                               ref={spellInputRef}
                               type="text"
+                              inputMode="text"
                               value={typedValue}
                               onChange={handleSpellingChange}
+                              onKeyDown={(e) => {
+                                if (e.key === ' ' || e.code === 'Space') {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  handleVirtualKeyInput(' ');
+                                }
+                              }}
                               disabled={spellAnswered}
-                              placeholder="轻触在此输入单词 (键盘已禁用自动更正)"
+                              placeholder={isTablet ? "Tap for keyboard, or use on-screen keys" : "Type target word or phrase..."}
                               autoComplete="off"
                               autoCorrect="off"
-                              autoCapitalize="off"
-                              className={`w-full bg-slate-950 border-2 rounded-xl px-4 py-3 text-center text-lg sm:text-xl font-mono tracking-widest outline-none transition-all ${
+                              autoCapitalize="none"
+                              spellCheck={false}
+                              enterKeyHint="done"
+                              className={`w-full bg-slate-950/90 border-2 rounded-xl px-4 py-2.5 text-center text-sm sm:text-base font-mono tracking-widest outline-none transition-all ${
                                 spellAnswered
                                   ? spellIsCorrect
-                                    ? 'border-emerald-400 bg-emerald-950/20 text-emerald-300 shadow-[0_0_20px_rgba(52,211,153,0.3)]'
+                                    ? 'border-emerald-400 bg-emerald-950/20 text-emerald-300 shadow-[0_0_15px_rgba(52,211,153,0.3)]'
                                     : 'border-amber-400 bg-amber-950/20 text-amber-300'
-                                  : 'border-purple-500/50 text-white focus:border-purple-400 focus:shadow-[0_0_20px_rgba(168,85,247,0.3)]'
+                                  : 'border-purple-500/40 text-white focus:border-purple-400 focus:shadow-[0_0_15px_rgba(168,85,247,0.3)]'
                               }`}
                             />
                             {spellAnswered && (
                               <p className={`text-xs mt-2 text-center font-bold ${spellIsCorrect ? 'text-emerald-400' : 'text-amber-400'}`}>
-                                {spellIsCorrect ? '🎉 拼写完美匹配！' : `💡 正确拼写: ${currentSpellWord.word}`}
+                                {spellIsCorrect ? '🎉 Perfect spelling!' : `💡 Correct: ${currentSpellWord.word}`}
                               </p>
                             )}
-                            <p className="text-[10px] text-slate-500 mt-2 text-center">
-                              💡 专为 iPad 触控优化：输入法联想已屏蔽，防遮挡高位视口
-                            </p>
                           </div>
 
-                          <div className="flex items-center justify-end">
+                          <div className="flex items-center justify-between text-xs font-mono text-slate-500 px-1">
+                            <span>💡 Supports touch & physical keyboard</span>
                             <button
                               type="button"
                               onClick={handleSkipSpelling}
                               disabled={spellAnswered}
-                              className="text-xs text-slate-500 hover:text-amber-400 underline font-mono cursor-pointer disabled:opacity-40"
+                              className="text-slate-400 hover:text-amber-400 underline cursor-pointer disabled:opacity-30"
                             >
-                              不会拼写？查看提示 ➔
+                              Need help? View hint ➔
                             </button>
                           </div>
                         </div>
@@ -1465,10 +1993,10 @@ export const WordBankMap: React.FC<WordBankMapProps> = ({
               type="button"
               onClick={onBackToStories}
               className="px-3.5 py-2 text-xs rounded-xl font-black transition-all cursor-pointer bg-gradient-to-r from-cyan-600/30 to-indigo-600/30 hover:from-cyan-600/50 hover:to-indigo-600/50 border border-cyan-400/50 text-cyan-300 hover:text-white flex items-center gap-1.5 font-mono shadow-md active:scale-95 shrink-0"
-              title="返回故事主探险地图 (Story Adventure Map)"
+              title="Back to Story Quest Map"
             >
               <span>🗺️</span>
-              <span>故事地图</span>
+              <span>Stories</span>
             </button>
 
             {/* Song Adventure Map Button */}
@@ -1477,10 +2005,10 @@ export const WordBankMap: React.FC<WordBankMapProps> = ({
                 type="button"
                 onClick={onOpenSongs}
                 className="px-3.5 py-2 text-xs rounded-xl font-black transition-all cursor-pointer bg-gradient-to-r from-purple-600/30 to-pink-600/30 hover:from-purple-600/50 hover:to-pink-600/50 border border-purple-400/50 text-purple-300 hover:text-white flex items-center gap-1.5 font-mono shadow-md active:scale-95 shrink-0"
-                title="进入歌曲乐园探险 (Song Adventure Map)"
+                title="Enter Song Quest Map"
               >
                 <span>🎵</span>
-                <span>歌曲乐园</span>
+                <span>Songs</span>
               </button>
             )}
           </div>
@@ -1491,7 +2019,7 @@ export const WordBankMap: React.FC<WordBankMapProps> = ({
             <div className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 shadow-sm font-mono">
               <span className="text-base leading-none">⭐</span>
               <div>
-                <div className="text-[10px] uppercase text-amber-400/70 font-black tracking-wider leading-none">可用星星</div>
+                <div className="text-[10px] uppercase text-amber-400/70 font-black tracking-wider leading-none">AVAILABLE STARS</div>
                 <div className="text-sm font-black text-amber-300 tabular-nums">
                   {currentUser.stars !== undefined ? Math.max(0, currentUser.stars - (currentUser.spent_stars || 0)) : 0}
                 </div>
@@ -1502,9 +2030,9 @@ export const WordBankMap: React.FC<WordBankMapProps> = ({
             <div className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-cyan-500/10 border border-cyan-500/30 text-cyan-200 shadow-sm font-mono">
               <span className="text-base leading-none">📚</span>
               <div>
-                <div className="text-[10px] uppercase text-cyan-400/70 font-black tracking-wider leading-none">已掌握单词</div>
+                <div className="text-[10px] uppercase text-cyan-400/70 font-black tracking-wider leading-none">WORDS MASTERED</div>
                 <div className="text-sm font-black text-cyan-300 tabular-nums">
-                  {allStats.masteredWords} <span className="text-xs text-cyan-500/60 font-normal">/ {allStats.totalWords} 词</span>
+                  {allStats.masteredWords} <span className="text-xs text-cyan-500/60 font-normal">/ {allStats.totalWords}</span>
                 </div>
               </div>
             </div>
@@ -1536,7 +2064,7 @@ export const WordBankMap: React.FC<WordBankMapProps> = ({
               <button
                 onClick={onLogout}
                 className="p-2 text-xs border border-rose-500/30 text-rose-400 hover:bg-rose-500/10 rounded-xl transition-all cursor-pointer font-bold flex items-center gap-1 font-mono shadow-sm"
-                title="退出登录"
+                title="Logout"
               >
                 🚪
               </button>
@@ -1548,16 +2076,59 @@ export const WordBankMap: React.FC<WordBankMapProps> = ({
 
       {/* Main Content Area */}
       <div className="w-full max-w-6xl mx-auto">
-        {/* Header Summary */}
-        <div className="flex flex-wrap justify-between items-end mb-6 gap-4 border-b theme-border pb-4">
-          <div>
-            <h1 className="text-2xl sm:text-3xl font-extrabold tracking-wider text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 via-sky-300 to-indigo-400 uppercase font-mono">
-              Vocab Adventure Map 🗺️ 单词宝库探险
+        {/* Compact Header & Series Filter Bar */}
+        <div className="flex flex-wrap items-center justify-between mb-4 gap-3 border-b theme-border pb-3">
+          <div className="flex items-center gap-3 flex-wrap">
+            <h1 className="text-lg sm:text-xl font-extrabold tracking-wider text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 via-sky-300 to-indigo-400 uppercase font-mono">
+              📚 Vocab Challenge
             </h1>
-            <p className="text-xs theme-text-muted font-mono mt-1">
-              以书本与章节为单位，探索深度例句、语境推断与拼写打字！
-            </p>
+
+            {books.length > 0 && (
+              <>
+                <select
+                  value={selectedCategory === null ? '__ALL__' : selectedCategory}
+                  onChange={(e) => handleSelectCategory(e.target.value === '__ALL__' ? null : e.target.value)}
+                  className="bg-slate-900/90 border border-slate-700 hover:border-cyan-400/60 focus:border-cyan-400 text-cyan-300 text-xs font-mono font-bold px-2.5 py-1.5 rounded-xl outline-none cursor-pointer transition-all"
+                  title="Select Book Series"
+                >
+                  <option value="__ALL__">
+                    🌐 ALL SERIES ({books.length} Ch · {allStats.totalWords} W)
+                  </option>
+                  {availableCategories.map((category) => {
+                    const stat = categoryStats[category] || { count: 0, totalWords: 0, masteredWords: 0, startedWords: 0 };
+                    return (
+                      <option key={category} value={category}>
+                        📚 {category} ({stat.count} Ch · {stat.totalWords} W){stat.masteredWords > 0 ? ` · ✓${stat.masteredWords}` : ''}
+                      </option>
+                    );
+                  })}
+                </select>
+
+                <div className="text-xs font-mono theme-text-muted flex items-center gap-2.5 flex-wrap">
+                  <span>
+                    🏆 Mastered: <strong className="text-emerald-400 font-bold">{currentCategoryStat.masteredWords}/{currentCategoryStat.totalWords}</strong>
+                  </span>
+
+                  <button
+                    type="button"
+                    onClick={toggleHideThreeStars}
+                    className={`px-2 py-1 rounded-lg border text-[11px] font-mono font-bold transition-all cursor-pointer flex items-center gap-1.5 shadow-sm ${
+                      !hideThreeStars
+                        ? 'bg-emerald-500/20 border-emerald-500/60 text-emerald-300 hover:bg-emerald-500/30'
+                        : 'theme-border bg-black/20 dark:bg-white/10 text-slate-300 hover:bg-cyan-500/20 hover:text-cyan-300'
+                    }`}
+                    title={!hideThreeStars ? "Click to hide 3-star completed chapters" : "Click to show 3-star completed chapters"}
+                  >
+                    <span className={`w-1.5 h-1.5 rounded-full ${!hideThreeStars ? 'bg-emerald-400' : 'bg-slate-500'}`} />
+                    <span>
+                      Completed: {!hideThreeStars ? 'ON' : 'OFF'}
+                    </span>
+                  </button>
+                </div>
+              </>
+            )}
           </div>
+
           <OfflineSyncBadge
             currentUserId={currentUser.id}
             variant="map"
@@ -1566,109 +2137,30 @@ export const WordBankMap: React.FC<WordBankMapProps> = ({
           />
         </div>
 
-        {/* ── STORY GROUPS 即是 书本系列 (Book Series Bar) ── */}
-        {books.length > 0 && (
-          <div className="mb-6 space-y-3">
-            <div className="flex items-center justify-between flex-wrap gap-2">
-              <div className="flex items-center gap-2 text-xs font-bold font-mono tracking-wider theme-text-muted">
-                <span>📚 书本系列 (SERIES):</span>
-                <span className="text-cyan-400 font-extrabold">
-                  {selectedCategory === null ? `ALL SERIES (全部 ${books.length} 章节 · ${allStats.totalWords} 词)` : `${selectedCategory} (${currentCategoryStat.count} 章节 · ${currentCategoryStat.totalWords} 词)`}
-                </span>
-              </div>
-              <div className="text-xs font-mono theme-text-muted flex items-center gap-3 flex-wrap">
-                <span>
-                  🏆 Mastered: <strong className="text-emerald-400 font-bold">{currentCategoryStat.masteredWords} / {currentCategoryStat.totalWords} 词</strong>
-                </span>
-                <button
-                  type="button"
-                  onClick={handleToggleCollapseAll}
-                  className="px-2.5 py-1 rounded-lg border theme-border bg-black/20 dark:bg-white/10 text-[0.7rem] text-cyan-400 font-mono font-bold hover:bg-cyan-500/20 transition-all cursor-pointer flex items-center gap-1.5 shadow-sm"
-                  title={allAreCollapsed ? 'Expand all cards' : 'Collapse all cards'}
-                >
-                  <span>{allAreCollapsed ? '📂' : '📁'}</span>
-                  <span>{allAreCollapsed ? 'EXPAND ALL (展开全部)' : 'COLLAPSE ALL (折叠全部)'}</span>
-                </button>
-              </div>
-            </div>
-
-            {/* Series Tab Pills */}
-            <div className="flex flex-wrap items-center gap-2 bg-black/10 dark:bg-white/5 p-2 rounded-xl border theme-border">
-              {/* ALL Tab */}
-              <button
-                type="button"
-                onClick={() => handleSelectCategory(null)}
-                className={`px-3.5 py-1.5 rounded-lg text-xs font-mono font-bold transition-all cursor-pointer flex items-center gap-2 border story-group-tab-pill ${
-                  selectedCategory === null
-                    ? 'bg-cyan-500 text-slate-950 border-cyan-400 shadow-md shadow-cyan-500/20 scale-[1.02]'
-                    : 'bg-black/20 dark:bg-white/10 theme-border theme-text-muted hover:theme-text hover:border-cyan-500/40'
-                }`}
-              >
-                <span>🌐 全部书本 (ALL)</span>
-                <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-extrabold ${
-                  selectedCategory === null ? 'bg-slate-950/40 text-cyan-200' : 'bg-black/30 text-slate-400'
-                }`}>
-                  {books.length}章 · {allStats.totalWords}词
-                </span>
-              </button>
-
-              {/* Specific Series Tabs */}
-              {availableCategories.map((category) => {
-                const stat = categoryStats[category] || { count: 0, totalWords: 0, masteredWords: 0, startedWords: 0 };
-                const isSelected = selectedCategory === category;
-                return (
-                  <button
-                    key={category}
-                    type="button"
-                    onClick={() => handleSelectCategory(category)}
-                    className={`px-3.5 py-1.5 rounded-lg text-xs font-mono font-bold transition-all cursor-pointer flex items-center gap-2 border story-group-tab-pill ${
-                      isSelected
-                        ? 'bg-cyan-500 text-slate-950 border-cyan-400 shadow-md shadow-cyan-500/20 scale-[1.02]'
-                        : 'bg-black/20 dark:bg-white/10 theme-border theme-text-muted hover:theme-text hover:border-cyan-500/40'
-                    }`}
-                  >
-                    <span>📚 {category}</span>
-                    <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-extrabold ${
-                      isSelected ? 'bg-slate-950/40 text-cyan-200' : 'bg-black/30 text-slate-400'
-                    }`}>
-                      {stat.count}章 · {stat.totalWords}词
-                    </span>
-                    {stat.masteredWords > 0 && (
-                      <span className={`text-[10px] ${isSelected ? 'text-slate-950 font-black' : 'text-emerald-400 font-bold'}`}>
-                        ✓{stat.masteredWords}
-                      </span>
-                    )}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        )}
-
         {/* ── 卡片就是 章节目录 (Chapter Cards Grid) ── */}
         {loadingBooks ? (
           <div className="py-24 text-center text-slate-500 animate-pulse text-sm">
-            🛰️ 正在载入单词宝库地图...
+            🛰️ Loading word challenge map...
           </div>
         ) : books.length === 0 ? (
           <div className="theme-card p-12 rounded-xl text-center border theme-border shadow-md space-y-3">
             <div className="text-4xl">📭</div>
-            <h3 className="text-slate-200 font-bold text-base">暂无可用的词单书本</h3>
+            <h3 className="text-slate-200 font-bold text-base">No book chapters available</h3>
             <p className="text-sm theme-text-muted italic">
-              请联系家长在教学管理后台创建书本并导入生词！
+              Please create books and import words in Parent Portal!
             </p>
           </div>
         ) : displayedBooks.length === 0 ? (
           <div className="theme-card p-12 rounded-xl text-center border theme-border shadow-md">
             <p className="text-sm theme-text-muted italic mb-4">
-              在系列 "{selectedCategory}" 中未找到任何章节。
+              No chapters found in series "{selectedCategory}".
             </p>
             <button
               type="button"
               onClick={() => handleSelectCategory(null)}
               className="px-4 py-2 bg-cyan-500 text-slate-950 font-bold text-xs rounded-lg uppercase tracking-wider font-mono hover:bg-cyan-400 cursor-pointer shadow-md"
             >
-              查看全部系列 (View All Series)
+              View All Series
             </button>
           </div>
         ) : (
@@ -1676,14 +2168,19 @@ export const WordBankMap: React.FC<WordBankMapProps> = ({
             {displayedBooks.map((book, index) => {
               const wordCount = book.word_count || 0;
               const masteredCount = book.mastered_count || 0;
-              const isFullyMastered = wordCount > 0 && masteredCount >= wordCount;
-              const isStarted = (book.started_count || 0) > 0;
-              const isCollapsed = collapsedCardIds.has(book.id);
+              const completedMask = book.completed_stages_mask || 0;
+              const starsCount = (completedMask & 1 ? 1 : 0) + (completedMask & 2 ? 1 : 0) + (completedMask & 4 ? 1 : 0);
+              const isThreeStars = starsCount === 3;
+              const isStarted = (book.started_count || 0) > 0 || starsCount > 0;
 
-              let cardStyle = 'relative group rounded-xl p-6 transition-all duration-300 border backdrop-blur-md flex flex-col justify-between story-card-collapsible ';
+              const isStage1Done = (completedMask & 1) !== 0;
+              const isStage2Done = (completedMask & 2) !== 0;
+              const isStage3Done = (completedMask & 4) !== 0;
+
+              let cardStyle = 'relative group rounded-xl p-6 transition-all duration-300 border backdrop-blur-md flex flex-col justify-between ';
               if (wordCount === 0) {
                 cardStyle += 'opacity-60 theme-card border-slate-700 cursor-not-allowed';
-              } else if (isFullyMastered) {
+              } else if (isThreeStars) {
                 cardStyle += 'theme-card border-emerald-500/80 shadow-lg shadow-emerald-500/20 hover:border-emerald-400';
               } else if (isStarted) {
                 cardStyle += 'theme-card border-cyan-500/80 shadow-lg shadow-cyan-500/20 hover:border-cyan-400';
@@ -1696,13 +2193,7 @@ export const WordBankMap: React.FC<WordBankMapProps> = ({
                   key={book.id}
                   className={cardStyle}
                   onClick={() => {
-                    if (isCollapsed) {
-                      setCollapsedCardIds((prev) => {
-                        const next = new Set(prev);
-                        next.delete(book.id);
-                        return next;
-                      });
-                    } else if (wordCount > 0) {
+                    if (wordCount > 0) {
                       handleStartStage(book, 'learn');
                     }
                   }}
@@ -1732,34 +2223,25 @@ export const WordBankMap: React.FC<WordBankMapProps> = ({
                         )}
                       </div>
 
-                      {/* Status Badges & Collapse Chevron */}
+                      {/* Status Badges */}
                       <div className="flex items-center gap-1.5 shrink-0">
                         {wordCount === 0 ? (
                           <span className="bg-slate-900/80 text-slate-500 border border-slate-800 font-mono text-xs px-2.5 py-1 rounded-full font-semibold">
-                            📭 暂无词
+                            📭 Empty
                           </span>
-                        ) : isFullyMastered ? (
-                          <span className="bg-emerald-500/20 text-emerald-400 border border-emerald-400/40 font-mono text-xs px-2.5 py-1 rounded-full font-bold flex items-center gap-1">
-                            ✓ 已通关
+                        ) : isThreeStars ? (
+                          <span className="bg-emerald-500/20 text-emerald-300 border border-emerald-400/50 font-mono text-xs px-2.5 py-1 rounded-full font-black flex items-center gap-1 shadow-[0_0_12px_rgba(16,185,129,0.3)]">
+                            ✓ Cleared ⭐⭐⭐
                           </span>
-                        ) : isStarted ? (
+                        ) : starsCount > 0 ? (
                           <span className="bg-cyan-500/20 text-cyan-400 animate-pulse font-mono border border-cyan-500/40 text-xs px-2.5 py-1 rounded-full font-bold flex items-center gap-1">
-                            ▶ 探索中
+                            ▶ In Progress ({starsCount}/3★)
                           </span>
                         ) : (
                           <span className="bg-amber-500/10 text-amber-300 border border-amber-500/30 font-mono text-xs px-2.5 py-1 rounded-full font-medium">
                             NEW
                           </span>
                         )}
-
-                        <button
-                          type="button"
-                          onClick={(e) => toggleCardCollapse(e, book.id)}
-                          className="w-7 h-7 rounded-lg border theme-border bg-black/10 dark:bg-white/10 hover:bg-cyan-500/20 hover:border-cyan-500/40 text-slate-400 hover:text-cyan-300 transition-all flex items-center justify-center cursor-pointer text-xs font-bold font-mono"
-                          title={isCollapsed ? '展开关卡 (Expand Stages)' : '折叠关卡 (Collapse Stages)'}
-                        >
-                          {isCollapsed ? '▼' : '▲'}
-                        </button>
                       </div>
                     </div>
 
@@ -1768,31 +2250,22 @@ export const WordBankMap: React.FC<WordBankMapProps> = ({
                       <div className="flex items-center gap-1 font-bold">
                         <span className="theme-text-muted mr-1 font-bold">MASTERED:</span>
                         <span className="text-cyan-400 font-mono">
-                          {masteredCount} / {wordCount} 词
+                          {masteredCount} / {wordCount} Words
                         </span>
                       </div>
 
-                      <div className="text-cyan-400 font-mono font-extrabold flex items-center gap-1">
-                        ⚡ +150 EXP
+                      <div className="flex items-center gap-1.5 font-mono">
+                        <span className="text-amber-300 tracking-wider font-bold">
+                          {starsCount === 3 ? '⭐⭐⭐' : starsCount === 2 ? '⭐⭐☆' : starsCount === 1 ? '⭐☆☆' : '☆☆☆'}
+                        </span>
+                        <span className="text-cyan-400 font-extrabold text-[11px]">
+                          ({starsCount}/3)
+                        </span>
                       </div>
                     </div>
 
-                    {/* ── 卡片内对应三个关卡 (Collapsed vs Expanded) ── */}
-                    {isCollapsed ? (
-                      <div className="mt-2 flex flex-col gap-2">
-                        <button
-                          type="button"
-                          onClick={(e) => toggleCardCollapse(e, book.id)}
-                          className="w-full flex justify-between items-center px-4 py-2.5 rounded-lg border theme-border bg-black/10 dark:bg-white/5 hover:bg-cyan-500/10 hover:border-cyan-500/40 text-xs font-mono font-bold text-cyan-400 transition-all cursor-pointer"
-                        >
-                          <span>▼ 关卡已折叠 (Stages Folded)</span>
-                          <span className="text-[0.65rem] px-2 py-0.5 rounded bg-cyan-950/60 border border-cyan-500/30 text-cyan-300">
-                            展开 3 个关卡 ▾
-                          </span>
-                        </button>
-                      </div>
-                    ) : (
-                      <div className="flex flex-col gap-2.5">
+                    {/* ── 卡片内对应三个关卡 ── */}
+                    <div className="flex flex-col gap-2.5">
                         {/* Stage 1: 学单词探索卡片 */}
                         <button
                           type="button"
@@ -1801,18 +2274,23 @@ export const WordBankMap: React.FC<WordBankMapProps> = ({
                             e.stopPropagation();
                             if (wordCount > 0) handleStartStage(book, 'learn');
                           }}
-                          className={`w-full flex justify-between items-center p-3 rounded-lg border text-xs transition-colors cursor-pointer font-mono stage-stagger-1 ${
+                          className={`w-full flex justify-between items-center p-3 rounded-lg border text-xs transition-all cursor-pointer font-mono stage-stagger-1 ${
                             wordCount === 0
                               ? 'bg-slate-900/40 border-slate-800/60 text-slate-600 cursor-not-allowed'
-                              : 'bg-cyan-500/20 border-cyan-500/80 text-cyan-600 dark:text-cyan-200 font-bold shadow-sm shadow-cyan-500/20 hover:bg-cyan-500/30'
+                              : isStage1Done
+                                ? 'bg-emerald-500/15 border-emerald-500/60 text-emerald-300 font-bold hover:bg-emerald-500/25 shadow-sm shadow-emerald-500/10'
+                                : 'bg-cyan-500/20 border-cyan-500/80 text-cyan-600 dark:text-cyan-200 font-bold shadow-sm shadow-cyan-500/20 hover:bg-cyan-500/30'
                           }`}
                         >
                           <div className="flex items-center gap-2">
-                            <span>01 // 学单词 (探索卡片)</span>
-                            <span>📖</span>
+                            <span>01 // Study Cards 📖</span>
                           </div>
-                          <span className="text-[0.65rem] uppercase font-bold px-2 py-0.5 rounded bg-black/10 dark:bg-white/10 border theme-border tabular-nums">
-                            {wordCount === 0 ? 'Empty' : 'Play ▶'}
+                          <span className={`text-[0.65rem] uppercase font-bold px-2 py-0.5 rounded border tabular-nums ${
+                            isStage1Done
+                              ? 'bg-emerald-950/80 border-emerald-400 text-emerald-300 shadow-[0_0_8px_rgba(16,185,129,0.3)]'
+                              : 'bg-black/10 dark:bg-white/10 border-theme-border'
+                          }`}>
+                            {wordCount === 0 ? 'Empty' : isStage1Done ? 'Done ⭐' : 'Play ▶'}
                           </span>
                         </button>
 
@@ -1824,18 +2302,23 @@ export const WordBankMap: React.FC<WordBankMapProps> = ({
                             e.stopPropagation();
                             if (wordCount > 0) handleStartStage(book, 'reading');
                           }}
-                          className={`w-full flex justify-between items-center p-3 rounded-lg border text-xs transition-colors cursor-pointer font-mono stage-stagger-2 ${
+                          className={`w-full flex justify-between items-center p-3 rounded-lg border text-xs transition-all cursor-pointer font-mono stage-stagger-2 ${
                             wordCount === 0
                               ? 'bg-slate-900/40 border-slate-800/60 text-slate-600 cursor-not-allowed'
-                              : 'bg-amber-500/20 border-amber-500/80 text-amber-600 dark:text-amber-200 font-bold shadow-sm shadow-amber-500/20 hover:bg-amber-500/30'
+                              : isStage2Done
+                                ? 'bg-emerald-500/15 border-emerald-500/60 text-emerald-300 font-bold hover:bg-emerald-500/25 shadow-sm shadow-emerald-500/10'
+                                : 'bg-amber-500/20 border-amber-500/80 text-amber-600 dark:text-amber-200 font-bold shadow-sm shadow-amber-500/20 hover:bg-amber-500/30'
                           }`}
                         >
                           <div className="flex items-center gap-2">
-                            <span>02 // 看句选义 (语境推断)</span>
-                            <span>⚡</span>
+                            <span>02 // Context Quiz 🎯</span>
                           </div>
-                          <span className="text-[0.65rem] uppercase font-bold px-2 py-0.5 rounded bg-black/10 dark:bg-white/10 border theme-border tabular-nums">
-                            {wordCount === 0 ? 'Empty' : 'Play ▶'}
+                          <span className={`text-[0.65rem] uppercase font-bold px-2 py-0.5 rounded border tabular-nums ${
+                            isStage2Done
+                              ? 'bg-emerald-950/80 border-emerald-400 text-emerald-300 shadow-[0_0_8px_rgba(16,185,129,0.3)]'
+                              : 'bg-black/10 dark:bg-white/10 border-theme-border'
+                          }`}>
+                            {wordCount === 0 ? 'Empty' : isStage2Done ? 'Done ⭐' : 'Play ▶'}
                           </span>
                         </button>
 
@@ -1847,22 +2330,26 @@ export const WordBankMap: React.FC<WordBankMapProps> = ({
                             e.stopPropagation();
                             if (wordCount > 0) handleStartStage(book, 'spelling');
                           }}
-                          className={`w-full flex justify-between items-center p-3 rounded-lg border text-xs transition-colors cursor-pointer font-mono stage-stagger-3 ${
+                          className={`w-full flex justify-between items-center p-3 rounded-lg border text-xs transition-all cursor-pointer font-mono stage-stagger-3 ${
                             wordCount === 0
                               ? 'bg-slate-900/40 border-slate-800/60 text-slate-600 cursor-not-allowed'
-                              : 'bg-purple-500/20 border-purple-500/80 text-purple-600 dark:text-purple-200 font-bold shadow-sm shadow-purple-500/20 hover:bg-purple-500/30'
+                              : isStage3Done
+                                ? 'bg-emerald-500/15 border-emerald-500/60 text-emerald-300 font-bold hover:bg-emerald-500/25 shadow-sm shadow-emerald-500/10'
+                                : 'bg-purple-500/20 border-purple-500/80 text-purple-600 dark:text-purple-200 font-bold shadow-sm shadow-purple-500/20 hover:bg-purple-500/30'
                           }`}
                         >
                           <div className="flex items-center gap-2">
-                            <span>03 // 听音拼写 (限时打字)</span>
-                            <span>✍️</span>
+                            <span>03 // Spelling Test ✍️</span>
                           </div>
-                          <span className="text-[0.65rem] uppercase font-bold px-2 py-0.5 rounded bg-black/10 dark:bg-white/10 border theme-border tabular-nums">
-                            {wordCount === 0 ? 'Empty' : 'Play ▶'}
+                          <span className={`text-[0.65rem] uppercase font-bold px-2 py-0.5 rounded border tabular-nums ${
+                            isStage3Done
+                              ? 'bg-emerald-950/80 border-emerald-400 text-emerald-300 shadow-[0_0_8px_rgba(16,185,129,0.3)]'
+                              : 'bg-black/10 dark:bg-white/10 border-theme-border'
+                          }`}>
+                            {wordCount === 0 ? 'Empty' : isStage3Done ? 'Done ⭐' : 'Play ▶'}
                           </span>
                         </button>
                       </div>
-                    )}
                   </div>
                 </div>
               );
@@ -1870,6 +2357,184 @@ export const WordBankMap: React.FC<WordBankMapProps> = ({
           </div>
         )}
       </div>
+
+      {/* ── 重点星词攻坚弹窗 (TASK-12.1 Weak Words Targeted Practice Modal) ── */}
+      {showWeakWordsModal && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-3 sm:p-6 animate-fade-in">
+          <div className="theme-card w-full max-w-2xl max-h-[90vh] rounded-2xl border theme-border shadow-2xl flex flex-col overflow-hidden bg-[#0d1527]/95">
+            {/* Modal Header */}
+            <div className="px-5 py-4 border-b theme-border flex items-center justify-between bg-black/30">
+              <div className="flex items-center gap-2.5">
+                <span className="text-2xl">⭐</span>
+                <div>
+                  <h3 className="text-base font-extrabold text-white flex items-center gap-2">
+                    <span>Focus Stars</span>
+                    <span className="text-xs px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 font-mono font-bold border border-amber-500/30">
+                      Focus Stars
+                    </span>
+                  </h3>
+                  <p className="text-xs theme-text-muted mt-0.5">
+                    Practice priority words to master them through focused challenges!
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={handleCloseWeakWordsModal}
+                className="w-8 h-8 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-400 hover:text-white flex items-center justify-center text-sm font-bold transition-all cursor-pointer"
+                title="Close"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-4">
+              {loadingWeakWords ? (
+                <div className="py-16 text-center text-slate-400 space-y-3">
+                  <div className="text-3xl animate-bounce">🛰️</div>
+                  <p className="text-sm font-bold">Selecting words that need more practice...</p>
+                </div>
+              ) : weakWordsList.length === 0 ? (
+                <div className="py-12 px-4 text-center space-y-3">
+                  <div className="text-4xl">🎉</div>
+                  <h4 className="text-base font-bold text-emerald-400">Awesome! No priority words right now</h4>
+                  <p className="text-xs theme-text-muted max-w-md mx-auto">
+                    You have mastered all words, or have no recorded mistakes. Keep it up!
+                  </p>
+                  <button
+                    type="button"
+                    onClick={handleCloseWeakWordsModal}
+                    className="mt-2 px-5 py-2 rounded-xl bg-cyan-500 text-slate-950 font-bold text-xs hover:bg-cyan-400 cursor-pointer shadow-md"
+                  >
+                    Back to Quest
+                  </button>
+                </div>
+              ) : (
+                <>
+                  {/* Top Action Bar for Drill */}
+                  <div className="p-3.5 rounded-xl bg-gradient-to-r from-amber-500/10 via-purple-500/10 to-cyan-500/10 border border-amber-500/30 flex flex-wrap items-center justify-between gap-3">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-bold text-amber-300 font-mono">
+                        🎯 Focus: {weakWordsList.length} Words
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <button
+                        type="button"
+                        onClick={() => handleStartWeakPractice('reading')}
+                        className="px-3.5 py-1.5 rounded-lg bg-amber-400 hover:bg-amber-300 text-slate-950 text-xs font-black flex items-center gap-1.5 shadow-md shadow-amber-500/20 cursor-pointer transition-all hover:scale-102"
+                      >
+                        <span>⚡</span>
+                        <span>Context Quiz Drill</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleStartWeakPractice('spelling')}
+                        className="px-3.5 py-1.5 rounded-lg bg-purple-500 hover:bg-purple-400 text-white text-xs font-black flex items-center gap-1.5 shadow-md shadow-purple-500/20 cursor-pointer transition-all hover:scale-102"
+                      >
+                        <span>✍️</span>
+                        <span>Spelling Drill</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Word List */}
+                  <div className="space-y-2.5">
+                    {weakWordsList.map((w: any, idx: number) => {
+                      const totalAttempts = (w.error_count || 0) + (w.correct_count || 0);
+                      const hasSentence = w.fun_sentences && Array.isArray(w.fun_sentences) && w.fun_sentences.length > 0 && w.fun_sentences[0].en;
+                      return (
+                        <div
+                          key={w.id || idx}
+                          className="p-3.5 rounded-xl border border-white/10 bg-slate-900/60 hover:border-amber-400/50 transition-all flex flex-col gap-2"
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="flex items-baseline gap-2.5 flex-wrap">
+                              <span className="text-base font-black text-cyan-300 tracking-wide font-mono">
+                                {w.word}
+                              </span>
+                              {w.phonetic && (
+                                <span className="text-xs text-slate-400 font-mono">
+                                  {w.phonetic}
+                                </span>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => playSpeech(w.word)}
+                                className="w-6 h-6 rounded-lg bg-cyan-500/20 hover:bg-cyan-500/40 text-cyan-300 flex items-center justify-center text-xs transition-all cursor-pointer"
+                                title="Pronounce"
+                              >
+                                🔊
+                              </button>
+                            </div>
+
+                            <div className="flex items-center gap-2">
+                              {w.streak > 0 && (
+                                <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                                  🔥 Streak {w.streak}
+                                </span>
+                              )}
+                              {totalAttempts > 0 ? (
+                                <span
+                                  className={`text-[10px] font-mono font-bold px-2.5 py-0.5 rounded-full flex items-center gap-1 border ${
+                                    w.mode === 'spelling'
+                                      ? 'bg-purple-950/70 text-purple-300 border-purple-500/40'
+                                      : w.mode === 'reading'
+                                      ? 'bg-amber-950/70 text-amber-300 border-amber-500/40'
+                                      : 'bg-amber-500/20 text-amber-300 border-amber-500/30'
+                                  }`}
+                                  title={w.error_count > 0 ? `Missed ${w.error_count} times, correct ${w.correct_count} times` : undefined}
+                                >
+                                  {w.mode === 'spelling' && <span>✍️ Spelling</span>}
+                                  {w.mode === 'reading' && <span>📖 Quiz</span>}
+                                  <span>Needs practice ({totalAttempts} tries)</span>
+                                </span>
+                              ) : (
+                                <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-slate-700/60 text-slate-300 border border-slate-600">
+                                  Not practiced yet
+                                </span>
+                              )}
+                            </div>
+                          </div>
+
+                          <div className="text-xs font-bold text-slate-200">
+                            {w.translation}
+                          </div>
+
+                          {hasSentence && (
+                            <div className="text-xs text-slate-400 bg-black/20 p-2 rounded-lg border border-white/5 font-mono">
+                              <div className="text-slate-300">{w.fun_sentences[0].en}</div>
+                              {w.fun_sentences[0].zh && (
+                                <div className="text-slate-500 text-[11px] mt-0.5">{w.fun_sentences[0].zh}</div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="px-5 py-3 border-t theme-border bg-black/30 flex items-center justify-between text-xs theme-text-muted">
+              <span className="flex items-center gap-1">
+                <span>💡</span>
+                <span>Answer correctly 3 times in a row to master a word!</span>
+              </span>
+              <button
+                type="button"
+                onClick={handleCloseWeakWordsModal}
+                className="px-4 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold transition-all cursor-pointer"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Toast Notification */}
       {toastMsg && (

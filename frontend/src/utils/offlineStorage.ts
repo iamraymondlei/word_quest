@@ -9,7 +9,7 @@ const DB_VERSION = 3;
 
 export interface SyncAction {
   id?: number;
-  type: 'update_stage' | 'add_coins' | 'update_avatar' | 'translation_stats' | 'vocab_progress';
+  type: 'update_stage' | 'add_coins' | 'update_avatar' | 'translation_stats' | 'vocab_progress' | 'word_book_progress' | 'grammar_submit';
   payload: any;
   timestamp: number;
 }
@@ -251,7 +251,9 @@ class OfflineStorageEngine {
     islandId: number,
     stage: number,
     score: number,
-    mistakes: any[]
+    mistakes: any[],
+    stage1Answers?: string[],
+    completedStageParam?: number
   ): Promise<void> {
     try {
       const islands = await this.getCachedIslands(userId);
@@ -280,6 +282,21 @@ class OfflineStorageEngine {
           if ((island.progress as any)[nextStatusKey] === 'locked') {
             (island.progress as any)[nextStatusKey] = 'unlocked';
           }
+        }
+
+        // Update unlocked_stage
+        island.unlocked_stage = Math.max(island.unlocked_stage || 1, stage);
+
+        // Target completed stage is completedStageParam or stage - 1 (e.g. stage=2 means stage 1 is completed)
+        const completedStage = completedStageParam || (stage > 1 ? stage - 1 : 1);
+        let stageBit = completedStage >= 1 && completedStage <= 5 ? (1 << (completedStage - 1)) : 0;
+        if (completedStage === 3) {
+          stageBit |= 16;
+        }
+        island.completed_stages_mask = ((island.completed_stages_mask || 0) | stageBit) & 31;
+
+        if (stage1Answers && stage1Answers.length > 0) {
+          island.stage1_answers = stage1Answers;
         }
 
         // Merge mistakes
@@ -519,6 +536,25 @@ class OfflineStorageEngine {
     }
   }
 
+  async updateCachedWordBookProgress(bookId: number, stage: number): Promise<void> {
+    try {
+      const books = await this.getCachedWordBooks();
+      const bit = 1 << (stage - 1);
+      const updated = books.map((b: any) => {
+        if (b.id === bookId) {
+          return {
+            ...b,
+            completed_stages_mask: ((b.completed_stages_mask || 0) | bit) & 7
+          };
+        }
+        return b;
+      });
+      await this.saveCachedWordBooks(updated);
+    } catch (e) {
+      console.warn('Failed to update cached word book progress:', e);
+    }
+  }
+
   async saveCachedBookWords(bookId: number, words: any[]): Promise<void> {
     if (!words || !Array.isArray(words)) return;
     try {
@@ -569,14 +605,22 @@ class OfflineStorageEngine {
       req.onsuccess = () => {
         const word = req.result;
         if (!word) return;
+        if (!word.mode_stats) word.mode_stats = {};
+        if (!word.mode_stats[mode]) {
+          word.mode_stats[mode] = { correct_count: 0, error_count: 0, streak: 0 };
+        }
         if (passed) {
+          word.mode_stats[mode].correct_count += 1;
+          word.mode_stats[mode].streak = (word.mode_stats[mode].streak || 0) + 1;
           if (mode === 'reading') word.reading_passed = 1;
           if (mode === 'listening') word.listening_passed = 1;
           if (mode === 'spelling') word.spelling_passed = 1;
-          if (word.reading_passed && word.listening_passed && word.spelling_passed) {
+          if (word.reading_passed && word.spelling_passed) {
             word.mastered = 1;
           }
         } else {
+          word.mode_stats[mode].error_count += 1;
+          word.mode_stats[mode].streak = 0;
           word.error_count = (word.error_count || 0) + 1;
         }
         store.put(word);
@@ -584,6 +628,235 @@ class OfflineStorageEngine {
     } catch (e) {
       console.warn('Failed to update cached word progress:', e);
     }
+  }
+
+  // ── Grammar Quest Offline Cache ───────────────────────────────────────
+  async saveCachedGrammarProgress(userId: number, progress: Record<string, any>): Promise<void> {
+    if (!userId || !progress) return;
+    const key = `wordquest_grammar_progress_${userId}`;
+    try {
+      const db = await this.initDB();
+      const tx = db.transaction('settings', 'readwrite');
+      const store = tx.objectStore('settings');
+      store.put({ key, value: progress });
+      localStorage.setItem(key, JSON.stringify(progress));
+    } catch {
+      localStorage.setItem(key, JSON.stringify(progress));
+    }
+  }
+
+  async getCachedGrammarProgress(userId: number): Promise<Record<string, any>> {
+    if (!userId) return {};
+    const key = `wordquest_grammar_progress_${userId}`;
+    try {
+      const db = await this.initDB();
+      return new Promise((resolve) => {
+        const tx = db.transaction('settings', 'readonly');
+        const store = tx.objectStore('settings');
+        const req = store.get(key);
+        req.onsuccess = () => {
+          if (req.result && req.result.value) {
+            resolve(req.result.value);
+          } else {
+            const fallback = localStorage.getItem(key);
+            resolve(fallback ? JSON.parse(fallback) : {});
+          }
+        };
+        req.onerror = () => {
+          const fallback = localStorage.getItem(key);
+          resolve(fallback ? JSON.parse(fallback) : {});
+        };
+      });
+    } catch {
+      const fallback = localStorage.getItem(key);
+      return fallback ? JSON.parse(fallback) : {};
+    }
+  }
+
+  async saveCachedGrammarHistory(userId: number, quizId: string, history: any[]): Promise<void> {
+    if (!userId || !quizId || !Array.isArray(history)) return;
+    const key = `wordquest_grammar_history_${userId}_${quizId}`;
+    try {
+      const db = await this.initDB();
+      const tx = db.transaction('settings', 'readwrite');
+      const store = tx.objectStore('settings');
+      store.put({ key, value: history });
+      localStorage.setItem(key, JSON.stringify(history));
+    } catch {
+      localStorage.setItem(key, JSON.stringify(history));
+    }
+  }
+
+  async getCachedGrammarHistory(userId: number, quizId: string): Promise<any[]> {
+    if (!userId || !quizId) return [];
+    const key = `wordquest_grammar_history_${userId}_${quizId}`;
+    try {
+      const db = await this.initDB();
+      return new Promise((resolve) => {
+        const tx = db.transaction('settings', 'readonly');
+        const store = tx.objectStore('settings');
+        const req = store.get(key);
+        req.onsuccess = () => {
+          if (req.result && Array.isArray(req.result.value)) {
+            resolve(req.result.value);
+          } else {
+            const fallback = localStorage.getItem(key);
+            resolve(fallback ? JSON.parse(fallback) : []);
+          }
+        };
+        req.onerror = () => {
+          const fallback = localStorage.getItem(key);
+          resolve(fallback ? JSON.parse(fallback) : []);
+        };
+      });
+    } catch {
+      const fallback = localStorage.getItem(key);
+      return fallback ? JSON.parse(fallback) : [];
+    }
+  }
+
+  async recordOfflineGrammarQuiz(
+    data: {
+      userId: number;
+      category?: string;
+      quizId: string;
+      score: number;
+      totalQuestions: number;
+      correctCount: number;
+      userAnswers: Record<string, string>;
+      wrongDetails?: any[];
+    },
+    serverResult?: {
+      recordId?: number;
+      coinsAwarded?: number;
+      starsAwarded?: number;
+      isFirstPass?: boolean;
+      user?: any;
+    }
+  ): Promise<{
+    success: boolean;
+    offline: boolean;
+    recordId: number;
+    score: number;
+    coinsAwarded: number;
+    starsAwarded: number;
+    isFirstPass: boolean;
+    user?: any;
+  }> {
+    const progress = await this.getCachedGrammarProgress(data.userId);
+    const existing = progress[data.quizId];
+    const prevMaxScore =
+      existing && typeof existing.bestScore === 'number' && (existing.attemptsCount || 0) > 0
+        ? Number(existing.bestScore)
+        : null;
+
+    let coinsAwarded = 0;
+    let starsAwarded = 0;
+    let isFirstPass = false;
+
+    if (serverResult) {
+      coinsAwarded = Number(serverResult.coinsAwarded) || 0;
+      starsAwarded = Number(serverResult.starsAwarded) || 0;
+      isFirstPass = Boolean(serverResult.isFirstPass);
+    } else if (data.score >= 80) {
+      if (prevMaxScore === null || prevMaxScore < 80) {
+        coinsAwarded = 50;
+        starsAwarded = 1;
+        isFirstPass = true;
+      } else {
+        coinsAwarded = 10;
+        starsAwarded = 0;
+        isFirstPass = false;
+      }
+    }
+
+    const recordId = serverResult?.recordId || Date.now();
+    const createdAt = new Date().toISOString();
+    const nextBest = Math.max(prevMaxScore ?? 0, data.score);
+
+    progress[data.quizId] = {
+      quizId: data.quizId,
+      category: data.category || 'present_simple',
+      attemptsCount: (existing?.attemptsCount || 0) + 1,
+      bestScore: nextBest,
+      isPassed: nextBest >= 80,
+      latestRecord: {
+        id: recordId,
+        score: data.score,
+        totalQuestions: data.totalQuestions,
+        correctCount: data.correctCount,
+        coinsAwarded,
+        starsAwarded,
+        userAnswers: data.userAnswers || {},
+        wrongDetails: data.wrongDetails || [],
+        createdAt,
+      },
+    };
+    await this.saveCachedGrammarProgress(data.userId, progress);
+
+    const history = await this.getCachedGrammarHistory(data.userId, data.quizId);
+    const newHistoryItem = {
+      id: recordId,
+      score: data.score,
+      total_questions: data.totalQuestions,
+      correct_count: data.correctCount,
+      coins_awarded: coinsAwarded,
+      stars_awarded: starsAwarded,
+      created_at: createdAt,
+      offline_pending: !serverResult,
+    };
+    await this.saveCachedGrammarHistory(
+      data.userId,
+      data.quizId,
+      [newHistoryItem, ...history].slice(0, 50)
+    );
+
+    let updatedUser: any = serverResult?.user || null;
+    try {
+      const users = await this.getCachedUsers();
+      const user = users.find((u) => u.id === data.userId);
+      if (user) {
+        if (serverResult?.user) {
+          user.coins = Number(serverResult.user.coins) || 0;
+          user.stars = Number(serverResult.user.stars) || 0;
+        } else {
+          user.coins = (Number(user.coins) || 0) + coinsAwarded;
+          user.stars = (Number(user.stars) || 0) + starsAwarded;
+        }
+        updatedUser = { ...user };
+        await this.saveCachedUsers(users);
+      }
+      for (const lsKey of ['wordquest_user', 'wordquest_current_user']) {
+        const raw = localStorage.getItem(lsKey);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (parsed && parsed.id === data.userId) {
+            if (serverResult?.user) {
+              parsed.coins = Number(serverResult.user.coins) || 0;
+              parsed.stars = Number(serverResult.user.stars) || 0;
+            } else {
+              parsed.coins = (Number(parsed.coins) || 0) + coinsAwarded;
+              parsed.stars = (Number(parsed.stars) || 0) + starsAwarded;
+            }
+            localStorage.setItem(lsKey, JSON.stringify(parsed));
+            if (!updatedUser) updatedUser = parsed;
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to update cached user coins/stars for grammar quiz:', e);
+    }
+
+    return {
+      success: true,
+      offline: !serverResult,
+      recordId,
+      score: data.score,
+      coinsAwarded,
+      starsAwarded,
+      isFirstPass,
+      user: updatedUser,
+    };
   }
 }
 

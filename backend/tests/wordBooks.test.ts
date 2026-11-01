@@ -282,4 +282,44 @@ describe('Word Books & Vocabulary Learning API (/api/word-books)', () => {
       await pool.query('DELETE FROM users WHERE id IN (?, ?)', [adminId, student2Id]);
     }
   });
+
+  it('should automatically create and link an empty word_book when a new story island is created without words', async () => {
+    // 1. Create a story island with 0 words
+    const islandRes = await request(app)
+      .post('/api/islands')
+      .send({
+        name: 'Empty Story Island',
+        group_name: 'Story Category A',
+        story_title: 'Chapter Without Words',
+        story_passage: 'Once upon a time there were no words.',
+        words: []
+      });
+    expect(islandRes.status).toBe(200);
+    expect(islandRes.body).toHaveProperty('id');
+    expect(islandRes.body).toHaveProperty('word_book_id');
+    const islandId = islandRes.body.id;
+    const wordBookId = islandRes.body.word_book_id;
+    expect(wordBookId).toBeTruthy();
+
+    try {
+      // 2. Verify the linked word_book exists and matches island title and category
+      const booksRes = await request(app).get('/api/word-books');
+      expect(booksRes.status).toBe(200);
+      const matchedBook = booksRes.body.find((b: any) => b.id === wordBookId);
+      expect(matchedBook).toBeDefined();
+      expect(matchedBook.island_id).toBe(islandId);
+      expect(matchedBook.title).toBe('Chapter Without Words');
+      expect(matchedBook.category).toBe('Story Category A');
+
+      // 3. Verify getIslands also returns the correct word_book_id
+      const allIslandsRes = await request(app).get('/api/islands');
+      expect(allIslandsRes.status).toBe(200);
+      const targetIsland = allIslandsRes.body.find((isl: any) => isl.id === islandId);
+      expect(targetIsland).toBeDefined();
+      expect(targetIsland.word_book_id).toBe(wordBookId);
+    } finally {
+      // Clean up test island and word_book
+      await request(app).delete(`/api/islands/${islandId}`);
+    }
+  });
 });

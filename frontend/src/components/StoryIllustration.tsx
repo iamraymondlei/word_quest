@@ -85,7 +85,7 @@ export const StoryIllustration: React.FC<StoryIllustrationProps> = ({
         {/* Loading shimmer skeleton */}
         {isLoading && (
           <div className="w-full h-48 sm:h-64 bg-slate-900 animate-pulse flex items-center justify-center text-slate-500 font-mono text-xs">
-            <span>🖼️ 正在载入插图...</span>
+            <span>🖼️ Loading art...</span>
           </div>
         )}
 
@@ -108,7 +108,7 @@ export const StoryIllustration: React.FC<StoryIllustrationProps> = ({
         {!isLoading && (
           <div className="absolute top-2.5 left-2.5 flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-950/80 backdrop-blur-md border border-cyan-500/30 text-cyan-300 text-[11px] font-mono shadow-sm pointer-events-none select-none">
             <span>🎨</span>
-            <span>{pageNumber ? `第 ${pageNumber} 页绘本插图` : '绘本插图'}</span>
+            <span>{pageNumber ? `Page ${pageNumber} Art` : 'Story Art'}</span>
           </div>
         )}
 
@@ -118,9 +118,9 @@ export const StoryIllustration: React.FC<StoryIllustrationProps> = ({
             type="button"
             onClick={() => setIsZoomed(true)}
             className="absolute bottom-2.5 right-2.5 opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1 px-2.5 py-1 rounded-lg bg-black/75 backdrop-blur-md border border-white/20 text-white text-xs font-mono cursor-pointer hover:bg-black/90 select-none"
-            title="点击全屏查看清晰原图"
+            title="Full Screen"
           >
-            <span>🔍 点击全屏</span>
+            <span>🔍 Fullscreen</span>
           </button>
         )}
 
@@ -146,14 +146,14 @@ export const StoryIllustration: React.FC<StoryIllustrationProps> = ({
               <div className="flex items-center gap-2">
                 <span className="text-xl">🖼️</span>
                 <span className="font-bold">
-                  {pageNumber ? `第 ${pageNumber} 页插图高清大图` : '绘本插图高清大图'}
+                  {pageNumber ? `Page ${pageNumber} HD Art` : 'Story HD Art'}
                 </span>
               </div>
               <button
                 type="button"
                 onClick={() => setIsZoomed(false)}
                 className="w-9 h-9 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center text-lg cursor-pointer transition-all border border-white/20"
-                title="关闭全屏"
+                title="Close"
               >
                 ✕
               </button>
@@ -170,7 +170,7 @@ export const StoryIllustration: React.FC<StoryIllustrationProps> = ({
 
             {/* Bottom Tip for iPad */}
             <div className="pt-2 text-xs text-slate-400 font-mono text-center">
-              💡 点击图片外部任意区域或右上角 ✕ 即可返回阅读
+              💡 Tap outside or ✕ to close
             </div>
           </div>
         </div>

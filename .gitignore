@@ -24,6 +24,8 @@ daemon_docker.json
 !**/.env.example
 docs/archive/
 docs/runbooks/
+docs/mp3/
+docs/pdf/
 scripts/
 docker-compose.yml
 ai_agent/Dockerfile

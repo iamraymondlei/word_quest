@@ -9,6 +9,7 @@ CREATE TABLE IF NOT EXISTS users (
   spent_stars INT DEFAULT 0,
   avatar VARCHAR(50) DEFAULT '🦖',
   is_admin TINYINT(1) DEFAULT 0,
+  password VARCHAR(255) DEFAULT 'admin',
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -98,13 +99,16 @@ CREATE TABLE IF NOT EXISTS songs (
 CREATE TABLE IF NOT EXISTS word_books (
   id INT AUTO_INCREMENT PRIMARY KEY,
   category VARCHAR(100) NOT NULL DEFAULT 'General',
+  island_id INT NULL,
   title VARCHAR(200) NOT NULL,
   description TEXT NULL,
   tags VARCHAR(255) NULL,
   sort_order INT DEFAULT 0,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  INDEX idx_word_books_category (category)
+  INDEX idx_word_books_category (category),
+  INDEX idx_word_books_island (island_id),
+  FOREIGN KEY (island_id) REFERENCES islands(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS vocabulary_words (
@@ -145,6 +149,50 @@ CREATE TABLE IF NOT EXISTS user_word_book_access (
   PRIMARY KEY (user_id, book_id),
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
   FOREIGN KEY (book_id) REFERENCES word_books(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS user_word_book_progress (
+  user_id INT NOT NULL,
+  book_id INT NOT NULL,
+  completed_stages_mask INT NOT NULL DEFAULT 0,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (user_id, book_id),
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  FOREIGN KEY (book_id) REFERENCES word_books(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS vocabulary_attempts (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  client_id VARCHAR(64) NOT NULL,
+  user_id INT NOT NULL,
+  vocab_id INT NOT NULL,
+  mode VARCHAR(32) NOT NULL,
+  is_correct TINYINT(1) NOT NULL,
+  answer VARCHAR(255) NULL,
+  duration_ms INT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uk_user_client (user_id, client_id),
+  INDEX idx_user_vocab (user_id, vocab_id),
+  INDEX idx_user_mode_time (user_id, mode, created_at),
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  FOREIGN KEY (vocab_id) REFERENCES vocabulary_words(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS user_vocabulary_mode_stats (
+  user_id INT NOT NULL,
+  vocab_id INT NOT NULL,
+  mode VARCHAR(32) NOT NULL,
+  correct_count INT DEFAULT 0,
+  error_count INT DEFAULT 0,
+  streak INT DEFAULT 0,
+  mastered TINYINT(1) DEFAULT 0,
+  last_result TINYINT(1) NULL,
+  last_practiced_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (user_id, vocab_id, mode),
+  INDEX idx_user_mode (user_id, mode),
+  INDEX idx_user_mode_score (user_id, mode, error_count, streak),
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  FOREIGN KEY (vocab_id) REFERENCES vocabulary_words(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS songs (

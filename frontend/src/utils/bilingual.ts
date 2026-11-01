@@ -103,48 +103,62 @@ export function playBilingualSpeech(
   }
   if (!text || !text.trim()) return;
 
-  window.speechSynthesis.cancel();
-  const utter = new SpeechSynthesisUtterance(text);
-  const voices = window.speechSynthesis.getVoices();
+  try {
+    // On iOS Safari / WebKit, calling cancel() when idle can stall AVAudioSession.
+    // Only cancel if speech is actively speaking or queued.
+    if (window.speechSynthesis.speaking || window.speechSynthesis.pending) {
+      window.speechSynthesis.cancel();
+    }
+    const utter = new SpeechSynthesisUtterance(text);
+    const voices = window.speechSynthesis.getVoices() || [];
 
-  if (lang === 'yue' || lang === 'zh') {
-    utter.lang = 'zh-HK';
-    utter.rate = 0.92;
+    if (lang === 'yue' || lang === 'zh') {
+      utter.lang = 'zh-HK';
+      utter.rate = 0.92;
 
-    // 1. Prioritize Cantonese-specific locale identifiers
-    const cantoneseLocales = ['zh-hk', 'yue-hant-hk', 'yue-hk', 'zh-yue', 'zh-mo', 'yue'];
-    let voice = voices.find(v => {
-      const l = v.lang.toLowerCase().replace('_', '-');
-      return cantoneseLocales.some(c => l === c || l.startsWith(c));
-    });
-
-    // 2. Prioritize voice names explicitly indicating Cantonese / Hong Kong / 粤语 / 廣東話
-    if (!voice) {
-      const cantoneseKeywords = ['cantonese', 'hong kong', '粤语', '廣東話', 'sin-ji', 'sinji', 'tracy', 'danny', 'hiugaai', 'hiumaan'];
-      voice = voices.find(v => {
-        const n = v.name.toLowerCase();
-        return cantoneseKeywords.some(k => n.includes(k));
+      // 1. Prioritize Cantonese-specific locale identifiers
+      const cantoneseLocales = ['zh-hk', 'yue-hant-hk', 'yue-hk', 'zh-yue', 'zh-mo', 'yue'];
+      let voice = voices.find(v => {
+        const l = v.lang.toLowerCase().replace('_', '-');
+        return cantoneseLocales.some(c => l === c || l.startsWith(c));
       });
+
+      // 2. Prioritize voice names explicitly indicating Cantonese / Hong Kong / 粤语 / 廣東話
+      if (!voice) {
+        const cantoneseKeywords = ['cantonese', 'hong kong', '粤语', '廣東話', 'sin-ji', 'sinji', 'tracy', 'danny', 'hiugaai', 'hiumaan'];
+        voice = voices.find(v => {
+          const n = v.name.toLowerCase();
+          return cantoneseKeywords.some(k => n.includes(k));
+        });
+      }
+
+      // 3. Fallback to any voice with 'hk' in its locale code
+      if (!voice) {
+        voice = voices.find(v => v.lang.toLowerCase().includes('hk'));
+      }
+
+      // 4. Fallback to general Chinese voice if device has no Cantonese voice installed
+      if (!voice) {
+        voice = voices.find(v => v.lang.toLowerCase().startsWith('zh'));
+      }
+
+      if (voice) utter.voice = voice;
+    } else {
+      utter.lang = 'en-US';
+      utter.rate = 0.88;
+      const enVoice = voices.find(v => v.lang.startsWith('en') && (v.localService || !v.voiceURI.includes('Google')))
+                   || voices.find(v => v.lang.startsWith('en'));
+      if (enVoice) utter.voice = enVoice;
     }
 
-    // 3. Fallback to any voice with 'hk' in its locale code
-    if (!voice) {
-      voice = voices.find(v => v.lang.toLowerCase().includes('hk'));
-    }
+    utter.onerror = (e) => {
+      if (e.error !== 'canceled' && e.error !== 'interrupted') {
+        console.warn('SpeechSynthesis utterance warning:', e.error);
+      }
+    };
 
-    // 4. Fallback to general Chinese voice if device has no Cantonese voice installed
-    if (!voice) {
-      voice = voices.find(v => v.lang.toLowerCase().startsWith('zh'));
-    }
-
-    if (voice) utter.voice = voice;
-  } else {
-    utter.lang = 'en-US';
-    utter.rate = 0.88;
-    const enVoice = voices.find(v => v.lang.startsWith('en') && (v.localService || !v.voiceURI.includes('Google')))
-                 || voices.find(v => v.lang.startsWith('en'));
-    if (enVoice) utter.voice = enVoice;
+    window.speechSynthesis.speak(utter);
+  } catch (err) {
+    console.warn('SpeechSynthesis execution caught:', err);
   }
-
-  window.speechSynthesis.speak(utter);
 }

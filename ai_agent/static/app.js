@@ -51,7 +51,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // Fallback
         modelSelect.innerHTML = cli === 'codex' 
             ? '<option value="gpt-5.6-sol" selected>GPT-5.6 Sol (默认推荐)</option><option value="gpt-4o">GPT-4o</option>'
-            : '<option value="gemini-3.7-flash-high" selected>Gemini 3.7 Flash (High) (默认推荐)</option><option value="gemini-3.6-flash-high">Gemini 3.6 Flash (High)</option>';
+            : '<option value="gemini-3.8-flash-high" selected>Gemini 3.8 Flash (High) (默认推荐)</option><option value="gemini-3.8-flash-medium">Gemini 3.8 Flash (Medium)</option>';
         modelSelect.disabled = false;
     }
 

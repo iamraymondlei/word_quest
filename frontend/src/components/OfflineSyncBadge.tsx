@@ -49,16 +49,16 @@ export const OfflineSyncBadge: React.FC<OfflineSyncBadgeProps> = ({
       const result = await apiService.cacheAllForOffline(currentUserId);
       if (result.success) {
         setCacheMessage(
-          `✅ 成功离线缓存 ${result.storyCount} 个故事，${result.wordCount} 个单词${
-            result.illustrationCount ? `，${result.illustrationCount} 张插图` : ''
-          }！可在无网时游玩。`
+          `✅ Cached ${result.storyCount} stories, ${result.wordCount} words${
+            result.illustrationCount ? `, ${result.illustrationCount} pictures` : ''
+          }!`
         );
         if (onRefreshData) onRefreshData();
       } else {
-        setCacheMessage(`⚠️ 离线缓存失败: ${result.error}`);
+        setCacheMessage(`⚠️ Cache failed: ${result.error}`);
       }
     } catch (e: any) {
-      setCacheMessage(`⚠️ 离线缓存异常: ${e.message}`);
+      setCacheMessage(`⚠️ Cache error: ${e.message}`);
     } finally {
       setIsCaching(false);
     }
@@ -69,15 +69,15 @@ export const OfflineSyncBadge: React.FC<OfflineSyncBadgeProps> = ({
     try {
       const res = await apiService.syncOfflineQueue();
       if (res.syncedCount > 0) {
-        setCacheMessage(`✅ 已成功同步 ${res.syncedCount} 条离线进度到电脑！`);
+        setCacheMessage(`✅ Synced ${res.syncedCount} records to server!`);
         if (onRefreshData) onRefreshData();
       } else if (res.remainingCount > 0) {
-        setCacheMessage(`⚠️ 网络未连通，剩余 ${res.remainingCount} 条进度待同步。`);
+        setCacheMessage(`⚠️ Offline: ${res.remainingCount} records pending sync.`);
       } else {
-        setCacheMessage('✨ 所有离线数据已与电脑保持最新同步！');
+        setCacheMessage('✨ All data is in sync with server!');
       }
     } catch (e: any) {
-      setCacheMessage(`⚠️ 同步失败: ${e.message}`);
+      setCacheMessage(`⚠️ Sync failed: ${e.message}`);
     }
   };
 
@@ -109,12 +109,12 @@ export const OfflineSyncBadge: React.FC<OfflineSyncBadgeProps> = ({
           }
         }
         if (!hasCompleteCache) {
-          throw new Error('本机没有完整的离线题库。请联网选择账号，下载故事和插图后再切换。');
+          throw new Error('Incomplete offline cache. Please connect to Wi-Fi to download stories & art first.');
         }
       }
       await setForcedOffline(!status.forcedOffline);
     } catch (error) {
-      setCacheMessage(`⚠️ ${error instanceof Error ? error.message : '切换失败'}`);
+      setCacheMessage(`⚠️ ${error instanceof Error ? error.message : 'Switch failed'}`);
       setIsSwitching(false);
     }
   };
@@ -123,23 +123,11 @@ export const OfflineSyncBadge: React.FC<OfflineSyncBadgeProps> = ({
     <>
       {variant === 'map' ? (
         <div className="flex flex-wrap items-center gap-2 font-mono">
-          <button
-            type="button"
-            onClick={() => {
-              setShowModal(true);
-              void handleManualCache();
-            }}
-            disabled={isCaching || !status.isOnline || !currentUserId}
-            className="rounded-xl bg-cyan-500 px-4 py-2.5 text-xs font-black text-slate-950 shadow-lg shadow-cyan-500/20 transition-colors hover:bg-cyan-400 disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
-          >
-            {isCaching ? '⏳ 正在下载题库...' : '📥 下载离线题库'}
-          </button>
-
-          {/* Font Scale Selector right beside the Download button */}
+          {/* Font Scale Selector */}
           {fontScale && onFontScaleChange && (
             <div className="flex items-center p-1 rounded-xl bg-slate-950/70 border border-slate-800 shadow-sm font-mono">
               <span className="text-[10px] text-slate-400 font-bold px-1.5 select-none">
-                字号
+                Font
               </span>
               {(['100', '115', '130'] as const).map((scale) => (
                 <button
@@ -151,7 +139,7 @@ export const OfflineSyncBadge: React.FC<OfflineSyncBadgeProps> = ({
                       ? 'bg-cyan-500/25 text-cyan-300 border border-cyan-500/50 shadow-sm font-black'
                       : 'text-slate-400 hover:text-white'
                   }`}
-                  title={`设置字号大小: ${scale}%`}
+                  title={`Set font scale: ${scale}%`}
                 >
                   {scale === '130' ? '130%' : `${scale}%`}
                 </button>
@@ -162,10 +150,19 @@ export const OfflineSyncBadge: React.FC<OfflineSyncBadgeProps> = ({
           <button
             type="button"
             onClick={() => setShowModal(true)}
-            className="rounded-xl border theme-border bg-slate-950/50 px-3 py-2.5 text-xs font-bold theme-text cursor-pointer hover:border-cyan-400"
+            className="rounded-xl border theme-border bg-slate-950/50 px-3 py-2 text-xs font-bold theme-text cursor-pointer hover:border-cyan-400 flex items-center gap-2 shadow-sm"
           >
-            {status.forcedOffline ? '离线模式 · 管理' : status.isOnline ? '在线模式 · 管理' : '网络不可用 · 管理'}
-            {status.pendingCount > 0 ? ` · ${status.pendingCount} 待同步` : ''}
+            <span
+              className={`w-2 h-2 rounded-full ${
+                status.forcedOffline
+                  ? 'bg-amber-400'
+                  : status.isOnline
+                  ? 'bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.8)]'
+                  : 'bg-rose-400'
+              }`}
+            />
+            <span>{status.forcedOffline ? 'Offline · Manage' : status.isOnline ? 'Online · Manage' : 'No Network · Manage'}</span>
+            {status.pendingCount > 0 && <span className="text-amber-400">({status.pendingCount} pending)</span>}
           </button>
         </div>
       ) : <button
@@ -176,14 +173,14 @@ export const OfflineSyncBadge: React.FC<OfflineSyncBadgeProps> = ({
           borderColor: status.isOnline ? 'rgba(52, 211, 153, 0.4)' : 'rgba(251, 191, 36, 0.5)',
           color: status.isOnline ? '#a7f3d0' : '#fef08a',
         }}
-        title="点击查看离线状态与题库同步"
+        title="Offline status & data sync"
       >
         <span
           className={`w-2 h-2 rounded-full ${
             status.isOnline ? 'bg-emerald-400 animate-pulse shadow-[0_0_6px_#34d399]' : 'bg-amber-400'
           }`}
         />
-        <span>{status.forcedOffline ? '离线模式' : status.isOnline ? '在线' : '网络不可用'}</span>
+        <span>{status.forcedOffline ? 'Offline' : status.isOnline ? 'Online' : 'Offline (No Net)'}</span>
 
         {status.isSyncing && (
           <span className="text-cyan-300 animate-spin text-[10px]">🔄</span>
@@ -191,7 +188,7 @@ export const OfflineSyncBadge: React.FC<OfflineSyncBadgeProps> = ({
 
         {status.pendingCount > 0 && (
           <span className="bg-amber-500/30 text-amber-200 text-[10px] px-1.5 py-0.2 rounded-full border border-amber-400/40">
-            {status.pendingCount}待同步
+            {status.pendingCount} pending
           </span>
         )}
       </button>}
@@ -203,7 +200,7 @@ export const OfflineSyncBadge: React.FC<OfflineSyncBadgeProps> = ({
             <div className="flex items-center justify-between border-b border-slate-800 pb-3">
               <div className="flex items-center gap-2">
                 <span className="text-xl">📲</span>
-                <h3 className="font-bold text-base text-white">iPad 离线模式与题库管理</h3>
+                <h3 className="font-bold text-base text-white">iPad Offline & Data Management</h3>
               </div>
               <button
                 onClick={() => {
@@ -219,7 +216,7 @@ export const OfflineSyncBadge: React.FC<OfflineSyncBadgeProps> = ({
             {/* Status overview cards */}
             <div className="grid grid-cols-2 gap-3 text-xs">
               <div className="bg-slate-950/60 p-3 rounded-xl border border-slate-800 space-y-1">
-                <div className="text-slate-400">当前网络连接</div>
+                <div className="text-slate-400">Network Status</div>
                 <div className="flex items-center gap-1.5 font-bold">
                   <span
                     className={`w-2 h-2 rounded-full ${
@@ -227,25 +224,25 @@ export const OfflineSyncBadge: React.FC<OfflineSyncBadgeProps> = ({
                     }`}
                   />
                   <span className={status.isOnline ? 'text-emerald-400' : 'text-amber-300'}>
-                    {status.forcedOffline ? '已手动开启离线模式' : status.isOnline ? '设备显示已联网' : '设备未连接网络'}
+                    {status.forcedOffline ? 'Offline mode enabled' : status.isOnline ? 'Connected' : 'No connection'}
                   </span>
                 </div>
               </div>
 
               <div className="bg-slate-950/60 p-3 rounded-xl border border-slate-800 space-y-1">
-                <div className="text-slate-400">本地已缓存故事</div>
+                <div className="text-slate-400">Cached Stories</div>
                 <div className="font-bold text-cyan-300">
                   {status.storyCount > 0
-                    ? `${status.storyCount} 个故事 (${status.wordCount} 词${
-                        status.illustrationCount ? ` · ${status.illustrationCount} 张插画` : ''
+                    ? `${status.storyCount} stories (${status.wordCount} words${
+                        status.illustrationCount ? `, ${status.illustrationCount} pictures` : ''
                       })`
-                    : '暂无离线故事'}
+                    : 'No cached stories'}
                 </div>
               </div>
             </div>
 
             <div className="rounded-xl border border-cyan-500/30 bg-slate-950/60 p-3 space-y-2 text-xs">
-              <div className="font-bold text-cyan-200">使用模式</div>
+              <div className="font-bold text-cyan-200">Mode</div>
               <button
                 type="button"
                 role="switch"
@@ -254,28 +251,28 @@ export const OfflineSyncBadge: React.FC<OfflineSyncBadgeProps> = ({
                 disabled={isSwitching || isCaching}
                 className="w-full rounded-lg border border-cyan-500/50 px-3 py-2 font-bold text-white hover:bg-cyan-900/50 disabled:opacity-50 cursor-pointer"
               >
-                {isSwitching ? '正在切换...' : status.forcedOffline ? '离线已开启 · 点击切回在线' : '在线已开启 · 点击切到离线'}
+                {isSwitching ? 'Switching...' : status.forcedOffline ? 'Offline Active · Tap to Go Online' : 'Online Active · Tap to Go Offline'}
               </button>
-              <p className="text-slate-400">离线模式会保存到本机；关闭网页后重开仍只使用本地数据。切回在线后才会恢复同步。</p>
+              <p className="text-slate-400">Offline mode stays saved on this device. Closing the browser will keep using cached data until switched back to online.</p>
             </div>
 
             {/* Pending actions */}
             {status.pendingCount > 0 && (
               <div className="p-3 bg-amber-950/40 border border-amber-500/40 rounded-xl text-xs space-y-2 text-amber-200">
                 <div className="flex items-center justify-between font-bold">
-                  <span>📦 有 {status.pendingCount} 条离线进度待同步</span>
+                  <span>📦 {status.pendingCount} records pending sync</span>
                   {status.isOnline && (
                     <button
                       onClick={handleManualSync}
                       disabled={status.isSyncing}
                       className="px-2.5 py-1 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-lg cursor-pointer disabled:opacity-50 text-[11px]"
                     >
-                      {status.isSyncing ? '同步中...' : '立即同步'}
+                      {status.isSyncing ? 'Syncing...' : 'Sync Now'}
                     </button>
                   )}
                 </div>
                 <p className="text-[11px] text-amber-300/80">
-                  离线游玩的金币、通关成绩已保存在 iPad 本地。切回在线模式并连上网络后会同步。
+                  Progress and coins earned offline are saved locally on iPad and will sync once back online.
                 </p>
               </div>
             )}
@@ -294,11 +291,11 @@ export const OfflineSyncBadge: React.FC<OfflineSyncBadgeProps> = ({
                 disabled={isCaching || !status.isOnline || !currentUserId}
                 className="w-full py-2.5 px-4 rounded-xl font-bold text-xs bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white shadow-lg shadow-cyan-500/20 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer flex items-center justify-center gap-2 transition-all"
               >
-                <span>{isCaching ? '⏳ 正在下载题库...' : '📥 离线缓存全部故事与单词 (出门前必备)'}</span>
+                <span>{isCaching ? '⏳ Downloading...' : '📥 Cache All Stories & Words (For Offline)'}</span>
               </button>
 
               <p className="text-[11px] text-slate-400 leading-relaxed">
-                💡 <strong>温馨提示</strong>：外出（如坐车、没 Wi-Fi）前，请在家里点击上方按钮把故事存入 iPad 本地。断网后直接打开 iPad，即可离线畅玩所有关卡！
+                💡 <strong>Tip</strong>: Click the button above to cache all stories to iPad before heading out without Wi-Fi.
               </p>
             </div>
 
@@ -306,10 +303,10 @@ export const OfflineSyncBadge: React.FC<OfflineSyncBadgeProps> = ({
             <div className="border-t border-slate-800 pt-3 text-[11px] text-slate-400 space-y-1">
               <div className="font-bold text-slate-300 flex items-center gap-1">
                 <span>🎙️</span>
-                <span>iPad 离线朗读小贴士:</span>
+                <span>iPad Offline Dictation Tip:</span>
               </div>
               <p>
-                断网时，关卡 4 模仿朗读请直接点击输入框，使用 iPad 键盘右下角的 <strong>🎙️ 自带麦克风</strong> 进行朗读听写，支持苹果端侧离线识别与自动评分。
+                When offline, tap the text input and use the <strong>🎙️ Mic button</strong> on the iPad keyboard for on-device speech recognition.
               </p>
             </div>
           </div>

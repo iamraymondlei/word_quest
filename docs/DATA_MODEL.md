@@ -20,6 +20,7 @@
 | `spent_stars` | 已花费星星 |
 | `avatar` | Buddy 标识或兼容旧 Emoji |
 | `is_admin` | 管理员标记 |
+| `password` | 管理员/用户密码（默认 `admin`），用于后台认证与家长控制 |
 | `created_at` | 创建时间 |
 
 用户名 `Admin` 会在启动迁移时被创建或提升为管理员。这是当前实现事实，不是安全认证。
@@ -50,7 +51,9 @@
 
 代码沿用 `island` 名称表示一个故事关卡包。
 
-### `words`
+### `words` (已安全归档 / DEPRECATED)
+
+> **迁移提示**：该表数据已全量归档至 `words_archive`。绘本关卡 Stage 1~4 全阶段及核心练习词汇已彻底统一至 `word_books` + `vocabulary_words` 底层数据源，`getIslands` 查询接口已移除对旧 `words` 表的兜底回退，实现唯一事实源驱动。删除词书时联动清理旧表残留，绘本生词增删改双向全量同步。保留 Schema 仅作历史向下兼容。
 
 | 字段 | 含义 |
 |---|---|
@@ -64,6 +67,14 @@
 
 唯一约束是 `(island_id, word)`。
 
+### `words_archive` (归档备份表)
+
+历史绘本生词全量镜像归档表，与 `words` 结构相同，用于历史生词数据追溯与备份安全底线。
+
+### `user_word_progress_archive` (归档备份表)
+
+历史关卡错词进度镜像归档表，与 `user_word_progress` 结构相同，用于历史错词记录追溯。
+
 ### `user_island_access`
 
 学员与故事的多对多分配表，联合主键 `(user_id, island_id)`，两端删除时级联删除。当前查询规则是：存在明确分配时只显示分配故事；完全没有分配记录时回退显示全部故事。
@@ -76,6 +87,7 @@
 | `unlocked_stage` | 兼容旧进度的最高开放阶段，范围 1–5 |
 | `completed_stages_mask` | 低四位对应关卡 1–4 是否完成 |
 | `translation_stats_json` | Word Matching 的每故事统计 JSON 文本 |
+| `stage1_answers_json` | Stage 1 (Reading & Typing) 用户历史作答答案 JSON 字符串数组 |
 | `updated_at` | 最后更新时间 |
 
 旧记录若位图为 0，会按 `unlocked_stage` 推导已完成位图。新写入应以位图为准确完成事实。
@@ -118,7 +130,8 @@
 | 字段 | 含义 |
 |---|---|
 | `id` | 自增主键 |
-| `category` | 所属书本/第一层分类（如“Think”、“RAZ”、“General”） |
+| `category` | 所属书本/第一层分类（绘本词单自动与故事分组 `islands.group_name` 保持一致，如“PowerUp3”、“RAZ Level D”、“Think”；独立词单默认为“General”或管理员自定义） |
+| `island_id` | 关联的故事绘本关卡 ID（`islands.id`），为 NULL 时为独立词单 |
 | `title` | 章节/词单名称（如“Class 1”、“Unit 2”） |
 | `description` | 词单简介/适读年级说明 |
 | `tags` | 标签/分类（如自然拼读、高频词） |
@@ -134,6 +147,17 @@
 | `created_at` | 授权创建时间 |
 
 联合主键为 `(user_id, book_id)`。若某一词单章节未关联任何学员，则默认为向全体公开；若存在关联学员，则仅所选学员与管理员可见。
+
+### `user_word_book_progress` (单词挑战卡片关卡进度与星星)
+
+| 字段 | 含义 |
+|---|---|
+| `user_id` | 学员用户 ID，外键关联 `users.id`，级联删除 |
+| `book_id` | 词单章节 ID，外键关联 `word_books.id`，级联删除 |
+| `completed_stages_mask` | 关卡完成位掩码：第 1 关学单词 (bit 1, 1<<0)，第 2 关看句选义 (bit 2, 1<<1)，第 3 关听音拼写 (bit 4, 1<<2)。单卡满星 3 颗星 |
+| `updated_at` | 最近达成时间 |
+
+联合主键为 `(user_id, book_id)`。首次达成某一子关卡时，自动为学员发放 1 颗星星 (`users.stars += 1`) 及 50 EXP 经验值奖励 (`users.coins += 50`)。
 
 ### `vocabulary_words` (独立词汇库 - Phase 9)
 
@@ -151,7 +175,7 @@
 | `etymology` | 趣味通俗词源背景小故事，支持英文与生动童趣中文双语 JSON 结构：`{"en": "...", "zh": "..."}`（文字为规范童趣中文，前端发音时英文调用 en-US 英文发音，中文调用 zh-HK 粤语发音）或向下兼容纯文本 |
 | `created_at` | 创建时间 |
 
-### `user_vocabulary_progress` (学员独立单词掌握与错词记录 - Phase 9)
+### `user_vocabulary_progress` (学员独立单词掌握与错词记录 - Phase 9 向下兼容旧表)
 
 | 字段 | 含义 |
 |---|---|
@@ -167,6 +191,42 @@
 | `created_at` | 创建时间 |
 
 联合唯一约束为 `(user_id, word_id, mode)`。
+
+### `vocabulary_attempts` (单词练习流水表 - TASK-12.1)
+
+| 字段 | 含义 |
+|---|---|
+| `id` | 自增主键 |
+| `user_id` | 学员用户 ID，外键关联 `users.id`，级联删除 |
+| `vocab_id` | 单词 ID，外键关联 `vocabulary_words.id`，级联删除 |
+| `book_id` | 所属词单 ID，外键关联 `word_books.id`，级联删除 |
+| `mode` | 练习模式：`reading` (看句选义) / `listening` / `spelling` (听音拼写) |
+| `passed` | 答对标记 (1: 答对, 0: 答错) |
+| `client_id` | 客户端生成的 UUID，用于离线同步与服务端幂等去重 |
+| `answer` | 学员作答内容（选项文本或拼写输入的英文字符） |
+| `duration_ms` | 作答耗时（毫秒） |
+| `created_at` | 作答时间 |
+
+唯一约束为 `(user_id, client_id)`。当网络不佳或离线重传时，相同 `client_id` 将被忽略以避免重复计分与累加。
+
+### `user_vocabulary_mode_stats` (单词单模式能力聚合汇总表 - TASK-12.1)
+
+| 字段 | 含义 |
+|---|---|
+| `user_id` | 学员用户 ID，联合主键 |
+| `vocab_id` | 单词 ID，联合主键 |
+| `mode` | 模式 (`reading` / `listening` / `spelling`)，联合主键 |
+| `book_id` | 所属词单 ID |
+| `correct_count` | 模式下累计答对次数 |
+| `error_count` | 模式下累计答错次数 |
+| `streak` | 当前连续答对次数（一旦答错归 0，连续答对 3 次触发 mastered = 1） |
+| `mastered` | 该模式下是否已攻坚掌握 (0 或 1) |
+| `last_result` | 最近一次作答结果 (1: 对, 0: 错) |
+| `last_practiced_at` | 最近练习时间戳 |
+| `weak_score` | 动态加权不熟悉度分数 (0~100，综合错误率、最近答错惩罚与连对折扣) |
+| `updated_at` | 记录更新时间 |
+
+联合主键为 `(user_id, vocab_id, mode)`。专练算法与排行榜直接依据 `weak_score` 降序提取学员需要多练的重点词。
 
 ### `songs` (原声歌曲库)
 
@@ -194,6 +254,25 @@
 | `created_at` | 授权创建时间 |
 
 联合主键为 `(user_id, song_id)`。当歌曲未在 `user_song_access` 中配置任何用户时，默认为公开全员可见；若已配置则仅允许指定学员访问（Admin 始终可见全部）。
+
+### `user_grammar_quiz_records`
+
+| 字段 | 含义 |
+|---|---|
+| `id` | 自增主键 |
+| `user_id` | 学员用户 ID，外键关联 `users.id` |
+| `category` | 语法大类，如 `present_simple` |
+| `quiz_id` | 试卷或专项 ID，如 `unit1`, `unit2` |
+| `score` | 得分率（0 ~ 100） |
+| `total_questions` | 总题目数 |
+| `correct_count` | 作答正确数 |
+| `coins_awarded` | 本次发放金币（满 80% 首次奖励 50，重做奖励 10） |
+| `stars_awarded` | 本次发放星星（满 80% 首次奖励 1 颗星星） |
+| `user_answers` | 学员作答键值对 JSON |
+| `wrong_details` | 错题详细信息与对应考点解析快照 JSON |
+| `created_at` | 提交时间 |
+
+索引包含 `idx_user_quiz (user_id, quiz_id, created_at)`，支持多轮答题历史留痕与断点成绩回显。
 
 ### 故事插图
 

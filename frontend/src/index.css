@@ -1,7 +1,7 @@
 @import "tailwindcss";
 
 :root {
-  --font-scale: 1.30;
+  --font-scale: 1;
   --bg-main: #fdf2f8;
   --bg-card: #ffffff;
   --border-card: #fbcfe8;
@@ -24,6 +24,7 @@ body {
 
 /* Cyber / Dark Mode (Default) */
 [data-theme="cyber"], [data-theme="dark"], [data-theme="pink"], [data-theme="sunshine"], [data-theme="ocean"] {
+  color-scheme: dark;
   --bg-main: #0B0F19;
   --bg-card: #131B2E;
   --border-card: #1F2D4A;
@@ -36,6 +37,7 @@ body {
 
 /* Bright Mode (Light) - High Contrast & Legibility */
 [data-theme="bright"], [data-theme="light"] {
+  color-scheme: light;
   --bg-main: #f1f5f9;
   --bg-card: #ffffff;
   --border-card: #cbd5e1;
@@ -44,6 +46,43 @@ body {
   --accent: #0284c7;
   --accent-hover: #0369a1;
   --accent-text: #ffffff;
+}
+
+/* Sleek, unobtrusive dark scrollbars & .no-scrollbar utility */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(148, 163, 184, 0.2) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background-color: rgba(148, 163, 184, 0.2);
+  border-radius: 9999px;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(34, 211, 238, 0.45);
+}
+
+*::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+.no-scrollbar {
+  -ms-overflow-style: none !important;
+  scrollbar-width: none !important;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none !important;
 }
 
 /* Bright Mode High-Contrast Component Overrides */

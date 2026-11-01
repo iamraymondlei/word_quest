@@ -103,9 +103,10 @@ export const updateGroup = async (req: Request, res: Response) => {
       return res.status(400).json({ error: `Group with name "${trimmedName}" already exists.` });
     }
 
-    // Cascade update islands
+    // Cascade update islands and linked word_books
     await pool.query('UPDATE islands SET group_name = ? WHERE group_name = ?', [trimmedName, oldName]);
     await pool.query('UPDATE story_groups SET name = ? WHERE id = ?', [trimmedName, id]);
+    await pool.query('UPDATE word_books SET category = ? WHERE category = ? AND island_id IS NOT NULL', [trimmedName, oldName]);
 
     res.json({
       id: Number(id),
@@ -134,6 +135,12 @@ export const deleteGroup = async (req: Request, res: Response) => {
     // Reassign all islands in this group to 'General' (Option A2)
     const [reassigned]: any = await pool.query(
       'UPDATE islands SET group_name = ? WHERE group_name = ?',
+      ['General', groupName]
+    );
+
+    // Reassign linked word_books to 'General'
+    await pool.query(
+      'UPDATE word_books SET category = ? WHERE category = ? AND island_id IS NOT NULL',
       ['General', groupName]
     );
 

@@ -40,6 +40,7 @@ export default async function globalSetup() {
         spent_stars INT DEFAULT 0,
         avatar VARCHAR(50) DEFAULT '🦖',
         is_admin TINYINT(1) DEFAULT 0,
+        password VARCHAR(255) DEFAULT 'admin',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -82,6 +83,7 @@ export default async function globalSetup() {
         unlocked_stage INT DEFAULT 1,
         completed_stages_mask INT DEFAULT 0,
         translation_stats_json TEXT NULL,
+        stage1_answers_json TEXT NULL,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         PRIMARY KEY (user_id, island_id),
         FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
@@ -127,9 +129,11 @@ export default async function globalSetup() {
         description TEXT NULL,
         tags VARCHAR(255) NULL,
         sort_order INT DEFAULT 0,
+        island_id INT NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-        INDEX idx_word_books_category (category)
+        INDEX idx_word_books_category (category),
+        INDEX idx_word_books_island (island_id)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
       CREATE TABLE IF NOT EXISTS vocabulary_words (
@@ -172,6 +176,50 @@ export default async function globalSetup() {
         FOREIGN KEY (book_id) REFERENCES word_books(id) ON DELETE CASCADE
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+      CREATE TABLE IF NOT EXISTS user_word_book_progress (
+        user_id INT NOT NULL,
+        book_id INT NOT NULL,
+        completed_stages_mask INT NOT NULL DEFAULT 0,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        PRIMARY KEY (user_id, book_id),
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+        FOREIGN KEY (book_id) REFERENCES word_books(id) ON DELETE CASCADE
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+      CREATE TABLE IF NOT EXISTS vocabulary_attempts (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        client_id VARCHAR(64) NOT NULL,
+        user_id INT NOT NULL,
+        vocab_id INT NOT NULL,
+        mode VARCHAR(32) NOT NULL,
+        is_correct TINYINT(1) NOT NULL,
+        answer VARCHAR(255) NULL,
+        duration_ms INT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE KEY uk_user_client (user_id, client_id),
+        INDEX idx_user_vocab (user_id, vocab_id),
+        INDEX idx_user_mode_time (user_id, mode, created_at),
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+        FOREIGN KEY (vocab_id) REFERENCES vocabulary_words(id) ON DELETE CASCADE
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+      CREATE TABLE IF NOT EXISTS user_vocabulary_mode_stats (
+        user_id INT NOT NULL,
+        vocab_id INT NOT NULL,
+        mode VARCHAR(32) NOT NULL,
+        correct_count INT DEFAULT 0,
+        error_count INT DEFAULT 0,
+        streak INT DEFAULT 0,
+        mastered TINYINT(1) DEFAULT 0,
+        last_result TINYINT(1) NULL,
+        last_practiced_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        PRIMARY KEY (user_id, vocab_id, mode),
+        INDEX idx_user_mode (user_id, mode),
+        INDEX idx_user_mode_score (user_id, mode, error_count, streak),
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+        FOREIGN KEY (vocab_id) REFERENCES vocabulary_words(id) ON DELETE CASCADE
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
       CREATE TABLE IF NOT EXISTS songs (
         id INT AUTO_INCREMENT PRIMARY KEY,
         title VARCHAR(200) NOT NULL,
@@ -200,7 +248,42 @@ export default async function globalSetup() {
         FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
         FOREIGN KEY (song_id) REFERENCES songs(id) ON DELETE CASCADE
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+      CREATE TABLE IF NOT EXISTS user_grammar_quiz_records (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        user_id INT NOT NULL,
+        category VARCHAR(50) NOT NULL DEFAULT 'present_simple',
+        quiz_id VARCHAR(50) NOT NULL,
+        score INT NOT NULL,
+        total_questions INT NOT NULL,
+        correct_count INT NOT NULL,
+        coins_awarded INT NOT NULL DEFAULT 0,
+        stars_awarded INT NOT NULL DEFAULT 0,
+        user_answers JSON NULL,
+        wrong_details JSON NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_user_quiz (user_id, quiz_id, created_at),
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `);
+
+    // Ensure island_id exists on word_books
+    const [cols]: any = await connection.query(
+      `SELECT column_name FROM information_schema.columns WHERE table_schema = ? AND table_name = 'word_books' AND column_name = 'island_id'`,
+      [testDbName]
+    );
+    if (cols.length === 0) {
+      await connection.query(`ALTER TABLE word_books ADD COLUMN island_id INT NULL, ADD INDEX idx_word_books_island (island_id)`);
+    }
+
+    // Ensure stage1_answers_json exists on user_island_progress
+    const [progCols]: any = await connection.query(
+      `SELECT column_name FROM information_schema.columns WHERE table_schema = ? AND table_name = 'user_island_progress' AND column_name = 'stage1_answers_json'`,
+      [testDbName]
+    );
+    if (progCols.length === 0) {
+      await connection.query(`ALTER TABLE user_island_progress ADD COLUMN stage1_answers_json TEXT NULL`);
+    }
 
     console.log(`[Jest GlobalSetup] Dedicated test database '${testDbName}' is verified and ready.\n`);
   } catch (err: any) {

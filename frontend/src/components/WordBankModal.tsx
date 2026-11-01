@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { apiService } from '../utils/apiService';
 import { isForcedOffline } from '../utils/offlineMode';
 import { parseBilingual, playBilingualSpeech } from '../utils/bilingual';
+import { isIPadOrTabletDevice } from '../utils/device';
 
 export interface SentenceItem {
   en: string;
@@ -155,7 +156,7 @@ export const WordBankModal: React.FC<WordBankModalProps> = ({
   // Audio synthesis helper with dual language (en-US / Cantonese zh-HK) support
   const playSpeech = useCallback((text: string, lang: 'en' | 'yue' | 'zh' = 'en') => {
     playBilingualSpeech(text, lang, () => {
-      setToastMsg(`🔊 [无法发音]: 设备不支持 Web Speech`);
+      setToastMsg(`🔊 [Cannot speak]: Speech not supported on this device`);
     });
   }, []);
 
@@ -229,10 +230,10 @@ export const WordBankModal: React.FC<WordBankModalProps> = ({
     try {
       const wordsData = await apiService.getBookWords(selectedBookId, currentUser.id);
       setWords(wordsData || []);
-      showToast('📥 词单已成功保存至本地离线存储，无网亦可探索！');
+      showToast('📥 Word book saved for offline practice!');
     } catch (err) {
       console.error('Failed to cache book offline:', err);
-      showToast('⚠️ 缓存失败，请检查网络后重试');
+      showToast('⚠️ Caching failed, check network and try again');
     } finally {
       setIsCaching(false);
     }
@@ -353,7 +354,7 @@ export const WordBankModal: React.FC<WordBankModalProps> = ({
     if (quizAnswered || !currentQuizWord) return;
     setQuizAnswered(true);
     setCombo(0);
-    showToast('⏱️ 时间到！进入错题记录');
+    showToast("⏱️ Time's up! Missed question recorded");
     await apiService.recordVocabularyProgress(currentQuizWord.id, currentUser.id, 'reading', false);
 
     setTimeout(() => {
@@ -374,14 +375,14 @@ export const WordBankModal: React.FC<WordBankModalProps> = ({
       setRoundCoins(prev => prev + earnedCoins);
       const updatedCoins = currentUser.coins + earnedCoins;
       onUpdateUser?.({ ...currentUser, coins: updatedCoins });
-      showToast(`🎯 正确！Combo x${nextCombo} +${earnedCoins}金币`);
+      showToast(`🎯 Correct! Combo x${nextCombo} +${earnedCoins} coins`);
       playWordAudio(currentQuizWord.word);
 
-      await apiService.recordVocabularyProgress(currentQuizWord.id, currentUser.id, 'reading', true);
+      await apiService.recordVocabularyProgress(currentQuizWord.id, currentUser.id, 'reading', true, { answer: option.text });
     } else {
       setCombo(0);
-      showToast(`❌ 选错啦，正确释义：${currentQuizWord.translation}`);
-      await apiService.recordVocabularyProgress(currentQuizWord.id, currentUser.id, 'reading', false);
+      showToast(`❌ Incorrect! Correct meaning: ${currentQuizWord.translation}`);
+      await apiService.recordVocabularyProgress(currentQuizWord.id, currentUser.id, 'reading', false, { answer: option.text });
     }
 
     setTimeout(() => {
@@ -418,34 +419,63 @@ export const WordBankModal: React.FC<WordBankModalProps> = ({
   }, [words]);
 
   const currentSpellWord = spellList[spellIdx] || null;
+  const isTablet = useMemo(() => isIPadOrTabletDevice(), []);
 
   useEffect(() => {
     if (subMode === 'spelling' && currentSpellWord && !spellCompleted) {
       setTypedValue('');
       setSpellAnswered(false);
       setSpellIsCorrect(null);
-      playWordAudio(currentSpellWord.word);
-      setTimeout(() => spellInputRef.current?.focus(), 150);
+
+      try {
+        playWordAudio(currentSpellWord.word);
+      } catch (err) {
+        console.warn('Auto playWordAudio skipped:', err);
+      }
+
+      if (!isTablet) {
+        setTimeout(() => {
+          spellInputRef.current?.focus();
+        }, 150);
+      }
     }
-  }, [subMode, spellIdx, currentSpellWord, spellCompleted, playWordAudio]);
+  }, [subMode, spellIdx, currentSpellWord, spellCompleted, playWordAudio, isTablet]);
 
-  const handleSpellingChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const processSpellingInput = async (rawVal: string) => {
     if (spellAnswered || !currentSpellWord) return;
-    const val = e.target.value.toLowerCase().replace(/[^a-z-]/g, '');
-    setTypedValue(val);
-
     const targetClean = currentSpellWord.word.trim().toLowerCase();
-    if (val === targetClean) {
+
+    // Allow a-z, spaces, hyphens, and apostrophes
+    let cleanVal = rawVal.toLowerCase().replace(/[^a-z\s\-']/g, '');
+
+    // Prevent leading spaces or multiple consecutive spaces
+    cleanVal = cleanVal.replace(/^\s+/, '').replace(/\s{2,}/g, ' ');
+
+    // Smart auto-completion of separators (space, hyphen, apostrophe):
+    if (cleanVal.length > 0 && cleanVal.length <= targetClean.length) {
+      const prevIdx = cleanVal.length - 1;
+      const expectedSep = targetClean[prevIdx];
+      if ((expectedSep === ' ' || expectedSep === '-' || expectedSep === "'") && cleanVal[prevIdx] !== expectedSep) {
+        cleanVal = cleanVal.slice(0, prevIdx) + expectedSep + cleanVal.slice(prevIdx);
+      }
+    }
+
+    if (cleanVal.length > targetClean.length) {
+      cleanVal = cleanVal.slice(0, targetClean.length);
+    }
+    setTypedValue(cleanVal);
+
+    if (cleanVal === targetClean) {
       setSpellAnswered(true);
       setSpellIsCorrect(true);
       const earnedCoins = 25;
       setRoundCoins(prev => prev + earnedCoins);
       const updatedCoins = currentUser.coins + earnedCoins;
       onUpdateUser?.({ ...currentUser, coins: updatedCoins });
-      showToast(`🎉 拼写完美匹配！+${earnedCoins}金币`);
+      showToast(`🎉 Perfect spelling! +${earnedCoins} coins`);
       playWordAudio(currentSpellWord.word);
 
-      await apiService.recordVocabularyProgress(currentSpellWord.id, currentUser.id, 'spelling', true);
+      await apiService.recordVocabularyProgress(currentSpellWord.id, currentUser.id, 'spelling', true, { answer: currentSpellWord.word });
 
       setTimeout(() => {
         advanceSpellingWord();
@@ -453,13 +483,91 @@ export const WordBankModal: React.FC<WordBankModalProps> = ({
     }
   };
 
+  const handleSpellingChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    processSpellingInput(e.target.value);
+  };
+
+  const handleVirtualKeyInput = (char: string) => {
+    if (spellAnswered || !currentSpellWord) return;
+    const targetClean = currentSpellWord.word.trim().toLowerCase();
+    if (typedValue.length >= targetClean.length) return;
+    const nextVal = typedValue + char.toLowerCase();
+    processSpellingInput(nextVal);
+  };
+
+  const handleVirtualBackspace = () => {
+    if (spellAnswered) return;
+    setTypedValue(prev => prev.slice(0, -1));
+  };
+
+  const handleVirtualClear = () => {
+    if (spellAnswered) return;
+    setTypedValue('');
+  };
+
+  // Global physical keyboard capture for Spelling mode
+  useEffect(() => {
+    if (subMode !== 'spelling' || spellAnswered || !currentSpellWord) return;
+
+    const handleSpellingKeyDown = (e: KeyboardEvent) => {
+      // Allow browser shortcuts (Cmd/Ctrl/Alt)
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+
+      // Space key
+      if (e.key === ' ' || e.code === 'Space') {
+        e.preventDefault();
+        e.stopPropagation();
+        handleVirtualKeyInput(' ');
+        return;
+      }
+
+      // Backspace key
+      if (e.key === 'Backspace') {
+        e.preventDefault();
+        e.stopPropagation();
+        handleVirtualBackspace();
+        return;
+      }
+
+      // Letters a-z
+      if (/^[a-zA-Z]$/.test(e.key)) {
+        if (document.activeElement !== spellInputRef.current) {
+          e.preventDefault();
+          handleVirtualKeyInput(e.key.toLowerCase());
+        }
+        return;
+      }
+
+      // Hyphen '-'
+      if (e.key === '-') {
+        if (document.activeElement !== spellInputRef.current) {
+          e.preventDefault();
+          handleVirtualKeyInput('-');
+        }
+        return;
+      }
+
+      // Apostrophe "'"
+      if (e.key === "'") {
+        if (document.activeElement !== spellInputRef.current) {
+          e.preventDefault();
+          handleVirtualKeyInput("'");
+        }
+        return;
+      }
+    };
+
+    window.addEventListener('keydown', handleSpellingKeyDown, true);
+    return () => window.removeEventListener('keydown', handleSpellingKeyDown, true);
+  }, [subMode, spellAnswered, currentSpellWord, typedValue]);
+
   const handleSkipSpelling = async () => {
     if (spellAnswered || !currentSpellWord) return;
     setSpellAnswered(true);
     setSpellIsCorrect(false);
     setTypedValue(currentSpellWord.word.toLowerCase());
-    showToast(`💡 正确拼写为: ${currentSpellWord.word}`);
-    await apiService.recordVocabularyProgress(currentSpellWord.id, currentUser.id, 'spelling', false);
+    showToast(`💡 Correct spelling: ${currentSpellWord.word}`);
+    await apiService.recordVocabularyProgress(currentSpellWord.id, currentUser.id, 'spelling', false, { answer: typedValue || 'SKIP' });
 
     setTimeout(() => {
       advanceSpellingWord();
@@ -490,19 +598,19 @@ export const WordBankModal: React.FC<WordBankModalProps> = ({
             <div>
               <div className="flex items-center gap-2 flex-wrap">
                 <h2 className="text-base sm:text-lg font-black text-white tracking-wide flex items-center gap-2">
-                  单词探索宝库 // VOCAB LAB
+                  VOCAB LAB // Word Quest
                 </h2>
                 <span className="text-[10px] px-2 py-0.5 rounded-full bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 font-bold">
-                  {words.length} 词库收录
+                  {words.length} Words
                 </span>
                 {isForcedOffline() && (
                   <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-300 font-bold">
-                    ⚡ 离线模式
+                    ⚡ Offline Mode
                   </span>
                 )}
               </div>
               <p className="text-xs text-slate-400">
-                语境探索 · 多维记忆 · 拼读进阶 · 离线发音
+                Context · Roots · Sentences · Spelling
               </p>
             </div>
           </div>
@@ -518,9 +626,9 @@ export const WordBankModal: React.FC<WordBankModalProps> = ({
               type="button"
               onClick={onClose}
               className="px-3 py-1.5 rounded-xl border border-slate-700 bg-slate-800/80 hover:bg-rose-500/20 hover:border-rose-500/40 text-slate-300 hover:text-rose-300 text-xs font-bold transition-all cursor-pointer"
-              title="关闭 (ESC)"
+              title="Close (ESC)"
             >
-              ✕ 关闭
+              ✕ Close
             </button>
           </div>
         </div>
@@ -528,9 +636,9 @@ export const WordBankModal: React.FC<WordBankModalProps> = ({
         {/* Book Selector & Download Bar */}
         <div className="px-4 py-2.5 sm:px-6 bg-slate-900/90 border-b border-slate-800/80 flex flex-wrap items-center justify-between gap-3 text-xs shrink-0">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-slate-400 font-bold">当前词单:</span>
+            <span className="text-slate-400 font-bold">Word Book:</span>
             {books.length === 0 ? (
-              <span className="text-slate-500 italic">暂无可用词单，可在家长后台新建</span>
+              <span className="text-slate-500 italic">No word books available</span>
             ) : (
               <select
                 value={selectedBookId || ''}
@@ -541,7 +649,7 @@ export const WordBankModal: React.FC<WordBankModalProps> = ({
                   <optgroup key={cat} label={`📚 ${cat}`} className="bg-slate-900 text-slate-300 font-semibold">
                     {bookList.map(b => (
                       <option key={b.id} value={b.id} className="bg-slate-950 text-cyan-300">
-                        📄 {b.title} ({b.word_count || 0}词)
+                        📄 {b.title} ({b.word_count || 0} words)
                       </option>
                     ))}
                   </optgroup>
@@ -556,10 +664,10 @@ export const WordBankModal: React.FC<WordBankModalProps> = ({
               onClick={handleCacheOffline}
               disabled={isCaching || !selectedBookId}
               className="px-3 py-1.5 rounded-lg border border-cyan-500/30 bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-300 font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
-              title="将词单及离线发音完整缓存至本地存储"
+              title="Cache word book and audio for offline use"
             >
               <span>{isCaching ? '⏳' : '📥'}</span>
-              <span>{isCaching ? '缓存中...' : '离线缓存此词单'}</span>
+              <span>{isCaching ? 'Caching...' : 'Cache Offline'}</span>
             </button>
           </div>
         </div>
@@ -576,7 +684,7 @@ export const WordBankModal: React.FC<WordBankModalProps> = ({
             }`}
           >
             <span>📖</span>
-            <span>01 // 学单词 (探索卡片)</span>
+            <span>01 // Study Cards 📖</span>
           </button>
 
           <button
@@ -589,7 +697,7 @@ export const WordBankModal: React.FC<WordBankModalProps> = ({
             }`}
           >
             <span>⚡</span>
-            <span>02 // 看句选义 (语境推断)</span>
+            <span>02 // Context Quiz 🎯</span>
           </button>
 
           <button
@@ -602,7 +710,7 @@ export const WordBankModal: React.FC<WordBankModalProps> = ({
             }`}
           >
             <span>✍️</span>
-            <span>03 // 听音拼写 (限时打字)</span>
+            <span>03 // Spelling Test ✍️</span>
           </button>
         </div>
 
@@ -610,14 +718,14 @@ export const WordBankModal: React.FC<WordBankModalProps> = ({
         <div className="p-4 sm:p-6 bg-slate-950/40">
           {loading ? (
             <div className="py-20 text-center text-slate-500 animate-pulse text-sm">
-              🛰️ 正在载入生词能量包...
+              🛰️ Loading vocabulary...
             </div>
           ) : words.length === 0 ? (
             <div className="py-20 text-center space-y-4">
               <div className="text-4xl">📭</div>
-              <h3 className="text-slate-300 font-bold text-base">此词单目前还是空的</h3>
+              <h3 className="text-slate-300 font-bold text-base">This word book is empty</h3>
               <p className="text-xs text-slate-500 max-w-md mx-auto">
-                可以前往右上角切换到家长管理后台，一键批量粘贴单词并由 AI 丰富例句、反义词和词源故事！
+                Please import words in the Parent Portal to explore sentences, roots, and stories!
               </p>
             </div>
           ) : (
@@ -651,18 +759,18 @@ export const WordBankModal: React.FC<WordBankModalProps> = ({
                         type="button"
                         onClick={() => playWordAudio(currentLearnWord.word)}
                         className="w-12 h-12 rounded-full bg-cyan-500/20 border border-cyan-400 text-cyan-300 hover:bg-cyan-400 hover:text-slate-950 flex items-center justify-center text-xl transition-all cursor-pointer shadow-lg active:scale-95"
-                        title="播放标准发音"
+                        title="Play pronunciation"
                       >
                         🔊
                       </button>
 
                       {currentLearnWord.mastered ? (
                         <span className="px-3 py-1 rounded-full bg-emerald-500/20 border border-emerald-400/40 text-emerald-300 text-xs font-bold flex items-center gap-1">
-                          ✓ 已熟练掌握
+                          ✓ Mastered
                         </span>
                       ) : (
                         <span className="px-3 py-1 rounded-full bg-slate-800 border border-slate-700 text-slate-400 text-xs">
-                          🌱 探索中
+                          🌱 Exploring
                         </span>
                       )}
                     </div>
@@ -675,10 +783,10 @@ export const WordBankModal: React.FC<WordBankModalProps> = ({
                       <div className="text-xs font-black uppercase text-amber-400 flex items-center justify-between gap-2 tracking-wider">
                         <span className="flex items-center gap-2">
                           <span>✨</span>
-                          <span>趣味语境例句 (Humorous Context)</span>
+                          <span>Context Sentences</span>
                         </span>
                         <span className="text-[10px] text-slate-500 font-normal lowercase">
-                          点击 🔊 发音
+                          Tap 🔊 to listen
                         </span>
                       </div>
 
@@ -687,7 +795,7 @@ export const WordBankModal: React.FC<WordBankModalProps> = ({
                         if (sentences.length === 0) {
                           return (
                             <div className="text-xs text-slate-500 italic py-6 text-center">
-                              暂无例句，可通过后台 AI 一键扩充
+                              No example sentences yet
                             </div>
                           );
                         }
@@ -703,7 +811,7 @@ export const WordBankModal: React.FC<WordBankModalProps> = ({
                                     type="button"
                                     onClick={() => playWordAudio(item.en)}
                                     className="p-1.5 rounded-lg bg-slate-800 hover:bg-cyan-500/20 text-slate-400 hover:text-cyan-300 transition-all cursor-pointer shrink-0 text-xs"
-                                    title="播放例句发音"
+                                    title="Play sentence audio"
                                   >
                                     🔊
                                   </button>
@@ -731,7 +839,7 @@ export const WordBankModal: React.FC<WordBankModalProps> = ({
                             <div className="flex items-center justify-between gap-2">
                               <div className="text-xs font-black uppercase text-purple-400 flex items-center gap-2 tracking-wider">
                                 <span>🧩</span>
-                                <span>词根与构词剖析 (Root & Affixes)</span>
+                                <span>Roots & Affixes</span>
                               </div>
                               <div className="flex items-center gap-1.5 shrink-0">
                                 {roots.en && (
@@ -739,7 +847,7 @@ export const WordBankModal: React.FC<WordBankModalProps> = ({
                                     type="button"
                                     onClick={() => playSpeech(roots.en, 'en')}
                                     className="px-2 py-0.5 rounded-lg bg-cyan-500/10 hover:bg-cyan-500/20 text-[#00f0ff] border border-cyan-500/30 text-[10px] font-bold flex items-center gap-1 transition-all active:scale-95 cursor-pointer"
-                                    title="朗读构词英文说明"
+                                    title="Listen to English notes"
                                   >
                                     <span>🔊</span>
                                     <span>EN</span>
@@ -750,10 +858,10 @@ export const WordBankModal: React.FC<WordBankModalProps> = ({
                                     type="button"
                                     onClick={() => playSpeech(roots.zh, 'yue')}
                                     className="px-2 py-0.5 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-[10px] font-bold flex items-center gap-1 transition-all active:scale-95 cursor-pointer"
-                                    title="朗读构词粤语解析"
+                                    title="Listen to Cantonese notes"
                                   >
                                     <span>🔊</span>
-                                    <span>粤语</span>
+                                    <span>Yue</span>
                                   </button>
                                 )}
                               </div>
@@ -770,7 +878,7 @@ export const WordBankModal: React.FC<WordBankModalProps> = ({
                                 </p>
                               )}
                               {!hasContent && (
-                                <p className="text-xs text-slate-500 italic">暂无词根词缀拆解</p>
+                                <p className="text-xs text-slate-500 italic">No roots breakdown available</p>
                               )}
                             </div>
                           </div>
@@ -781,18 +889,18 @@ export const WordBankModal: React.FC<WordBankModalProps> = ({
                       <div className="bg-slate-900/70 border border-slate-800 rounded-2xl p-5 space-y-3">
                         <div className="text-xs font-black uppercase text-cyan-400 flex items-center gap-2 tracking-wider">
                           <span>⚖️</span>
-                          <span>语义对照网络 (Contrast & Synonyms)</span>
+                          <span>Synonyms & Antonyms</span>
                         </div>
                         <div className="grid grid-cols-2 gap-3 text-xs">
                           <div className="p-3 rounded-xl bg-rose-950/20 border border-rose-500/30 text-rose-300">
                             <div className="font-bold text-[10px] text-rose-400 uppercase tracking-wider mb-1">
-                              反义词 (Antonym)
+                              Antonym
                             </div>
                             <div>{currentLearnWord.antonyms || '—'}</div>
                           </div>
                           <div className="p-3 rounded-xl bg-emerald-950/20 border border-emerald-500/30 text-emerald-300">
                             <div className="font-bold text-[10px] text-emerald-400 uppercase tracking-wider mb-1">
-                              同义词 (Synonym)
+                              Synonym
                             </div>
                             <div>{currentLearnWord.synonyms || '—'}</div>
                           </div>
@@ -808,7 +916,7 @@ export const WordBankModal: React.FC<WordBankModalProps> = ({
                             <div className="flex items-center justify-between gap-2">
                               <div className="text-xs font-black uppercase text-amber-300 flex items-center gap-2 tracking-wider">
                                 <span>📜</span>
-                                <span>词源趣谈 (Etymology Story)</span>
+                                <span>Etymology Story</span>
                               </div>
                               <div className="flex items-center gap-1.5 shrink-0">
                                 {etym.en && (
@@ -816,7 +924,7 @@ export const WordBankModal: React.FC<WordBankModalProps> = ({
                                     type="button"
                                     onClick={() => playSpeech(etym.en, 'en')}
                                     className="px-2 py-0.5 rounded-lg bg-purple-500/10 hover:bg-purple-500/20 text-purple-300 border border-purple-500/30 text-[10px] font-bold flex items-center gap-1 transition-all active:scale-95 cursor-pointer"
-                                    title="朗读词源英文故事"
+                                    title="Listen to English story"
                                   >
                                     <span>🔊</span>
                                     <span>EN</span>
@@ -827,10 +935,10 @@ export const WordBankModal: React.FC<WordBankModalProps> = ({
                                     type="button"
                                     onClick={() => playSpeech(etym.zh, 'yue')}
                                     className="px-2 py-0.5 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 text-[10px] font-bold flex items-center gap-1 transition-all active:scale-95 cursor-pointer"
-                                    title="朗读词源粤语小故事"
+                                    title="Listen to Cantonese story"
                                   >
                                     <span>🔊</span>
-                                    <span>粤语</span>
+                                    <span>Yue</span>
                                   </button>
                                 )}
                               </div>
@@ -847,7 +955,7 @@ export const WordBankModal: React.FC<WordBankModalProps> = ({
                                 </p>
                               )}
                               {!hasContent && (
-                                <p className="text-xs text-slate-400 italic">源自自然演化与语言变迁。</p>
+                                <p className="text-xs text-slate-400 italic">Natural language evolution.</p>
                               )}
                             </div>
                           </div>
@@ -864,13 +972,13 @@ export const WordBankModal: React.FC<WordBankModalProps> = ({
                       disabled={learnIdx === 0}
                       className="px-4 py-2 rounded-xl border border-slate-700 bg-slate-800/80 hover:bg-slate-700 text-slate-300 text-xs font-bold transition-all disabled:opacity-40 cursor-pointer"
                     >
-                      ← 上一个单词
+                      ← Previous
                     </button>
 
                     <div className="text-xs text-slate-400 font-mono">
-                      单词进度：
+                      Word:
                       <span className="text-cyan-400 font-black"> {learnIdx + 1} </span>
-                      / {words.length} 词
+                      / {words.length}
                     </div>
 
                     <button
@@ -879,7 +987,7 @@ export const WordBankModal: React.FC<WordBankModalProps> = ({
                       disabled={learnIdx === words.length - 1}
                       className="px-4 py-2 rounded-xl border border-cyan-500/40 bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-300 text-xs font-bold transition-all disabled:opacity-40 cursor-pointer"
                     >
-                      下一个单词 →
+                      Next →
                     </button>
                   </div>
                 </div>
@@ -893,13 +1001,13 @@ export const WordBankModal: React.FC<WordBankModalProps> = ({
                   {quizCompleted ? (
                     <div className="bg-slate-900/90 border border-cyan-500/40 rounded-2xl p-8 text-center space-y-5 shadow-2xl">
                       <div className="text-5xl">🏆</div>
-                      <h3 className="text-2xl font-black text-white">本轮挑战完成！</h3>
+                      <h3 className="text-2xl font-black text-white">Round Complete!</h3>
                       <p className="text-xs text-slate-400">
-                        共挑战了 <strong className="text-cyan-300">{quizList.length}</strong> 道语境生词关卡
+                        Completed <strong className="text-cyan-300">{quizList.length}</strong> context questions
                       </p>
                       <div className="flex items-center justify-center gap-6 py-4">
                         <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300">
-                          <div className="text-[10px] uppercase font-bold text-amber-400/80">收获金币</div>
+                          <div className="text-[10px] uppercase font-bold text-amber-400/80">Reward (Coins)</div>
                           <div className="text-2xl font-black">+{roundCoins}</div>
                         </div>
                       </div>
@@ -909,14 +1017,14 @@ export const WordBankModal: React.FC<WordBankModalProps> = ({
                           onClick={() => initQuizRound('reading')}
                           className="px-6 py-2.5 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-black text-xs uppercase tracking-wider transition-all cursor-pointer shadow-lg"
                         >
-                          🔄 再战一轮
+                          🔄 Play Again
                         </button>
                         <button
                           type="button"
                           onClick={() => setSubMode('spelling')}
                           className="px-6 py-2.5 rounded-xl bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/40 text-purple-300 font-bold text-xs transition-all cursor-pointer"
                         >
-                          ✍️ 前往拼写闯关
+                          ✍️ Go to Spelling
                         </button>
                       </div>
                     </div>
@@ -925,7 +1033,7 @@ export const WordBankModal: React.FC<WordBankModalProps> = ({
                       {/* Stats & Timer Header */}
                       <div className="flex items-center justify-between text-xs font-mono">
                         <span className="text-slate-400">
-                          第 <strong className="text-cyan-400">{quizIdx + 1}</strong> / {quizList.length} 题
+                          Question <strong className="text-cyan-400">{quizIdx + 1}</strong> / {quizList.length}
                         </span>
                         {combo > 1 && (
                           <span className="text-rose-400 font-black animate-pulse">
@@ -933,7 +1041,7 @@ export const WordBankModal: React.FC<WordBankModalProps> = ({
                           </span>
                         )}
                         <span className="text-amber-400 font-bold">
-                          ⏱️ 倒计时: {timeLeft}s
+                          ⏱️ Timer: {timeLeft}s
                         </span>
                       </div>
 
@@ -949,7 +1057,7 @@ export const WordBankModal: React.FC<WordBankModalProps> = ({
                       <div className="py-6 px-5 rounded-2xl bg-slate-950/70 border border-slate-800 text-center space-y-4">
                         <div className="text-[10px] text-amber-400 uppercase tracking-widest font-black flex items-center justify-center gap-2">
                           <span>🔍</span>
-                          <span>CONTEXTUAL READING // 阅读语境句子，选出高亮词的正确中文意思</span>
+                          <span>CONTEXTUAL READING // Read sentence and pick correct meaning</span>
                         </div>
 
                         {/* Sentence display with highlighted target word */}
@@ -963,19 +1071,19 @@ export const WordBankModal: React.FC<WordBankModalProps> = ({
                             type="button"
                             onClick={() => playWordAudio(getSentenceForWord(currentQuizWord))}
                             className="px-4 py-1.5 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold inline-flex items-center gap-1.5 transition-all cursor-pointer"
-                            title="朗读完整例句"
+                            title="Listen to full sentence"
                           >
                             <span>🔊</span>
-                            <span>朗读整句</span>
+                            <span>Sentence</span>
                           </button>
                           <button
                             type="button"
                             onClick={() => playWordAudio(currentQuizWord.word)}
                             className="px-4 py-1.5 rounded-full bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 border border-cyan-500/40 text-xs font-bold inline-flex items-center gap-1.5 transition-all cursor-pointer"
-                            title="朗读目标词"
+                            title="Listen to target word"
                           >
                             <span>🗣️</span>
-                            <span>单词发音</span>
+                            <span>Word</span>
                           </button>
                         </div>
                       </div>
@@ -1024,13 +1132,13 @@ export const WordBankModal: React.FC<WordBankModalProps> = ({
                   {spellCompleted ? (
                     <div className="bg-slate-900/90 border border-purple-500/40 rounded-2xl p-8 text-center space-y-5 shadow-2xl">
                       <div className="text-5xl">🎉</div>
-                      <h3 className="text-2xl font-black text-white">拼写闯关大捷！</h3>
+                      <h3 className="text-2xl font-black text-white">Spelling Challenge Cleared!</h3>
                       <p className="text-xs text-slate-400">
-                        已挑战 <strong className="text-purple-300">{spellList.length}</strong> 个生词拼写
+                        Completed <strong className="text-purple-300">{spellList.length}</strong> spelling words
                       </p>
                       <div className="flex items-center justify-center gap-6 py-4">
                         <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300">
-                          <div className="text-[10px] uppercase font-bold text-amber-400/80">累计奖励</div>
+                          <div className="text-[10px] uppercase font-bold text-amber-400/80">Total Reward</div>
                           <div className="text-2xl font-black">+{roundCoins}</div>
                         </div>
                       </div>
@@ -1040,14 +1148,14 @@ export const WordBankModal: React.FC<WordBankModalProps> = ({
                           onClick={initSpellingRound}
                           className="px-6 py-2.5 rounded-xl bg-purple-500 hover:bg-purple-400 text-slate-950 font-black text-xs uppercase tracking-wider transition-all cursor-pointer shadow-lg"
                         >
-                          🔄 再拼一轮
+                          🔄 Play Again
                         </button>
                         <button
                           type="button"
                           onClick={() => setSubMode('learn')}
                           className="px-6 py-2.5 rounded-xl bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-500/40 text-cyan-300 font-bold text-xs transition-all cursor-pointer"
                         >
-                          📖 返回深度卡片
+                          📖 Back to Cards
                         </button>
                       </div>
                     </div>
@@ -1055,7 +1163,7 @@ export const WordBankModal: React.FC<WordBankModalProps> = ({
                     <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-6 sm:p-8 space-y-6 shadow-2xl">
                       <div className="flex items-center justify-between text-xs font-mono">
                         <span className="text-slate-400">
-                          拼写挑战 · 第 <strong className="text-purple-400">{spellIdx + 1}</strong> / {spellList.length} 词
+                          Spelling Challenge · Word <strong className="text-purple-400">{spellIdx + 1}</strong> / {spellList.length}
                         </span>
                         <button
                           type="button"
@@ -1063,14 +1171,14 @@ export const WordBankModal: React.FC<WordBankModalProps> = ({
                           disabled={spellAnswered}
                           className="text-xs text-slate-400 hover:text-amber-300 underline cursor-pointer"
                         >
-                          [显示提示 / 跳过]
+                          [Show Hint / Skip]
                         </button>
                       </div>
 
                       {/* Prompt area (safely placed in top half for iPad keyboard) */}
                       <div className="py-6 px-4 rounded-2xl bg-slate-950/70 border border-slate-800 text-center space-y-4">
                         <div className="text-[10px] text-slate-500 uppercase tracking-widest font-black">
-                          SPELL WHAT YOU HEAR // 听发音拼单词
+                          SPELL WHAT YOU HEAR // Listen and type the word
                         </div>
 
                         <button
@@ -1079,55 +1187,229 @@ export const WordBankModal: React.FC<WordBankModalProps> = ({
                           className="px-6 py-3 rounded-full bg-purple-500/20 border border-purple-400 text-purple-300 hover:bg-purple-400 hover:text-slate-950 font-bold text-sm inline-flex items-center gap-2 transition-all cursor-pointer shadow-lg active:scale-95"
                         >
                           <span>🔊</span>
-                          <span>播放发音 (点击重听)</span>
+                          <span>Play audio (Tap to replay)</span>
                         </button>
 
                         <div className="text-xs text-slate-400">
-                          中文释义提示: <strong className="text-slate-200">{currentSpellWord.translation}</strong>
+                          Meaning hint: <strong className="text-slate-200">{currentSpellWord.translation}</strong>
                         </div>
 
                         {/* Letter Slots Display */}
-                        <div className="flex items-center justify-center gap-2 flex-wrap py-2">
+                        <div className="flex items-center justify-center gap-1.5 sm:gap-2.5 flex-wrap py-2">
                           {currentSpellWord.word.split('').map((letter, i) => {
+                            const isHyphen = letter === '-';
+                            const isSpace = letter === ' ';
+                            const isApostrophe = letter === "'";
                             const typedLetter = typedValue[i] || '';
                             const isFilled = Boolean(typedLetter);
-                            let slotBorder = 'border-purple-500/40 bg-slate-900/50';
+                            const isCurrent = i === typedValue.length && !spellAnswered;
+
+                            // Special renderer for Space in multi-word phrases
+                            if (isSpace) {
+                              const isSpaceFilled = typedLetter === ' ';
+                              return (
+                                <div
+                                  key={i}
+                                  className={`w-7 sm:w-12 h-11 sm:h-14 flex flex-col items-center justify-center select-none transition-all ${
+                                    isCurrent
+                                      ? 'border-2 border-dashed border-cyan-400 bg-cyan-950/50 text-cyan-300 animate-pulse ring-2 ring-cyan-400/50 rounded-xl'
+                                      : isSpaceFilled || spellAnswered
+                                      ? 'border-2 border-emerald-500/60 bg-emerald-950/40 text-emerald-300 rounded-xl shadow-[0_0_12px_rgba(16,185,129,0.35)]'
+                                      : 'border-2 border-dashed border-slate-700 bg-slate-900/40 text-slate-600 rounded-xl'
+                                  }`}
+                                  title={isCurrent ? "Current slot: Press [SPACE]" : "Space"}
+                                >
+                                  <span className="text-xs sm:text-sm font-mono font-black leading-none">
+                                    {isSpaceFilled || spellAnswered ? '✓' : '␣'}
+                                  </span>
+                                  <span className="text-[8px] sm:text-[9px] font-mono font-bold uppercase mt-1 opacity-90">
+                                    SPACE
+                                  </span>
+                                </div>
+                              );
+                            }
+
+                            // Special renderer for Hyphen
+                            if (isHyphen) {
+                              return (
+                                <div
+                                  key={i}
+                                  className="w-4 sm:w-6 h-11 sm:h-14 flex items-center justify-center font-bold text-slate-400 font-mono text-xl sm:text-2xl select-none"
+                                >
+                                  -
+                                </div>
+                              );
+                            }
+
+                            // Special renderer for Apostrophe
+                            if (isApostrophe) {
+                              return (
+                                <div
+                                  key={i}
+                                  className="w-3 sm:w-5 h-11 sm:h-14 flex items-center justify-center font-bold text-slate-400 font-mono text-xl sm:text-2xl select-none"
+                                >
+                                  '
+                                </div>
+                              );
+                            }
+
+                            let slotBorder = 'border-purple-500/40 bg-slate-900/50 text-purple-300';
                             if (spellIsCorrect === true) {
-                              slotBorder = 'border-emerald-400 bg-emerald-500/20 text-emerald-300';
+                              slotBorder = 'border-emerald-400 bg-emerald-500/20 text-emerald-300 scale-105 shadow-[0_0_15px_rgba(52,211,153,0.4)]';
                             } else if (spellIsCorrect === false) {
                               slotBorder = 'border-rose-400 bg-rose-500/20 text-rose-300';
                             } else if (isFilled) {
-                              slotBorder = 'border-purple-400 bg-purple-500/10 text-white';
+                              slotBorder = 'border-purple-400 bg-purple-500/10 text-white shadow-[0_0_10px_rgba(168,85,247,0.3)]';
+                            } else if (isCurrent) {
+                              slotBorder = 'border-cyan-400 bg-cyan-950/40 text-cyan-300 animate-pulse ring-2 ring-cyan-400/50';
                             }
 
                             return (
                               <div
                                 key={i}
-                                className={`w-10 h-12 sm:w-12 sm:h-14 rounded-lg border-2 flex items-center justify-center text-xl sm:text-2xl font-black font-mono shadow-inner transition-all ${slotBorder}`}
+                                className={`w-9 h-11 sm:w-12 sm:h-14 rounded-xl border-2 flex items-center justify-center text-lg sm:text-2xl font-black font-mono shadow-inner transition-all select-none ${slotBorder}`}
                               >
-                                {spellAnswered ? letter : typedLetter || '_'}
+                                {spellAnswered ? letter : typedLetter || (isCurrent ? '•' : '')}
                               </div>
                             );
                           })}
                         </div>
 
-                        {/* iPad Ergonomic Input (Safe from auto-correction & auto-capitalization) */}
-                        <div className="max-w-md mx-auto pt-2">
+                        {/* ── 儿童触控拼写软键盘 (iPad / 触屏原生虚拟键盘) ── */}
+                        <div className="w-full max-w-xl mx-auto space-y-1.5 sm:space-y-2 select-none">
+                          {/* Row 1 */}
+                          <div className="flex justify-center gap-1 sm:gap-1.5">
+                            {['Q','W','E','R','T','Y','U','I','O','P'].map(k => (
+                              <button
+                                key={k}
+                                type="button"
+                                disabled={spellAnswered}
+                                onClick={() => handleVirtualKeyInput(k)}
+                                className="flex-1 max-w-[48px] h-10 sm:h-12 rounded-xl bg-slate-800/90 hover:bg-purple-600 active:bg-purple-500 active:scale-95 border border-slate-700/80 hover:border-purple-400 text-white font-mono font-bold text-sm sm:text-base shadow-sm transition-all cursor-pointer disabled:opacity-30 touch-manipulation"
+                              >
+                                {k}
+                              </button>
+                            ))}
+                          </div>
+
+                          {/* Row 2 */}
+                          <div className="flex justify-center gap-1 sm:gap-1.5 px-2">
+                            {['A','S','D','F','G','H','J','K','L'].map(k => (
+                              <button
+                                key={k}
+                                type="button"
+                                disabled={spellAnswered}
+                                onClick={() => handleVirtualKeyInput(k)}
+                                className="flex-1 max-w-[48px] h-10 sm:h-12 rounded-xl bg-slate-800/90 hover:bg-purple-600 active:bg-purple-500 active:scale-95 border border-slate-700/80 hover:border-purple-400 text-white font-mono font-bold text-sm sm:text-base shadow-sm transition-all cursor-pointer disabled:opacity-30 touch-manipulation"
+                              >
+                                {k}
+                              </button>
+                            ))}
+                          </div>
+
+                          {/* Row 3 */}
+                          <div className="flex justify-center gap-1 sm:gap-1.5">
+                            <button
+                              type="button"
+                              disabled={spellAnswered || typedValue.length === 0}
+                              onClick={handleVirtualBackspace}
+                              className="px-2.5 sm:px-3 h-10 sm:h-12 rounded-xl bg-rose-950/40 hover:bg-rose-900/60 active:scale-95 border border-rose-500/40 text-rose-300 font-mono font-bold text-xs sm:text-sm flex items-center justify-center gap-1 shadow-sm transition-all cursor-pointer disabled:opacity-20 touch-manipulation"
+                              title="Backspace"
+                            >
+                              <span>⌫</span>
+                              <span className="hidden sm:inline">Del</span>
+                            </button>
+
+                            {['Z','X','C','V','B','N','M'].map(k => (
+                              <button
+                                key={k}
+                                type="button"
+                                disabled={spellAnswered}
+                                onClick={() => handleVirtualKeyInput(k)}
+                                className="flex-1 max-w-[48px] h-10 sm:h-12 rounded-xl bg-slate-800/90 hover:bg-purple-600 active:bg-purple-500 active:scale-95 border border-slate-700/80 hover:border-purple-400 text-white font-mono font-bold text-sm sm:text-base shadow-sm transition-all cursor-pointer disabled:opacity-30 touch-manipulation"
+                              >
+                                {k}
+                              </button>
+                            ))}
+
+                            {currentSpellWord.word.includes('-') && (
+                              <button
+                                type="button"
+                                disabled={spellAnswered}
+                                onClick={() => handleVirtualKeyInput('-')}
+                                className="w-8 sm:w-10 h-10 sm:h-12 rounded-xl bg-slate-800/90 hover:bg-purple-600 active:scale-95 border border-slate-700 text-white font-mono font-bold text-sm shadow-sm transition-all cursor-pointer touch-manipulation"
+                              >
+                                -
+                              </button>
+                            )}
+
+                            <button
+                              type="button"
+                              disabled={spellAnswered || typedValue.length === 0}
+                              onClick={handleVirtualClear}
+                              className="px-2 sm:px-3 h-10 sm:h-12 rounded-xl bg-amber-950/40 hover:bg-amber-900/60 active:scale-95 border border-amber-500/40 text-amber-300 font-mono font-bold text-xs sm:text-sm flex items-center justify-center gap-1 shadow-sm transition-all cursor-pointer disabled:opacity-20 touch-manipulation"
+                              title="Clear all"
+                            >
+                              <span>🗑️</span>
+                            </button>
+                          </div>
+
+                          {/* Row 4: Space bar & Apostrophe (for phrases and contracted words) */}
+                          {(currentSpellWord.word.includes(' ') || currentSpellWord.word.includes("'")) && (
+                            <div className="flex justify-center gap-1.5 sm:gap-2 pt-0.5">
+                              {currentSpellWord.word.includes("'") && (
+                                <button
+                                  type="button"
+                                  disabled={spellAnswered}
+                                  onClick={() => handleVirtualKeyInput("'")}
+                                  className="w-10 sm:w-12 h-10 sm:h-12 rounded-xl bg-slate-800/90 hover:bg-purple-600 active:scale-95 border border-slate-700 text-white font-mono font-bold text-base shadow-sm transition-all cursor-pointer touch-manipulation"
+                                  title="Apostrophe"
+                                >
+                                  '
+                                </button>
+                              )}
+                              {currentSpellWord.word.includes(' ') && (
+                                <button
+                                  type="button"
+                                  disabled={spellAnswered}
+                                  onClick={() => handleVirtualKeyInput(' ')}
+                                  className="flex-1 max-w-sm h-10 sm:h-12 rounded-xl bg-slate-800/90 hover:bg-purple-600 active:bg-purple-500 active:scale-98 border border-purple-500/40 hover:border-purple-300 text-purple-300 hover:text-white font-mono font-bold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-sm transition-all cursor-pointer disabled:opacity-30 touch-manipulation"
+                                  title="Space"
+                                >
+                                  <span className="text-base leading-none">␣</span>
+                                  <span>SPACE</span>
+                                </button>
+                              )}
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Physical / System Keyboard Input Fallback */}
+                        <div className="max-w-xl mx-auto w-full pt-1 space-y-2">
                           <input
                             ref={spellInputRef}
                             type="text"
+                            inputMode="text"
                             value={typedValue}
                             onChange={handleSpellingChange}
+                            onKeyDown={(e) => {
+                              if (e.key === ' ' || e.code === 'Space') {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                handleVirtualKeyInput(' ');
+                              }
+                            }}
                             disabled={spellAnswered}
-                            placeholder="轻触在此输入单词 (键盘已禁用自动更正)"
+                            placeholder={isTablet ? "Tap for keyboard, or use on-screen keys..." : "Type target word or phrase..."}
                             autoComplete="off"
                             autoCorrect="off"
-                            autoCapitalize="off"
-                            spellCheck="false"
-                            className="w-full bg-slate-950 border-2 border-purple-500/50 rounded-xl px-4 py-3 text-center text-lg sm:text-xl font-mono text-white tracking-widest outline-none focus:border-purple-400 focus:shadow-[0_0_20px_rgba(168,85,247,0.3)] transition-all"
+                            autoCapitalize="none"
+                            spellCheck={false}
+                            enterKeyHint="done"
+                            className="w-full bg-slate-950 border-2 border-purple-500/50 rounded-xl px-4 py-2.5 text-center text-sm sm:text-base font-mono text-white tracking-widest outline-none focus:border-purple-400 focus:shadow-[0_0_15px_rgba(168,85,247,0.3)] transition-all"
                           />
-                          <p className="text-[10px] text-slate-500 mt-2 text-center">
-                            💡 专为 iPad 触控优化：输入法联想已屏蔽，防遮挡高位视口
+                          <p className="text-[10px] text-slate-500 text-center">
+                            💡 Supports touch & physical keyboard
                           </p>
                         </div>
                       </div>

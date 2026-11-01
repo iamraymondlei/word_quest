@@ -42,9 +42,99 @@ export const loginOrRegister = async (req: Request, res: Response) => {
   }
 };
 
+export const adminLogin = async (req: Request, res: Response) => {
+  const { username, password } = req.body;
+  if (!username || !password) {
+    return res.status(400).json({ error: 'Username and password are required' });
+  }
+
+  if (username.trim().toLowerCase() !== 'admin') {
+    return res.status(401).json({ error: '账号或密码错误 (Invalid username or password)' });
+  }
+
+  let connection;
+  try {
+    connection = await pool.getConnection();
+    await connection.beginTransaction();
+
+    const [rows]: any = await connection.query(
+      'SELECT * FROM users WHERE LOWER(username) = ? AND is_admin = 1',
+      ['admin']
+    );
+
+    let adminUser = rows[0];
+    if (!adminUser) {
+      await connection.query(
+        `INSERT INTO users (username, avatar, is_admin, password) VALUES ('Admin', '🦖', 1, 'admin')
+         ON DUPLICATE KEY UPDATE is_admin = 1`
+      );
+      const [newRows]: any = await connection.query('SELECT * FROM users WHERE username = ?', ['Admin']);
+      adminUser = newRows[0];
+    }
+
+    const expectedPassword = adminUser.password || 'admin';
+    if (password !== expectedPassword) {
+      await connection.rollback();
+      return res.status(401).json({ error: '账号或密码错误 (Invalid username or password)' });
+    }
+
+    await connection.commit();
+    const { password: _, ...userWithoutPassword } = adminUser;
+    return res.json({ success: true, user: userWithoutPassword });
+  } catch (err: any) {
+    if (connection) await connection.rollback();
+    return res.status(500).json({ error: err.message });
+  } finally {
+    if (connection) connection.release();
+  }
+};
+
+export const changePassword = async (req: Request, res: Response) => {
+  const { user_id, old_password, new_password } = req.body;
+  const uid = Number(user_id);
+  if (!uid || !old_password || !new_password) {
+    return res.status(400).json({ error: '用户ID、原密码和新密码均不能为空' });
+  }
+
+  const trimmedNew = String(new_password).trim();
+  if (trimmedNew.length < 3) {
+    return res.status(400).json({ error: '新密码长度至少需要3个字符' });
+  }
+
+  let connection;
+  try {
+    connection = await pool.getConnection();
+    await connection.beginTransaction();
+
+    const [rows]: any = await connection.query('SELECT * FROM users WHERE id = ?', [uid]);
+    if (!rows || rows.length === 0) {
+      await connection.rollback();
+      return res.status(404).json({ error: '未找到该用户' });
+    }
+
+    const user = rows[0];
+    const currentPassword = user.password || 'admin';
+    if (old_password !== currentPassword) {
+      await connection.rollback();
+      return res.status(401).json({ error: '原密码不正确，请重新输入' });
+    }
+
+    await connection.query('UPDATE users SET password = ? WHERE id = ?', [trimmedNew, uid]);
+    await connection.commit();
+    return res.json({ success: true, message: '密码修改成功' });
+  } catch (err: any) {
+    if (connection) await connection.rollback();
+    return res.status(500).json({ error: err.message });
+  } finally {
+    if (connection) connection.release();
+  }
+};
+
 export const getUsers = async (req: Request, res: Response) => {
   try {
-    const [rows]: any = await pool.query('SELECT * FROM users ORDER BY coins DESC, id ASC');
+    const [rows]: any = await pool.query(
+      'SELECT id, username, coins, stars, spent_stars, avatar, is_admin, created_at FROM users ORDER BY coins DESC, id ASC'
+    );
     res.json(rows);
   } catch (err: any) {
     res.status(500).json({ error: err.message });

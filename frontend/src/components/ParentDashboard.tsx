@@ -14,6 +14,9 @@ import { StoryIllustration } from './StoryIllustration';
 import { ProjectRoadmap } from './ProjectRoadmap';
 import { SongManager } from './SongManager';
 import { WordBankManager } from './WordBankManager';
+import { VocabularyAnalytics } from './VocabularyAnalytics';
+import { ChangePasswordModal } from './ChangePasswordModal';
+import { apiService } from '../utils/apiService';
 import './ParentDashboard.css';
 
 export interface WordItem {
@@ -107,6 +110,7 @@ export interface Island {
     answer: string;
   }>;
   words: WordItem[];
+  word_book_id?: number | null;
   unlocked_stage: number;
   completed_stages_mask?: number;
   assigned_user_ids?: number[];
@@ -114,7 +118,7 @@ export interface Island {
 
 export const DEFAULT_AI_PROMPT = `You are an English education expert specializing in analyzing English picture books for elementary school students.
 
-Your target audience: Chinese elementary school students who can read RAZ (Reading A-Z) Level E books.
+Your target audience: Chinese elementary school students who are reading RAZ (Reading A-Z) Level B–E books.
 
 TASK:
 Analyze the provided picture book page images and return a structured JSON object matching the requested schema.
@@ -122,38 +126,30 @@ Analyze the provided picture book page images and return a structured JSON objec
 RULES:
 1. **title**: Extract the title of the picture book. If not visible, infer from content.
 2. **theme**: Write a concise Chinese summary (2-3 sentences) describing what the story is about and its educational value.
-3. **vocabulary**: Extract a comprehensive list of approximately 18-25 core practice vocabulary words (target ~20 words) from the story for typing and spelling practice.
-   - Prioritize key narrative words, verbs, adjectives, and nouns suitable for RAZ Level E learning.
-   - If the story has fewer than 20 rare words, include all meaningful action verbs, descriptive adjectives, and thematic nouns from the story sentences so the list reaches ~20 words.
+3. **vocabulary**: Extract a list of core practice vocabulary words (target ~18-25 words) from the story for typing and spelling practice (e.g. key nouns, verbs, adjectives).
    - Ensure all extracted vocabulary words actually appear in the story text.
-   - For each word provide:
-     - "word": the English word (lowercase)
-     - "phonetic": IPA phonetic transcription (e.g. /luːn/)
-     - "meaning": clear and accurate Chinese translation
-     - "example_sentence": an original sentence from the story containing this word
-     - "example_translation": the Chinese translation of the example sentence
+   - Output ONLY the list of lowercase English words (e.g. ["pouch", "wallaby", "baby", "bilby"]).
+   - Do NOT provide definitions, phonetics, translations, or example sentences during book import (these will be enriched later in the vocabulary editor).
 4. **pages**: For each image (in order):
    - "illustration_box": Locate the main story illustration or photograph on this page and output its bounding box as [ymin, xmin, ymax, xmax] normalized integers from 0 to 1000. Exclude standalone text blocks, page numbers, and margins. If the page is text-only without any story picture, set to null.
    - "sentences": Extract ONLY the core narrative/story text. DO NOT extract exercise questions, quizzes, captions, metadata, or activity questions (such as 'Activity 1', 'Questions:', or book reflection prompts) that are not part of the main story content. Split into individual sentences. For each sentence provide:
      - "en": the original English sentence exactly as written
-     - "zh": natural, child-friendly Chinese translation
-5. **questions**: Generate exactly {question_count} comprehension questions in English. Each question should:
-   - Test understanding of the story (who, what, when, where, why, how)
-   - Be appropriate for the target reading level
-   - Include a "hint" (a clue to help the student find the answer)
-   - Include an "answer" (a complete English sentence)
-
+     - "zh": a faithful, word-for-word / phrase-for-phrase aligned Chinese translation designed for "Read Chinese & Speak English" (看中文说英文) recall practice:
+       - **Every English word or phrase MUST have a clear corresponding Chinese meaning in the translation.** Do NOT omit, merge, or paraphrase away any words.
+       - Explicitly translate all pronouns (he/she/it/they/my/our/this/that), articles/quantifiers when meaningful (a/one, some, many, every), adjectives (e.g. little, big, good), adverbs (e.g. too, very, now, again, up, down, away), prepositions (e.g. in, on, into, with, for), and modal/auxiliary nuances (e.g. can, will, want to, have to).
+       - Avoid free/idiomatic translations that drop English words or add extra concepts not in the original sentence, so the student can reliably reconstruct every single English word just by looking at the Chinese sentence.
 IMPORTANT:
 - Page numbers start from 1 and correspond to the order of images provided.
-- Keep translations natural and age-appropriate for children.
+- Keep sentence translations faithful and complete: prioritize 1-to-1 word/phrase cueing over literary paraphrasing, while keeping the Chinese understandable for children.
 - If a page has no story text, still include it with an empty sentences array.
 - Strictly ignore page numbers, header/footer titles, or post-reading activity questions when building the "pages" content.`;
 
 interface Props {
   onBack: () => void;
+  onLogout?: () => void;
 }
 
-export const ParentDashboard: React.FC<Props> = ({ onBack }) => {
+export const ParentDashboard: React.FC<Props> = ({ onBack, onLogout }) => {
   const [islands, setIslands] = useState<Island[]>([]);
   const [loadingIslands, setLoadingIslands] = useState<boolean>(false);
   const [uploadStatus, setUploadStatus] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -193,16 +189,16 @@ export const ParentDashboard: React.FC<Props> = ({ onBack }) => {
   const [aiStoryImages, setAiStoryImages] = useState<FileList | null>(null);
   const [aiFileKey, setAiFileKey] = useState<number>(0);
   const [aiCli, setAiCli] = useState<'agy' | 'codex'>('agy');
-  const [aiModel, setAiModel] = useState<string>('gemini-3.7-flash-high');
+  const [aiModel, setAiModel] = useState<string>('gemini-3.8-flash-high');
   const [aiCustomPrompt, setAiCustomPrompt] = useState<string>(DEFAULT_AI_PROMPT);
   const [savedPromptTemplate, setSavedPromptTemplate] = useState<string>(DEFAULT_AI_PROMPT);
   const [isSavingAiPrompt, setIsSavingAiPrompt] = useState<boolean>(false);
   const [promptSaveStatus, setPromptSaveStatus] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
-  const [showPromptConfig, setShowPromptConfig] = useState<boolean>(true);
+  const [showPromptConfig, setShowPromptConfig] = useState<boolean>(false);
   const [aiModelList, setAiModelList] = useState<Array<{ id: string; name: string; description?: string }>>([
-    { id: 'gemini-3.7-flash-high', name: 'Gemini 3.7 Flash (High)', description: 'High capability, recommended (Default)' },
-    { id: 'gemini-3.7-flash-medium', name: 'Gemini 3.7 Flash (Medium)', description: 'Medium reasoning effort' },
-    { id: 'gemini-3.7-flash-low', name: 'Gemini 3.7 Flash (Low)', description: 'Fastest low reasoning' },
+    { id: 'gemini-3.8-flash-high', name: 'Gemini 3.8 Flash (High)', description: 'High capability, recommended (Default)' },
+    { id: 'gemini-3.8-flash-medium', name: 'Gemini 3.8 Flash (Medium)', description: 'Medium reasoning effort' },
+    { id: 'gemini-3.8-flash-low', name: 'Gemini 3.8 Flash (Low)', description: 'Fastest low reasoning' },
     { id: 'gemini-3.6-flash-high', name: 'Gemini 3.6 Flash (High)', description: 'High performance' },
     { id: 'gemini-3.6-flash-medium', name: 'Gemini 3.6 Flash (Medium)', description: 'Balanced performance' },
     { id: 'gemini-3.6-flash-low', name: 'Gemini 3.6 Flash (Low)', description: 'Lightweight' },
@@ -213,23 +209,35 @@ export const ParentDashboard: React.FC<Props> = ({ onBack }) => {
   const [aiStatus, setAiStatus] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   // Tab & User & Group Management States
-  const [activeTab, setActiveTab] = useState<'users' | 'stories' | 'groups' | 'songs' | 'word_books' | 'ai_import' | 'game_settings' | 'rewards' | 'roadmap'>(() => {
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'users' | 'stories' | 'groups' | 'songs' | 'word_books' | 'vocab_stats' | 'ai_import' | 'game_settings' | 'rewards' | 'roadmap'>(() => {
     try {
-      const saved = localStorage.getItem('wordquest_admin_active_tab');
-      if (saved && ['users', 'stories', 'groups', 'songs', 'word_books', 'ai_import', 'game_settings', 'rewards', 'roadmap'].includes(saved)) {
+      const saved = localStorage.getItem('wordquest_admin_tab_v2');
+      if (saved && ['dashboard', 'users', 'stories', 'groups', 'songs', 'word_books', 'vocab_stats', 'ai_import', 'game_settings', 'rewards', 'roadmap'].includes(saved)) {
         return saved as any;
       }
     } catch {}
-    return 'stories';
+    return 'dashboard';
   });
 
   useEffect(() => {
     try {
-      localStorage.setItem('wordquest_admin_active_tab', activeTab);
+      localStorage.setItem('wordquest_admin_tab_v2', activeTab);
     } catch {}
   }, [activeTab]);
 
   const [isEditingStory, setIsEditingStory] = useState<boolean>(false);
+  const [isChangePasswordOpen, setIsChangePasswordOpen] = useState<boolean>(false);
+  const [isEditingWords, setIsEditingWords] = useState<boolean>(false);
+  const [editingWordsBookId, setEditingWordsBookId] = useState<number | null>(null);
+  const [editingWordsCategory, setEditingWordsCategory] = useState<string | null>(null);
+  const [editingWordsTitle, setEditingWordsTitle] = useState<string | null>(null);
+  const [isEditingQuestions, setIsEditingQuestions] = useState<boolean>(false);
+  const [editingQuestionsIsland, setEditingQuestionsIsland] = useState<Island | null>(null);
+  const [editingQuestionsList, setEditingQuestionsList] = useState<Array<{ question: string; hint: string; answer: string }>>([]);
+  const [isGeneratingQuestions, setIsGeneratingQuestions] = useState<boolean>(false);
+  const [generateQuestionsCount, setGenerateQuestionsCount] = useState<number>(5);
+  const [questionsEditStatus, setQuestionsEditStatus] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [isSavingQuestions, setIsSavingQuestions] = useState<boolean>(false);
   const [storySearchQuery, setStorySearchQuery] = useState<string>('');
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(() => {
     return localStorage.getItem('admin_sidebar_collapsed') === 'true';
@@ -242,6 +250,22 @@ export const ParentDashboard: React.FC<Props> = ({ onBack }) => {
   const [groupStatus, setGroupStatus] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [isGroupLoading, setIsGroupLoading] = useState<boolean>(false);
   const [storyListStatus, setStoryListStatus] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  // AI Generate Story From Vocab Modal States
+  const [isAiGenModalOpen, setIsAiGenModalOpen] = useState<boolean>(false);
+  const [aiGenTargetIsland, setAiGenTargetIsland] = useState<Island | null>(null);
+  const [aiGenWords, setAiGenWords] = useState<string>('');
+  const [aiGenTitle, setAiGenTitle] = useState<string>('');
+  const [aiGenCategory, setAiGenCategory] = useState<string>('General');
+  const [aiGenThemeStyle, setAiGenThemeStyle] = useState<string>('animal_tale');
+  const [aiGenTargetLevel, setAiGenTargetLevel] = useState<string>('RAZ C-E');
+  const [aiGenPageCount, setAiGenPageCount] = useState<number>(4);
+  const [aiGenQuestionCount, setAiGenQuestionCount] = useState<number>(4);
+  const [aiGenCli, setAiGenCli] = useState<'agy' | 'codex'>('agy');
+  const [aiGenModel, setAiGenModel] = useState<string>('gemini-3.8-flash-high');
+  const [aiGenAutoSave, setAiGenAutoSave] = useState<boolean>(true);
+  const [isAiGenLoading, setIsAiGenLoading] = useState<boolean>(false);
+  const [aiGenStatus, setAiGenStatus] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   // Game Settings States
   const [gameSettings, setGameSettings] = useState<GameSettings>(DEFAULT_FRONTEND_GAME_SETTINGS);
@@ -263,12 +287,137 @@ export const ParentDashboard: React.FC<Props> = ({ onBack }) => {
       return !prev;
     });
   };
+
+  // 2-Level Nav Category Collapse States
+  const [collapsedCategories, setCollapsedCategories] = useState<Record<string, boolean>>(() => {
+    try {
+      const saved = localStorage.getItem('admin_collapsed_nav_categories');
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
+    }
+  });
+
+  const toggleCategoryCollapse = (catId: string) => {
+    setCollapsedCategories(prev => {
+      const next = { ...prev, [catId]: !prev[catId] };
+      try {
+        localStorage.setItem('admin_collapsed_nav_categories', JSON.stringify(next));
+      } catch {}
+      return next;
+    });
+  };
+
+  const navCategories = useMemo(() => [
+    {
+      id: 'content',
+      title: '内容与课程资源',
+      subtitle: 'Curriculum & Content',
+      icon: '📚',
+      items: [
+        {
+          id: 'stories' as const,
+          title: '故事关卡库',
+          subtitle: `Story Library (${islands.length})`,
+          icon: '📚',
+          onClick: () => { setActiveTab('stories'); setIsEditingStory(false); setIsEditingWords(false); setIsEditingQuestions(false); setUploadStatus(null); fetchIslands(); }
+        },
+        {
+          id: 'groups' as const,
+          title: '故事分组管理',
+          subtitle: `Categories (${storyGroups.length})`,
+          icon: '📁',
+          onClick: () => { setActiveTab('groups'); setIsEditingStory(false); setIsEditingWords(false); setIsEditingQuestions(false); setGroupStatus(null); fetchStoryGroups(); }
+        },
+        {
+          id: 'songs' as const,
+          title: '歌曲学习管理',
+          subtitle: 'MP3 & LRC Library',
+          icon: '🎵',
+          onClick: () => { setActiveTab('songs'); setIsEditingStory(false); setIsEditingWords(false); setIsEditingQuestions(false); setUploadStatus(null); }
+        },
+        {
+          id: 'ai_import' as const,
+          title: 'AI 绘本智能导入',
+          subtitle: 'Multimodal OCR Studio',
+          icon: '🤖',
+          onClick: () => { setActiveTab('ai_import'); setIsEditingStory(false); setIsEditingWords(false); setIsEditingQuestions(false); setUploadStatus(null); }
+        }
+      ]
+    },
+    {
+      id: 'students',
+      title: '学员与学情分析',
+      subtitle: 'Students & Analytics',
+      icon: '👥',
+      items: [
+        {
+          id: 'users' as const,
+          title: '学员账号管理',
+          subtitle: `Player Profiles (${usersList.length})`,
+          icon: '👥',
+          onClick: () => { setActiveTab('users'); setIsEditingStory(false); setIsEditingWords(false); setIsEditingQuestions(false); setUploadStatus(null); fetchUsersList(); }
+        },
+        {
+          id: 'vocab_stats' as const,
+          title: '单词学情看板',
+          subtitle: 'Vocab Analytics & Weak Words',
+          icon: '📈',
+          onClick: () => { setActiveTab('vocab_stats'); setIsEditingStory(false); setIsEditingWords(false); setIsEditingQuestions(false); }
+        }
+      ]
+    },
+    {
+      id: 'system',
+      title: '游戏规则与系统',
+      subtitle: 'Rules & System',
+      icon: '⚙️',
+      items: [
+        {
+          id: 'game_settings' as const,
+          title: '游戏参数设定',
+          subtitle: 'Story Chase & Rules',
+          icon: '🎮',
+          onClick: () => { setActiveTab('game_settings'); setIsEditingStory(false); setIsEditingWords(false); setIsEditingQuestions(false); setSettingStatus(null); fetchGameSettings(); }
+        },
+        {
+          id: 'rewards' as const,
+          title: '关卡奖励与经验',
+          subtitle: 'Reward Rules & Rates',
+          icon: '🪙',
+          onClick: () => { setActiveTab('rewards'); setIsEditingStory(false); setIsEditingWords(false); setIsEditingQuestions(false); setSettingStatus(null); fetchGameSettings(); }
+        },
+        {
+          id: 'roadmap' as const,
+          title: '任务与改动追踪',
+          subtitle: 'Roadmap & Changelog',
+          icon: '📋',
+          onClick: () => { setActiveTab('roadmap'); setIsEditingStory(false); setIsEditingWords(false); setIsEditingQuestions(false); }
+        }
+      ]
+    }
+  ], [islands.length, storyGroups.length, usersList.length]);
+
+  // Keep active category expanded
+  useEffect(() => {
+    const parentCat = navCategories.find(cat => cat.items.some(item => item.id === activeTab));
+    if (parentCat && collapsedCategories[parentCat.id]) {
+      setCollapsedCategories(prev => {
+        const next = { ...prev, [parentCat.id]: false };
+        try {
+          localStorage.setItem('admin_collapsed_nav_categories', JSON.stringify(next));
+        } catch {}
+        return next;
+      });
+    }
+  }, [activeTab, navCategories]);
   const [newPlayerName, setNewPlayerName] = useState<string>('');
   const [newPlayerAvatar, setNewPlayerAvatar] = useState<string>('🦖');
   const [creatingPlayer, setCreatingPlayer] = useState<boolean>(false);
   const [playerStatus, setPlayerStatus] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   const handleOpenEditStory = (island: Island) => {
+    setIsEditingWords(false);
     setSelectedIslandId(String(island.id));
     setNewIslandName(island.name);
     setGroupName(island.group_name || 'General');
@@ -278,17 +427,215 @@ export const ParentDashboard: React.FC<Props> = ({ onBack }) => {
       ? island.story_questions 
       : [{ question: '', hint: '', answer: '' }, { question: '', hint: '', answer: '' }]);
     setStoryPassageJson(island.story_passage_json || []);
-    setWordsList(island.words || []);
+    const existingWords = island.words || [];
+    setWordsList(existingWords);
     setManualUserIds(island.assigned_user_ids || []);
     setIsEditingStory(true);
     setUploadStatus(null);
   };
 
   const handleOpenNewStory = () => {
+    setIsEditingWords(false);
     setSelectedIslandId('');
     clearIslandFormFields();
     setIsEditingStory(true);
     setUploadStatus(null);
+  };
+
+  const handleOpenEditWords = async (sector: Island) => {
+    setIsEditingStory(false);
+    const storyTitle = sector.story_title || sector.name;
+    const storyCategory = sector.group_name || 'General';
+    setEditingWordsTitle(storyTitle);
+    setEditingWordsCategory(storyCategory);
+
+    if (sector.word_book_id) {
+      setEditingWordsBookId(sector.word_book_id);
+      setIsEditingWords(true);
+      return;
+    }
+
+    try {
+      const allBooks = await apiService.getWordBooks();
+      const matched = allBooks.find((b: any) =>
+        b.island_id === sector.id ||
+        (b.title && b.title.trim() === storyTitle.trim())
+      );
+      if (matched) {
+        setEditingWordsBookId(matched.id);
+      } else {
+        // Automatically create a dedicated word_book for this story if none exists yet
+        const newBook = await apiService.createWordBook({
+          category: storyCategory,
+          title: storyTitle,
+          description: `《${storyTitle}》绘本关卡专属生词宝库`,
+          tags: `绘本,关卡生词,${storyCategory}`,
+          island_id: sector.id,
+          user_ids: sector.assigned_user_ids || []
+        });
+        setEditingWordsBookId(newBook.id);
+        fetchIslands();
+      }
+    } catch (err) {
+      console.error('Failed to resolve or create word book for story:', err);
+      setEditingWordsBookId(null);
+    }
+    setIsEditingWords(true);
+  };
+
+  const handleOpenEditQuestions = (sector: Island) => {
+    setIsEditingStory(false);
+    setIsEditingWords(false);
+    setEditingQuestionsIsland(sector);
+    setEditingQuestionsList(
+      sector.story_questions && sector.story_questions.length > 0
+        ? sector.story_questions
+        : [{ question: '', hint: '', answer: '' }]
+    );
+    setQuestionsEditStatus(null);
+    setIsEditingQuestions(true);
+  };
+
+  const handleCloseEditQuestions = () => {
+    setIsEditingQuestions(false);
+    setEditingQuestionsIsland(null);
+    setEditingQuestionsList([]);
+    setQuestionsEditStatus(null);
+    fetchIslands();
+  };
+
+  const addEditingQuestion = () => {
+    setEditingQuestionsList((prev) => [...prev, { question: '', hint: '', answer: '' }]);
+  };
+
+  const removeEditingQuestion = (index: number) => {
+    setEditingQuestionsList((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const updateEditingQuestion = (index: number, field: 'question' | 'hint' | 'answer', value: string) => {
+    setEditingQuestionsList((prev) => {
+      const updated = [...prev];
+      updated[index] = { ...updated[index], [field]: value };
+      return updated;
+    });
+  };
+
+  const handleGenerateQuestionsForIsland = async (targetIsland?: Island) => {
+    const island = targetIsland || editingQuestionsIsland;
+    const islandId = island ? island.id : (selectedIslandId ? Number(selectedIslandId) : null);
+    const title = island ? (island.story_title || island.name) : storyTitle;
+    let text = island ? (island.story_passage || '') : storyPassage;
+
+    const passageJson = island ? island.story_passage_json : storyPassageJson;
+    if (passageJson && Array.isArray(passageJson) && passageJson.length > 0) {
+      const sentenceTexts = passageJson.map((s: any) => s.sentence_text || s.en || '').filter(Boolean);
+      if (sentenceTexts.length > 0) {
+        text = sentenceTexts.join(' ');
+      }
+    }
+
+    if (!text || !text.trim()) {
+      setQuestionsEditStatus({
+        type: 'error',
+        text: '该故事暂无正文文本内容，无法生成阅读理解问题。请先完善故事正文。'
+      });
+      return;
+    }
+
+    setIsGeneratingQuestions(true);
+    setQuestionsEditStatus(null);
+
+    try {
+      const url = islandId ? `/api/islands/${islandId}/generate-questions` : '/api/islands/generate-questions';
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          island_id: islandId,
+          story_title: title,
+          story_text: text,
+          question_count: generateQuestionsCount,
+          model: aiModel,
+          cli: aiCli
+        })
+      });
+
+      const data = await res.json();
+      if (res.ok && data.success && Array.isArray(data.questions)) {
+        if (isEditingQuestions) {
+          setEditingQuestionsList(data.questions);
+        }
+        if (isEditingStory) {
+          setStoryQuestions(data.questions);
+        }
+        setQuestionsEditStatus({
+          type: 'success',
+          text: `🎉 AI 成功生成 ${data.questions.length} 道阅读理解问答！请核对后点击下方保存。`
+        });
+      } else {
+        setQuestionsEditStatus({
+          type: 'error',
+          text: data.error || 'AI 问题生成失败，请检查 AI 引擎配置。'
+        });
+      }
+    } catch (err: any) {
+      setQuestionsEditStatus({
+        type: 'error',
+        text: err.message || '网络通信异常，请重试。'
+      });
+    } finally {
+      setIsGeneratingQuestions(false);
+    }
+  };
+
+  const handleSaveQuestionsForIsland = async () => {
+    if (!editingQuestionsIsland) return;
+    setIsSavingQuestions(true);
+    setQuestionsEditStatus(null);
+
+    const validQuestions = editingQuestionsList.filter(
+      (q) => (q.question && q.question.trim()) || (q.answer && q.answer.trim())
+    );
+
+    try {
+      const res = await fetch(`/api/islands/${editingQuestionsIsland.id}/questions`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          questions: validQuestions
+        })
+      });
+
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setQuestionsEditStatus({
+          type: 'success',
+          text: '✅ 阅读理解问答已成功保存到数据库！'
+        });
+        setIslands((prev) =>
+          prev.map((isl) =>
+            isl.id === editingQuestionsIsland.id
+              ? { ...isl, story_questions: validQuestions }
+              : isl
+          )
+        );
+        setEditingQuestionsIsland((prev) =>
+          prev ? { ...prev, story_questions: validQuestions } : null
+        );
+      } else {
+        setQuestionsEditStatus({
+          type: 'error',
+          text: data.error || '保存问答失败。'
+        });
+      }
+    } catch (err: any) {
+      setQuestionsEditStatus({
+        type: 'error',
+        text: err.message || '网络连接异常。'
+      });
+    } finally {
+      setIsSavingQuestions(false);
+    }
   };
 
   const handleCloseStoryEditor = () => {
@@ -296,6 +643,91 @@ export const ParentDashboard: React.FC<Props> = ({ onBack }) => {
     clearIslandFormFields();
     setUploadStatus(null);
     fetchIslands();
+  };
+
+  const handleOpenAiGenStoryModal = (island?: Island) => {
+    const target = island || (selectedIslandId ? islands.find(i => String(i.id) === selectedIslandId) : null);
+    setAiGenTargetIsland(target || null);
+
+    let wordsArr: string[] = [];
+    if (target && target.words && target.words.length > 0) {
+      wordsArr = target.words.map(w => w.word);
+    } else if (wordsList && wordsList.length > 0) {
+      wordsArr = wordsList.map(w => w.word);
+    }
+    setAiGenWords(wordsArr.join(', '));
+    setAiGenTitle(target?.story_title || target?.name || storyTitle || newIslandName || '');
+    setAiGenCategory(target?.group_name || groupName || 'General');
+    setAiGenThemeStyle('animal_tale');
+    setAiGenTargetLevel('RAZ C-E');
+    setAiGenPageCount(4);
+    setAiGenQuestionCount(4);
+    setAiGenCli(aiCli || 'agy');
+    setAiGenModel(aiModel || 'gemini-3.8-flash-high');
+    setAiGenAutoSave(true);
+    setAiGenStatus(null);
+    setIsAiGenModalOpen(true);
+  };
+
+  const handleExecuteAiGenStory = async () => {
+    const wordsListParsed = aiGenWords
+      .split(/[\n,;，；、]+/)
+      .map(w => w.trim())
+      .filter(Boolean);
+
+    if (wordsListParsed.length === 0 && (!aiGenTargetIsland || (!aiGenTargetIsland.words || aiGenTargetIsland.words.length === 0))) {
+      setAiGenStatus({ type: 'error', text: '请至少输入或关联 1 个目标生词。' });
+      return;
+    }
+
+    setIsAiGenLoading(true);
+    setAiGenStatus(null);
+
+    try {
+      const result = await apiService.generateStoryFromVocab(aiGenTargetIsland?.id, {
+        words: wordsListParsed.length > 0 ? wordsListParsed : undefined,
+        title: aiGenTitle || undefined,
+        category: aiGenCategory || undefined,
+        theme_style: aiGenThemeStyle,
+        target_level: aiGenTargetLevel,
+        page_count: aiGenPageCount,
+        question_count: aiGenQuestionCount,
+        model: aiGenModel || undefined,
+        cli: aiGenCli,
+        auto_save: aiGenAutoSave && !!aiGenTargetIsland?.id,
+      });
+
+      if (!result.success) {
+        throw new Error(result.error || '生成故事失败');
+      }
+
+      const generated = result.data;
+
+      // If user is inside story editor (`isEditingStory`), populate the fields
+      if (isEditingStory || (!aiGenAutoSave && aiGenTargetIsland)) {
+        if (generated.title) setStoryTitle(generated.title);
+        if (generated.passage) setStoryPassage(generated.passage);
+        if (generated.story_passage_json) setStoryPassageJson(generated.story_passage_json);
+        if (generated.story_questions) setStoryQuestions(generated.story_questions);
+      }
+
+      setAiGenStatus({
+        type: 'success',
+        text: `🎉 AI 成功生成绘本《${generated.title}》（涵盖 ${generated.target_words_covered?.length || 0} 个核心生词，${generated.pages?.length || 0} 页）！`
+      });
+
+      await fetchIslands();
+
+      if (aiGenAutoSave && aiGenTargetIsland?.id && !isEditingStory) {
+        setTimeout(() => {
+          setIsAiGenModalOpen(false);
+        }, 1500);
+      }
+    } catch (err: any) {
+      setAiGenStatus({ type: 'error', text: err.message || '生成故事失败，请重试' });
+    } finally {
+      setIsAiGenLoading(false);
+    }
   };
 
   const handleOpenAiAppend = () => {
@@ -339,9 +771,9 @@ export const ParentDashboard: React.FC<Props> = ({ onBack }) => {
       setAiModel('gpt-5.6-sol');
     } else {
       const fallbackAgy = [
-        { id: 'gemini-3.7-flash-high', name: 'Gemini 3.7 Flash (High)', description: 'High capability, recommended (Default)' },
-        { id: 'gemini-3.7-flash-medium', name: 'Gemini 3.7 Flash (Medium)', description: 'Medium reasoning effort' },
-        { id: 'gemini-3.7-flash-low', name: 'Gemini 3.7 Flash (Low)', description: 'Fastest low reasoning' },
+        { id: 'gemini-3.8-flash-high', name: 'Gemini 3.8 Flash (High)', description: 'High capability, recommended (Default)' },
+        { id: 'gemini-3.8-flash-medium', name: 'Gemini 3.8 Flash (Medium)', description: 'Medium reasoning effort' },
+        { id: 'gemini-3.8-flash-low', name: 'Gemini 3.8 Flash (Low)', description: 'Fastest low reasoning' },
         { id: 'gemini-3.6-flash-high', name: 'Gemini 3.6 Flash (High)', description: 'High performance' },
         { id: 'gemini-3.6-flash-medium', name: 'Gemini 3.6 Flash (Medium)', description: 'Balanced performance' },
         { id: 'gemini-3.6-flash-low', name: 'Gemini 3.6 Flash (Low)', description: 'Lightweight' },
@@ -349,7 +781,7 @@ export const ParentDashboard: React.FC<Props> = ({ onBack }) => {
         { id: 'gemini-3.1-pro-high', name: 'Gemini 3.1 Pro (High)', description: 'Strongest capability' },
       ];
       setAiModelList(fallbackAgy);
-      setAiModel('gemini-3.7-flash-high');
+      setAiModel('gemini-3.8-flash-high');
     }
     setIsLoadingAiModels(false);
   };
@@ -508,20 +940,39 @@ export const ParentDashboard: React.FC<Props> = ({ onBack }) => {
 
           // 6. Deduplicate and append vocabulary
           if (aiResult.vocabulary && Array.isArray(aiResult.vocabulary)) {
+            const newRawTokens: string[] = [];
             setWordsList((prev) => {
               const existingList = prev || [];
               const existingWordSet = new Set(existingList.map((w: any) => (w.word || '').trim().toLowerCase()));
-              const newUniqueWords = aiResult.vocabulary.filter((v: any) => v.word && !existingWordSet.has(v.word.trim().toLowerCase()));
+              const formattedWords: any[] = [];
               const minId = existingList.length > 0 
                 ? Math.min(0, ...existingList.map((w: any) => (typeof w.id === 'number' ? w.id : 0))) 
                 : 0;
-              const formattedWords = newUniqueWords.map((v: any, index: number) => ({
-                id: minId - 1 - index,
-                word: v.word || '',
-                translation: v.meaning || '',
-                sentence: v.example_sentence || '',
-                sentence_translation: v.example_translation || ''
-              }));
+
+              aiResult.vocabulary.forEach((v: any, index: number) => {
+                const wStr = (typeof v === 'string' ? v : (v?.word || '')).trim().toLowerCase();
+                if (wStr && !existingWordSet.has(wStr)) {
+                  existingWordSet.add(wStr);
+                  newRawTokens.push(wStr);
+                  const meaning = typeof v === 'object' ? (v.meaning || '') : '';
+                  const phonetic = typeof v === 'object' ? (v.phonetic || '') : '';
+                  const sentence = typeof v === 'object' ? (v.example_sentence || '') : '';
+                  const sentenceZh = typeof v === 'object' ? (v.example_translation || '') : '';
+                  formattedWords.push({
+                    id: minId - 1 - index,
+                    word: wStr,
+                    translation: meaning,
+                    phonetic: phonetic,
+                    sentence: sentence,
+                    sentence_translation: sentenceZh,
+                    fun_sentences: sentence ? [{ en: sentence, zh: sentenceZh }] : [],
+                    antonyms: '',
+                    synonyms: '',
+                    root_affixes: '',
+                    etymology: ''
+                  });
+                }
+              });
               return [...existingList, ...formattedWords];
             });
           }
@@ -565,15 +1016,33 @@ export const ParentDashboard: React.FC<Props> = ({ onBack }) => {
             ? aiResult.questions 
             : [{ question: '', hint: '', answer: '' }]);
 
-          // 5. Populate vocabulary words list
+          // 5. Populate vocabulary words list and raw input
           if (aiResult.vocabulary && Array.isArray(aiResult.vocabulary)) {
-            const formattedWords = aiResult.vocabulary.map((v: any, index: number) => ({
-              id: -1 - index, // temporary negative IDs
-              word: v.word || '',
-              translation: v.meaning || '',
-              sentence: v.example_sentence || '',
-              sentence_translation: v.example_translation || ''
-            }));
+            const rawWordsList: string[] = [];
+            const formattedWords: any[] = [];
+            aiResult.vocabulary.forEach((v: any, index: number) => {
+              const wStr = (typeof v === 'string' ? v : (v?.word || '')).trim().toLowerCase();
+              if (wStr && !rawWordsList.includes(wStr)) {
+                rawWordsList.push(wStr);
+                const meaning = typeof v === 'object' ? (v.meaning || '') : '';
+                const phonetic = typeof v === 'object' ? (v.phonetic || '') : '';
+                const sentence = typeof v === 'object' ? (v.example_sentence || '') : '';
+                const sentenceZh = typeof v === 'object' ? (v.example_translation || '') : '';
+                formattedWords.push({
+                  id: -1 - index, // temporary negative IDs
+                  word: wStr,
+                  translation: meaning,
+                  phonetic: phonetic,
+                  sentence: sentence,
+                  sentence_translation: sentenceZh,
+                  fun_sentences: sentence ? [{ en: sentence, zh: sentenceZh }] : [],
+                  antonyms: '',
+                  synonyms: '',
+                  root_affixes: '',
+                  etymology: ''
+                });
+              }
+            });
             setWordsList(formattedWords);
           }
 
@@ -589,7 +1058,7 @@ export const ParentDashboard: React.FC<Props> = ({ onBack }) => {
           
           setAiIslandName('');
           setAiQuestionCount(5);
-          setAiModel(aiCli === 'codex' ? 'gpt-4o' : 'gemini-3.7-flash-high');
+          setAiModel(aiCli === 'codex' ? 'gpt-4o' : 'gemini-3.8-flash-high');
           setAiStoryImages(null);
           setAiFileKey((prev) => prev + 1);
         }
@@ -999,12 +1468,6 @@ export const ParentDashboard: React.FC<Props> = ({ onBack }) => {
     setStoryPassageJson(updated);
   };
 
-  const updateWordInList = (index: number, field: 'word' | 'translation' | 'sentence' | 'sentence_translation', value: string) => {
-    const updated = [...wordsList];
-    updated[index][field] = value;
-    setWordsList(updated);
-  };
-
   const updatePageIllustration = (pageNum: number, newUrl: string | null) => {
     const formattedUrl = newUrl && newUrl.trim() ? newUrl.trim() : null;
     const updated = storyPassageJson.map((item) =>
@@ -1029,38 +1492,6 @@ export const ParentDashboard: React.FC<Props> = ({ onBack }) => {
     });
     return Array.from(map.values()).sort((a, b) => a.pageNum - b.pageNum);
   }, [storyPassageJson]);
-
-  const addWordToList = () => {
-    setWordsList([
-      ...wordsList,
-      {
-        id: -1 - wordsList.length,
-        word: '',
-        translation: '',
-        sentence: '',
-        sentence_translation: ''
-      }
-    ]);
-  };
-
-  const removeWordFromList = (index: number) => {
-    const updated = wordsList.filter((_, i) => i !== index);
-    setWordsList(updated);
-  };
-
-  const addQuestion = () => {
-    setStoryQuestions([...storyQuestions, { question: '', hint: '', answer: '' }]);
-  };
-
-  const updateQuestion = (index: number, field: 'question' | 'hint' | 'answer', value: string) => {
-    const updated = [...storyQuestions];
-    updated[index][field] = value;
-    setStoryQuestions(updated);
-  };
-
-  const removeQuestion = (index: number) => {
-    setStoryQuestions(storyQuestions.filter((_, i) => i !== index));
-  };
 
   const handleDeleteIsland = async (sector: Island) => {
     const title = sector.story_title || sector.name;
@@ -1116,192 +1547,106 @@ export const ParentDashboard: React.FC<Props> = ({ onBack }) => {
             </button>
           </div>
 
-          {/* Navigation Items */}
-          <nav className="flex flex-row md:flex-col gap-1.5 overflow-x-auto md:overflow-x-visible pb-2 md:pb-0">
-            {/* Nav 1: 学员账号 */}
+          {/* Navigation Items (2-Level Categorization) */}
+          <nav className="flex flex-row md:flex-col gap-3 overflow-x-auto md:overflow-x-visible pb-2 md:pb-0">
+            {/* Standalone Dashboard Home Entry */}
             <button
               type="button"
-              onClick={() => { setActiveTab('users'); setIsEditingStory(false); setUploadStatus(null); fetchUsersList(); }}
-              className={`admin-nav-item w-full p-2.5 rounded-xl border flex items-center gap-3 cursor-pointer text-left ${
-                activeTab === 'users' && !isEditingStory
+              onClick={() => {
+                setActiveTab('dashboard');
+                setIsEditingStory(false);
+                setIsEditingWords(false);
+                setIsEditingQuestions(false);
+                setUploadStatus(null);
+              }}
+              className={`admin-nav-item w-full p-2.5 rounded-xl border flex items-center gap-3 cursor-pointer text-left transition-all shrink-0 ${
+                activeTab === 'dashboard' && !isEditingStory && !isEditingWords && !isEditingQuestions
                   ? 'active'
                   : 'bg-slate-900/40 border-transparent text-slate-400 hover:text-slate-200'
               }`}
-              title="学员账号 (PLAYER ACCOUNTS)"
+              title="统计总览首页 (Dashboard Overview)"
             >
-              <span className="text-lg shrink-0">👥</span>
+              <span className="text-lg shrink-0">📊</span>
               {!isSidebarCollapsed && (
                 <div className="min-w-0">
-                  <div className="text-xs font-bold font-mono tracking-wide truncate">学员账号</div>
-                  <div className="text-[10px] text-slate-500 font-mono truncate">Player Profiles ({usersList.length})</div>
+                  <div className="text-xs font-bold font-mono tracking-wide truncate">统计总览首页</div>
+                  <div className="text-[10px] text-slate-500 font-mono truncate">Dashboard Overview</div>
                 </div>
               )}
             </button>
 
-            {/* Nav 2: 故事关卡库 */}
-            <button
-              type="button"
-              onClick={() => { setActiveTab('stories'); setIsEditingStory(false); setUploadStatus(null); fetchIslands(); }}
-              className={`admin-nav-item w-full p-2.5 rounded-xl border flex items-center gap-3 cursor-pointer text-left ${
-                (activeTab === 'stories' || isEditingStory)
-                  ? 'active'
-                  : 'bg-slate-900/40 border-transparent text-slate-400 hover:text-slate-200'
-              }`}
-              title="故事关卡库 (STORY LIBRARY)"
-            >
-              <span className="text-lg shrink-0">📚</span>
-              {!isSidebarCollapsed && (
-                <div className="min-w-0">
-                  <div className="text-xs font-bold font-mono tracking-wide truncate">故事关卡库</div>
-                  <div className="text-[10px] text-slate-500 font-mono truncate">Story Library ({islands.length})</div>
-                </div>
-              )}
-            </button>
+            {navCategories.map((cat, catIndex) => {
+              const isCatCollapsed = !isSidebarCollapsed && !!collapsedCategories[cat.id];
+              const hasActiveChild = cat.items.some(
+                item => (item.id === activeTab && !isEditingStory && !isEditingWords && !isEditingQuestions) || (item.id === 'stories' && (isEditingStory || isEditingWords || isEditingQuestions))
+              );
 
-            {/* Nav 3: 故事分组管理 */}
-            <button
-              type="button"
-              onClick={() => { setActiveTab('groups'); setIsEditingStory(false); setGroupStatus(null); fetchStoryGroups(); }}
-              className={`admin-nav-item w-full p-2.5 rounded-xl border flex items-center gap-3 cursor-pointer text-left ${
-                activeTab === 'groups' && !isEditingStory
-                  ? 'active'
-                  : 'bg-slate-900/40 border-transparent text-slate-400 hover:text-slate-200'
-              }`}
-              title="故事分组管理 (STORY GROUPS)"
-            >
-              <span className="text-lg shrink-0">📁</span>
-              {!isSidebarCollapsed && (
-                <div className="min-w-0">
-                  <div className="text-xs font-bold font-mono tracking-wide truncate">故事分组管理</div>
-                  <div className="text-[10px] text-slate-500 font-mono truncate">Categories ({storyGroups.length})</div>
-                </div>
-              )}
-            </button>
+              return (
+                <div key={cat.id} className="flex flex-col gap-1 shrink-0 md:shrink">
+                  {/* Category Header (Only when sidebar is not collapsed) */}
+                  {!isSidebarCollapsed ? (
+                    <button
+                      type="button"
+                      onClick={() => toggleCategoryCollapse(cat.id)}
+                      className={`w-full flex items-center justify-between px-2.5 py-1.5 font-mono text-2xs uppercase tracking-wider rounded-lg transition-all cursor-pointer group ${
+                        hasActiveChild
+                          ? 'text-cyan-400 bg-cyan-950/20'
+                          : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900/60'
+                      }`}
+                      title={`${cat.title} (${cat.subtitle})`}
+                    >
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <span className="text-xs shrink-0">{cat.icon}</span>
+                        <span className="font-bold truncate group-hover:text-cyan-300">{cat.title}</span>
+                        <span className="text-3xs px-1.5 py-0.2 rounded-full bg-slate-800 text-slate-400 font-normal">
+                          {cat.items.length}
+                        </span>
+                      </div>
+                      <span className="text-3xs text-slate-500 group-hover:text-cyan-400 transition-transform">
+                        {isCatCollapsed ? '▸' : '▾'}
+                      </span>
+                    </button>
+                  ) : (
+                    catIndex > 0 && <div className="border-t border-[#1F2D4A]/50 my-1 mx-1" />
+                  )}
 
-            {/* Nav 4: AI 绘本导入 */}
-            <button
-              type="button"
-              onClick={() => { setActiveTab('songs'); setIsEditingStory(false); setUploadStatus(null); }}
-              className={`admin-nav-item w-full p-2.5 rounded-xl border flex items-center gap-3 cursor-pointer text-left ${
-                activeTab === 'songs' && !isEditingStory
-                  ? 'active'
-                  : 'bg-slate-900/40 border-transparent text-slate-400 hover:text-slate-200'
-              }`}
-              title="歌曲学习管理 (SONG LEARNING)"
-            >
-              <span className="text-lg shrink-0">🎵</span>
-              {!isSidebarCollapsed && (
-                <div className="min-w-0">
-                  <div className="text-xs font-bold font-mono tracking-wide truncate">歌曲学习</div>
-                  <div className="text-[10px] text-slate-500 font-mono truncate">MP3 & LRC Library</div>
+                  {/* Category Children Items */}
+                  {(!isCatCollapsed || isSidebarCollapsed) && (
+                    <div className={`flex flex-row md:flex-col gap-1.5 ${!isSidebarCollapsed ? 'md:pl-1 md:border-l md:border-slate-800/80 md:ml-2.5' : ''}`}>
+                      {cat.items.map((item) => {
+                        const isActive = (item.id === activeTab && !isEditingStory && !isEditingWords && !isEditingQuestions) || (item.id === 'stories' && (isEditingStory || isEditingWords || isEditingQuestions));
+                        return (
+                          <button
+                            key={item.id}
+                            type="button"
+                            onClick={item.onClick}
+                            className={`admin-nav-item w-full p-2.5 rounded-xl border flex items-center gap-3 cursor-pointer text-left transition-all ${
+                              isActive
+                                ? 'active'
+                                : 'bg-slate-900/40 border-transparent text-slate-400 hover:text-slate-200'
+                            }`}
+                            title={`${item.title} (${item.subtitle})`}
+                          >
+                            <span className="text-lg shrink-0">{item.icon}</span>
+                            {!isSidebarCollapsed && (
+                              <div className="min-w-0">
+                                <div className="text-xs font-bold font-mono tracking-wide truncate">{item.title}</div>
+                                <div className="text-[10px] text-slate-500 font-mono truncate">{item.subtitle}</div>
+                              </div>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
-              )}
-            </button>
-
-            {/* Nav: 单词宝库与导入 */}
-            <button
-              type="button"
-              onClick={() => { setActiveTab('word_books'); setIsEditingStory(false); }}
-              className={`admin-nav-item w-full p-2.5 rounded-xl border flex items-center gap-3 cursor-pointer text-left ${
-                activeTab === 'word_books' && !isEditingStory
-                  ? 'active'
-                  : 'bg-slate-900/40 border-transparent text-slate-400 hover:text-slate-200'
-              }`}
-              title="单词宝库与导入 (WORD BANK & AI)"
-            >
-              <span className="text-lg shrink-0">📚</span>
-              {!isSidebarCollapsed && (
-                <div className="min-w-0">
-                  <div className="text-xs font-bold font-mono tracking-wide truncate">单词宝库</div>
-                  <div className="text-[10px] text-slate-500 font-mono truncate">Word Bank & AI Lab</div>
-                </div>
-              )}
-            </button>
-
-            {/* Nav 5: AI 绘本导入 */}
-            <button
-              type="button"
-              onClick={() => { setActiveTab('ai_import'); setIsEditingStory(false); setUploadStatus(null); }}
-              className={`admin-nav-item w-full p-2.5 rounded-xl border flex items-center gap-3 cursor-pointer text-left ${
-                activeTab === 'ai_import' && !isEditingStory
-                  ? 'active'
-                  : 'bg-slate-900/40 border-transparent text-slate-400 hover:text-slate-200'
-              }`}
-              title="AI 绘本导入 (AI STORY SYNTHESIS)"
-            >
-              <span className="text-lg shrink-0">🤖</span>
-              {!isSidebarCollapsed && (
-                <div className="min-w-0">
-                  <div className="text-xs font-bold font-mono tracking-wide truncate">AI 绘本导入</div>
-                  <div className="text-[10px] text-slate-500 font-mono truncate">Multimodal OCR Studio</div>
-                </div>
-              )}
-            </button>
-
-            {/* Nav 5: 游戏参数设定 */}
-            <button
-              type="button"
-              onClick={() => { setActiveTab('game_settings'); setIsEditingStory(false); setSettingStatus(null); fetchGameSettings(); }}
-              className={`admin-nav-item w-full p-2.5 rounded-xl border flex items-center gap-3 cursor-pointer text-left ${
-                activeTab === 'game_settings' && !isEditingStory
-                  ? 'active'
-                  : 'bg-slate-900/40 border-transparent text-slate-400 hover:text-slate-200'
-              }`}
-              title="游戏设定 (GAME SETTINGS)"
-            >
-              <span className="text-lg shrink-0">🎮</span>
-              {!isSidebarCollapsed && (
-                <div className="min-w-0">
-                  <div className="text-xs font-bold font-mono tracking-wide truncate">游戏参数设定</div>
-                  <div className="text-[10px] text-slate-500 font-mono truncate">Story Chase & Rules</div>
-                </div>
-              )}
-            </button>
-
-            {/* Nav: 关卡奖励与经验机制控制 */}
-            <button
-              type="button"
-              onClick={() => { setActiveTab('rewards'); setIsEditingStory(false); setSettingStatus(null); fetchGameSettings(); }}
-              className={`admin-nav-item w-full p-2.5 rounded-xl border flex items-center gap-3 cursor-pointer text-left ${
-                activeTab === 'rewards' && !isEditingStory
-                  ? 'active'
-                  : 'bg-slate-900/40 border-transparent text-slate-400 hover:text-slate-200'
-              }`}
-              title="关卡奖励与经验控制 (REWARDS & EXP CONTROL)"
-            >
-              <span className="text-lg shrink-0">🪙</span>
-              {!isSidebarCollapsed && (
-                <div className="min-w-0">
-                  <div className="text-xs font-bold font-mono tracking-wide truncate">关卡奖励与经验控制</div>
-                  <div className="text-[10px] text-slate-500 font-mono truncate">Reward Rules & Rates</div>
-                </div>
-              )}
-            </button>
-
-            {/* Nav 6: 任务与改动追踪 */}
-            <button
-              type="button"
-              onClick={() => { setActiveTab('roadmap'); setIsEditingStory(false); }}
-              className={`admin-nav-item w-full p-2.5 rounded-xl border flex items-center gap-3 cursor-pointer text-left ${
-                activeTab === 'roadmap' && !isEditingStory
-                  ? 'active'
-                  : 'bg-slate-900/40 border-transparent text-slate-400 hover:text-slate-200'
-              }`}
-              title="任务与改动追踪 (ROADMAP & CHANGELOG)"
-            >
-              <span className="text-lg shrink-0">📋</span>
-              {!isSidebarCollapsed && (
-                <div className="min-w-0">
-                  <div className="text-xs font-bold font-mono tracking-wide truncate">任务与改动追踪</div>
-                  <div className="text-[10px] text-slate-500 font-mono truncate">Roadmap & Changelog</div>
-                </div>
-              )}
-            </button>
+              );
+            })}
           </nav>
         </div>
 
-        {/* Bottom: Return to Map button */}
-        <div className="pt-4 border-t border-[#1F2D4A]/70 mt-4 md:mt-0">
+        {/* Bottom: Return to Map, Change Password, and Logout buttons */}
+        <div className="pt-4 border-t border-[#1F2D4A]/70 mt-4 md:mt-0 space-y-2">
           <button
             type="button"
             onClick={onBack}
@@ -1313,60 +1658,200 @@ export const ParentDashboard: React.FC<Props> = ({ onBack }) => {
             <span className="text-base shrink-0">⬅️</span>
             {!isSidebarCollapsed && <span className="truncate">返回主地图</span>}
           </button>
+          <button
+            type="button"
+            onClick={() => setIsChangePasswordOpen(true)}
+            className={`w-full p-2.5 rounded-xl bg-amber-950/25 border border-amber-500/40 hover:border-amber-400 hover:bg-amber-900/30 text-amber-300 font-mono text-xs font-bold transition-all cursor-pointer flex items-center ${
+              isSidebarCollapsed ? 'justify-center' : 'gap-2.5'
+            }`}
+            title="修改管理员密码 / Change Admin Password"
+          >
+            <span className="text-base shrink-0">🔐</span>
+            {!isSidebarCollapsed && <span className="truncate">修改管理员密码</span>}
+          </button>
+          {onLogout && (
+            <button
+              type="button"
+              onClick={onLogout}
+              className={`w-full p-2.5 rounded-xl bg-red-950/30 border border-red-900/50 hover:border-red-500/50 hover:bg-red-900/40 text-red-400 hover:text-red-300 font-mono text-xs font-bold transition-all cursor-pointer flex items-center ${
+                isSidebarCollapsed ? 'justify-center' : 'gap-2.5'
+              }`}
+              title="退出管理后台登录 / Logout Admin"
+            >
+              <span className="text-base shrink-0">🚪</span>
+              {!isSidebarCollapsed && <span className="truncate">退出管理登录</span>}
+            </button>
+          )}
         </div>
       </aside>
 
       {/* Right Main Content Area */}
-      <main className="flex-1 min-w-0 p-4 sm:p-6 lg:p-8 w-full max-w-7xl mx-auto overflow-y-auto">
-        {/* Top Header & Stats (when !isEditingStory) */}
-        {!isEditingStory && (
-          <div className="mb-8 space-y-6">
-            <div className="flex flex-wrap items-center justify-between gap-4 border-b theme-border pb-4">
+      <main className="flex-1 min-w-0 p-4 sm:p-5 w-full max-w-7xl mx-auto overflow-y-auto">
+        {/* Top Header for non-stories & non-dashboard tabs */}
+        {!isEditingStory && !isEditingWords && !isEditingQuestions && !['stories', 'groups', 'ai_import', 'dashboard'].includes(activeTab) && (
+          <div className="mb-4">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b theme-border pb-3">
               <div>
-                <h1 className="text-xl sm:text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 via-teal-300 to-purple-400 font-display flex items-center gap-2">
+                <h1 className="text-lg sm:text-xl font-black text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 via-teal-300 to-purple-400 font-display flex items-center gap-2">
                   {activeTab === 'users' && '👥 学员账号管理 (PLAYER ACCOUNTS)'}
-                  {activeTab === 'stories' && '📚 故事关卡库 (STORY & SECTOR LIBRARY)'}
                   {activeTab === 'groups' && '📁 故事分组管理 (STORY GROUPS DIRECTORY)'}
                   {activeTab === 'songs' && '🎵 歌曲歌词学习管理 (SONG LEARNING LIBRARY)'}
                   {activeTab === 'word_books' && '📚 单词宝库与生词导入 (WORD BANK & AI LAB)'}
+                  {activeTab === 'vocab_stats' && '📈 单词学情与生词弱项看板 (VOCABULARY ANALYTICS)'}
                   {activeTab === 'ai_import' && '🤖 AI 智能绘本导入工作室 (AI SYNTHESIS STUDIO)'}
                   {activeTab === 'game_settings' && '🎮 游戏玩法与难度参数配置 (GAME SETTINGS)'}
+                  {activeTab === 'rewards' && '🪙 关卡奖励与经验配置 (REWARDS & XP)'}
                   {activeTab === 'roadmap' && '📋 任务与改动追踪看板 (PROJECT ROADMAP & CHANGELOG)'}
                 </h1>
-                <p className="text-2xs text-slate-400 font-mono mt-1">
+                <p className="text-2xs text-slate-400 font-mono mt-0.5">
                   {activeTab === 'users' && '创建与管理学生档案，分配阅读关卡与追踪单词进度'}
-                  {activeTab === 'stories' && '管理全站英语故事关卡，支持独立多功能故事编辑器'}
                   {activeTab === 'groups' && '管理故事所属分类与关卡分组，支持增删改查及故事自动归并'}
                   {activeTab === 'songs' && '上传 MP3，通过 LRCLIB 匹配同步歌词，确认版本并校对逐句播放边界'}
                   {activeTab === 'word_books' && '维护独立词单体系，支持多行生词批量粘贴与 AI 自动解析例句/反义词/词根/词源'}
+                  {activeTab === 'vocab_stats' && '实时透视学员在单词宝库各模式下的答题频次、错误率与弱项生词排行'}
                   {activeTab === 'ai_import' && '通过 Agent CLI 与多模态大模型一键提取绘本中英文与问答'}
                   {activeTab === 'game_settings' && '调整 Story Chase 打字追逐游戏的怪兽移动速度、退后距离、等待冷却时间及可用怪兽 Emoji 池'}
+                  {activeTab === 'rewards' && '配置各阶段通关金币奖励、连胜倍率与复习系数'}
                   {activeTab === 'roadmap' && '追踪全站各版本技术演进、已上线改动步骤、涉及代码文件与待开发规划'}
                 </p>
               </div>
             </div>
+          </div>
+        )}
 
-            {/* Dark Glass Metric Stats Cards (only for non-roadmap tabs) */}
-            {activeTab !== 'roadmap' && (
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <div className="theme-card border theme-border rounded-xl p-4 shadow-lg flex flex-col justify-between hover:border-cyan-500/40 transition-all">
-                  <span className="text-xs font-mono uppercase tracking-wider theme-text-muted mb-1">Total Stories</span>
-                  <span className="theme-text font-display text-2xl font-black">{islands.length}</span>
+        {/* View 0: 📊 Dashboard Overview (统计总览首页) */}
+        {activeTab === 'dashboard' && !isEditingStory && !isEditingWords && !isEditingQuestions && (
+          <div className="space-y-6 animate-fade-in">
+            <div className="flex flex-wrap items-center justify-between gap-4 border-b theme-border pb-3">
+              <div>
+                <h1 className="text-xl sm:text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 via-teal-300 to-purple-400 font-display flex items-center gap-2">
+                  📊 统计分析总览 (DASHBOARD OVERVIEW)
+                </h1>
+                <p className="text-2xs text-slate-400 font-mono mt-0.5">
+                  全站故事关卡、词汇规模、学员档案与学情统计总览
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('stories')}
+                  className="px-3.5 py-1.5 bg-cyan-500/15 hover:bg-cyan-500/25 border border-cyan-500/40 text-cyan-300 rounded-xl text-xs font-mono font-bold transition-all cursor-pointer flex items-center gap-1.5"
+                >
+                  <span>📚</span> <span>管理故事关卡</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('ai_import')}
+                  className="px-3.5 py-1.5 bg-purple-500/15 hover:bg-purple-500/25 border border-purple-500/40 text-purple-300 rounded-xl text-xs font-mono font-bold transition-all cursor-pointer flex items-center gap-1.5"
+                >
+                  <span>🤖</span> <span>AI 绘本导入</span>
+                </button>
+              </div>
+            </div>
+
+            {/* 4 Core KPI Metric Cards */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div
+                onClick={() => setActiveTab('stories')}
+                className="theme-card border theme-border rounded-xl p-4 shadow-lg flex flex-col justify-between hover:border-cyan-500/40 transition-all cursor-pointer"
+              >
+                <span className="text-xs font-mono uppercase tracking-wider theme-text-muted mb-1">Total Stories (故事总数)</span>
+                <span className="theme-text font-display text-2xl font-black">{islands.length}</span>
+              </div>
+              <div
+                onClick={() => setActiveTab('vocab_stats')}
+                className="theme-card border theme-border rounded-xl p-4 shadow-lg flex flex-col justify-between hover:border-cyan-500/40 transition-all cursor-pointer"
+              >
+                <span className="text-xs font-mono uppercase tracking-wider theme-text-muted mb-1">Word Count (关卡词汇)</span>
+                <span className="text-cyan-400 font-display text-2xl font-black">{totalWordCount}</span>
+              </div>
+              <div
+                onClick={() => setActiveTab('users')}
+                className="theme-card border theme-border rounded-xl p-4 shadow-lg flex flex-col justify-between hover:border-cyan-500/40 transition-all cursor-pointer"
+              >
+                <span className="text-xs font-mono uppercase tracking-wider theme-text-muted mb-1">Registered Students (学员)</span>
+                <span className="text-emerald-400 font-display text-2xl font-black">{usersList.length}</span>
+              </div>
+              <div className="theme-card border theme-border rounded-xl p-4 shadow-lg flex flex-col justify-between hover:border-cyan-500/40 transition-all">
+                <span className="text-xs font-mono uppercase tracking-wider theme-text-muted mb-1">Study Hours (累计学习)</span>
+                <span className="text-purple-400 font-display text-2xl font-black">24.5h</span>
+              </div>
+            </div>
+
+            {/* Category Distribution & Student Summary Grid */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+              {/* Story Categories Breakdown */}
+              <div className="bg-[#131B2E] border border-[#1F2D4A] rounded-2xl p-5 shadow-xl space-y-3">
+                <div className="flex items-center justify-between border-b border-[#1F2D4A] pb-2.5">
+                  <h3 className="text-xs font-bold text-cyan-400 font-mono uppercase tracking-wider flex items-center gap-1.5">
+                    <span>📁</span> <span>各分类故事关卡分布 ({storyGroups.length} 个分组)</span>
+                  </h3>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('groups')}
+                    className="text-[11px] font-mono text-slate-400 hover:text-cyan-300 cursor-pointer"
+                  >
+                    管理分组 →
+                  </button>
                 </div>
-                <div className="theme-card border theme-border rounded-xl p-4 shadow-lg flex flex-col justify-between hover:border-cyan-500/40 transition-all">
-                  <span className="text-xs font-mono uppercase tracking-wider theme-text-muted mb-1">Word Count</span>
-                  <span className="text-cyan-400 font-display text-2xl font-black">{totalWordCount}</span>
-                </div>
-                <div className="theme-card border theme-border rounded-xl p-4 shadow-lg flex flex-col justify-between hover:border-cyan-500/40 transition-all">
-                  <span className="text-xs font-mono uppercase tracking-wider theme-text-muted mb-1">Registered Students</span>
-                  <span className="text-emerald-400 font-display text-2xl font-black">{usersList.length}</span>
-                </div>
-                <div className="theme-card border theme-border rounded-xl p-4 shadow-lg flex flex-col justify-between hover:border-cyan-500/40 transition-all">
-                  <span className="text-xs font-mono uppercase tracking-wider theme-text-muted mb-1">Study Hours</span>
-                  <span className="text-purple-400 font-display text-2xl font-black">24.5h</span>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 max-h-48 overflow-y-auto pr-1">
+                  {storyGroups.map((grp) => {
+                    const count = islands.filter(i => ((i.group_name && i.group_name.trim()) || 'General') === grp.name).length;
+                    return (
+                      <button
+                        key={grp.id}
+                        type="button"
+                        onClick={() => {
+                          setSelectedSectorGroupTab(grp.name);
+                          setActiveTab('stories');
+                        }}
+                        className="bg-slate-900/90 hover:bg-cyan-950/30 border border-slate-800 hover:border-cyan-500/40 rounded-xl p-2.5 text-left transition-all cursor-pointer flex items-center justify-between gap-2"
+                      >
+                        <span className="text-xs font-mono text-slate-200 truncate font-bold">{grp.name}</span>
+                        <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-cyan-950/70 text-cyan-300 border border-cyan-500/30 shrink-0">
+                          {count} 篇
+                        </span>
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
-            )}
+
+              {/* Student Overview */}
+              <div className="bg-[#131B2E] border border-[#1F2D4A] rounded-2xl p-5 shadow-xl space-y-3">
+                <div className="flex items-center justify-between border-b border-[#1F2D4A] pb-2.5">
+                  <h3 className="text-xs font-bold text-emerald-400 font-mono uppercase tracking-wider flex items-center gap-1.5">
+                    <span>👥</span> <span>注册学员档案 ({usersList.length} 人)</span>
+                  </h3>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('users')}
+                    className="text-[11px] font-mono text-slate-400 hover:text-emerald-300 cursor-pointer"
+                  >
+                    学员管理 →
+                  </button>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 max-h-48 overflow-y-auto pr-1">
+                  {usersList.map((u) => (
+                    <div
+                      key={u.id}
+                      className="bg-slate-900/90 border border-slate-800 rounded-xl p-2.5 flex items-center justify-between gap-2"
+                    >
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="text-base shrink-0">{u.avatar || '👤'}</span>
+                        <span className="text-xs font-mono font-bold text-slate-200 truncate">{u.username}</span>
+                      </div>
+                      <span className="text-[11px] font-mono text-amber-300 bg-amber-950/50 border border-amber-500/30 px-1.5 py-0.5 rounded shrink-0">
+                        🪙 {u.coins || 0}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Embedded Vocabulary Analytics */}
+            <VocabularyAnalytics users={users} />
           </div>
         )}
 
@@ -1376,8 +1861,25 @@ export const ParentDashboard: React.FC<Props> = ({ onBack }) => {
       )}
 
       {/* View: 📚 Word Bank Management */}
-      {activeTab === 'word_books' && !isEditingStory && (
-        <WordBankManager />
+      {(activeTab === 'word_books' || (activeTab === 'stories' && isEditingWords)) && !isEditingStory && (
+        <WordBankManager
+          initialBookId={editingWordsBookId}
+          initialCategory={editingWordsCategory}
+          storyTitle={editingWordsTitle}
+          onBack={() => {
+            setIsEditingWords(false);
+            setEditingWordsBookId(null);
+            setEditingWordsCategory(null);
+            setEditingWordsTitle(null);
+            setActiveTab('stories');
+            fetchIslands();
+          }}
+        />
+      )}
+
+      {/* View: 📈 Vocabulary Analytics & Weak Words (TASK-12.1) */}
+      {activeTab === 'vocab_stats' && !isEditingStory && (
+        <VocabularyAnalytics users={users} />
       )}
 
       {/* View 1: 👥 Player & User Accounts Management */}
@@ -1464,6 +1966,7 @@ export const ParentDashboard: React.FC<Props> = ({ onBack }) => {
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 {usersList.map((u) => {
+                  const isAdmin = u.is_admin === 1 || u.username?.toLowerCase() === 'admin';
                   return (
                     <div key={u.id} className="theme-card border theme-border rounded-lg p-4 flex items-center justify-between hover:border-cyan-500/40 transition-all group">
                       <div className="flex items-center gap-3 min-w-0">
@@ -1471,18 +1974,32 @@ export const ParentDashboard: React.FC<Props> = ({ onBack }) => {
                           <RunnerSprite avatar={u.avatar} isSprinting={false} />
                         </div>
                         <div className="min-w-0">
-                          <div className="text-sm font-bold theme-text font-mono truncate">{u.username}</div>
+                          <div className="text-sm font-bold theme-text font-mono truncate flex items-center gap-1.5">
+                            {isAdmin && <span>👑</span>}
+                            <span>{u.username}</span>
+                          </div>
                           <div className="text-2xs text-cyan-400 font-mono">Coins: {u.coins || 0} 🪙</div>
                         </div>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => handleDeletePlayer(u)}
-                        className="px-2.5 py-1 text-2xs font-bold text-rose-400 hover:bg-rose-500/10 border border-rose-500/30 rounded transition-all cursor-pointer font-mono"
-                        title="Delete student profile"
-                      >
-                        Delete 🗑️
-                      </button>
+                      {isAdmin ? (
+                        <button
+                          type="button"
+                          onClick={() => setIsChangePasswordOpen(true)}
+                          className="px-2.5 py-1 text-2xs font-bold text-amber-300 hover:bg-amber-500/10 border border-amber-500/40 rounded transition-all cursor-pointer font-mono shadow-sm"
+                          title="修改管理员密码"
+                        >
+                          修改密码 🔐
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => handleDeletePlayer(u)}
+                          className="px-2.5 py-1 text-2xs font-bold text-rose-400 hover:bg-rose-500/10 border border-rose-500/30 rounded transition-all cursor-pointer font-mono"
+                          title="Delete student profile"
+                        >
+                          Delete 🗑️
+                        </button>
+                      )}
                     </div>
                   );
                 })}
@@ -1494,75 +2011,78 @@ export const ParentDashboard: React.FC<Props> = ({ onBack }) => {
 
       {/* View 1: 📁 Story Groups Management (故事分组管理) */}
       {activeTab === 'groups' && !isEditingStory && (
-        <div className="space-y-8 animate-fade-in">
-          {/* Create Group Form Card */}
-          <div className="theme-card border theme-border rounded-xl p-6 shadow-xl">
-            <h3 className="text-base font-bold text-cyan-400 font-mono mb-2 flex items-center gap-2">
-              ➕ Create New Story Group (新建故事分组)
-            </h3>
-            <p className="text-xs theme-text-muted font-mono mb-6">
-              Create modular story categories (e.g., Level A, Fairy Tales, Science & Nature) to organize your reading curriculum.
-            </p>
+        <div className="flex flex-col gap-3 animate-fade-in">
+          {/* Single-Row Compact Toolbar: Title + Inline Create Group Form + Refresh */}
+          <div className="bg-[#131B2E] border border-[#1F2D4A] rounded-xl px-4 py-2.5 shadow-lg flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2 shrink-0">
+              <span className="text-base">📁</span>
+              <h3 className="text-sm font-black text-cyan-400 font-mono tracking-wide">
+                故事分组管理
+              </h3>
+              <span className="text-[11px] font-mono text-slate-400 bg-slate-900 border border-slate-800 px-2 py-0.5 rounded-md">
+                {storyGroups.length}个分组
+              </span>
+            </div>
 
-            {groupStatus && (
-              <div className={`p-3 rounded-lg text-xs font-mono mb-6 border ${
-                groupStatus.type === 'success' ? 'bg-emerald-950/50 border-emerald-500/40 text-emerald-300' : 'bg-rose-950/50 border-rose-500/40 text-rose-300'
-              }`}>
-                {groupStatus.text}
-              </div>
-            )}
+            <div className="flex flex-wrap items-center gap-2">
+              <FormBoundary>
+                <form onSubmit={handleCreateStoryGroup} className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={newGroupNameInput}
+                    onChange={(e) => setNewGroupNameInput(e.target.value)}
+                    placeholder="输入新分组名称 (如 Level A)..."
+                    className="w-48 sm:w-64 bg-slate-900 border border-slate-700 focus:border-cyan-400 text-cyan-100 placeholder:text-slate-500 rounded-lg px-3 py-1.5 text-xs font-mono outline-none transition-all"
+                  />
+                  <button
+                    type="submit"
+                    className="px-3.5 py-1.5 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 font-mono font-black text-xs rounded-lg shadow-sm transition-all cursor-pointer shrink-0 flex items-center gap-1"
+                  >
+                    <span>➕</span> <span>创建分组</span>
+                  </button>
+                </form>
+              </FormBoundary>
 
-            <FormBoundary>
-              <form onSubmit={handleCreateStoryGroup} className="flex flex-col sm:flex-row gap-3 max-w-xl">
-                <input
-                  type="text"
-                  value={newGroupNameInput}
-                  onChange={(e) => setNewGroupNameInput(e.target.value)}
-                  placeholder="Enter group name (e.g. Science & Nature)..."
-                  className="flex-1 bg-[#0D1322] border border-cyan-500/30 focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400/50 text-cyan-100 placeholder:text-slate-500 rounded-lg px-4 py-2.5 text-sm font-mono outline-none transition-all"
-                />
-                <button
-                  type="submit"
-                  className="px-6 py-2.5 bg-gradient-to-tr from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-mono font-bold text-xs uppercase rounded-lg shadow-md shadow-cyan-500/30 hover:scale-105 transition-all cursor-pointer shrink-0"
-                >
-                  Create Group (创建分组)
-                </button>
-              </form>
-            </FormBoundary>
-          </div>
-
-          {/* Group List & Stats Table Card */}
-          <div className="theme-card border theme-border rounded-xl p-6 shadow-xl">
-            <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
-              <div>
-                <h3 className="text-base font-bold theme-text font-mono flex items-center gap-2">
-                  📁 Story Groups Directory ({storyGroups.length})
-                </h3>
-                <p className="text-xs theme-text-muted font-mono mt-1">
-                  Manage categories, rename groups or delete unused groups.
-                </p>
-              </div>
               <button
                 type="button"
                 onClick={fetchStoryGroups}
-                className="text-xs px-3 py-1.5 bg-slate-900 border border-slate-700 hover:border-cyan-400 text-slate-300 rounded-lg font-mono transition-all cursor-pointer flex items-center gap-1.5"
+                className="text-xs px-2.5 py-1.5 bg-slate-900 border border-slate-700 hover:border-cyan-400 text-slate-300 rounded-lg font-mono transition-all cursor-pointer flex items-center gap-1 shrink-0"
+                title="刷新分组列表"
               >
-                <span>🔄</span> <span>REFRESH</span>
+                <span>🔄</span> <span>刷新</span>
               </button>
             </div>
+          </div>
 
+          {groupStatus && (
+            <div className={`px-3 py-2 rounded-lg text-xs font-mono border flex items-center justify-between ${
+              groupStatus.type === 'success' ? 'bg-emerald-950/50 border-emerald-500/40 text-emerald-300' : 'bg-rose-950/50 border-rose-500/40 text-rose-300'
+            }`}>
+              <span>{groupStatus.text}</span>
+              <button
+                type="button"
+                onClick={() => setGroupStatus(null)}
+                className="opacity-60 hover:opacity-100 font-bold px-2 cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+          )}
+
+          {/* Group List & Stats Table Card */}
+          <div className="bg-[#131B2E] border border-[#1F2D4A] rounded-2xl shadow-xl overflow-hidden">
             <SuspenseState isLoading={isGroupLoading}>
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-xs font-mono border-collapse">
                   <thead>
-                    <tr className="border-b theme-border text-slate-400 uppercase text-[11px] tracking-wider">
-                      <th className="py-3 px-4 font-bold">分组名称 (GROUP NAME)</th>
-                      <th className="py-3 px-4 font-bold text-center">故事数量 (STORIES)</th>
-                      <th className="py-3 px-4 font-bold text-center">类型 (TYPE)</th>
-                      <th className="py-3 px-4 font-bold text-right">操作 (ACTIONS)</th>
+                    <tr className="bg-slate-950/60 border-b border-[#1F2D4A] text-slate-400 text-[11px] tracking-wider">
+                      <th className="py-2.5 px-4 font-bold">分组名称</th>
+                      <th className="py-2.5 px-4 font-bold text-center">故事数量</th>
+                      <th className="py-2.5 px-4 font-bold text-center">类型</th>
+                      <th className="py-2.5 px-4 font-bold text-right">操作</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y theme-divide">
+                  <tbody className="divide-y divide-[#1F2D4A]/80">
                     {storyGroups.map((grp) => {
                       const isDefault = grp.name === 'General';
                       const isEditing = editingGroupId === grp.id;
@@ -1570,7 +2090,7 @@ export const ParentDashboard: React.FC<Props> = ({ onBack }) => {
                       return (
                         <tr key={grp.id} className="hover:bg-cyan-950/20 transition-colors">
                           {/* Name / Inline Edit */}
-                          <td className="py-3.5 px-4 font-medium theme-text">
+                          <td className="py-2.5 px-4 font-medium theme-text">
                             {isEditing ? (
                               <div className="flex items-center gap-2 max-w-xs">
                                 <input
@@ -1582,22 +2102,22 @@ export const ParentDashboard: React.FC<Props> = ({ onBack }) => {
                                 />
                               </div>
                             ) : (
-                              <div className="flex items-center gap-2.5">
-                                <span className="text-base">📁</span>
+                              <div className="flex items-center gap-2">
+                                <span className="text-sm">📁</span>
                                 <span className="font-bold text-slate-100">{grp.name}</span>
                               </div>
                             )}
                           </td>
 
                           {/* Story count */}
-                          <td className="py-3.5 px-4 text-center">
-                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-cyan-950/70 border border-cyan-500/30 text-cyan-300">
+                          <td className="py-2.5 px-4 text-center">
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold bg-cyan-950/70 border border-cyan-500/30 text-cyan-300">
                               {grp.story_count} 篇
                             </span>
                           </td>
 
                           {/* Group type */}
-                          <td className="py-3.5 px-4 text-center">
+                          <td className="py-2.5 px-4 text-center">
                             {isDefault ? (
                               <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-amber-950/60 border border-amber-500/40 text-amber-300">
                                 🔒 系统默认
@@ -1610,7 +2130,7 @@ export const ParentDashboard: React.FC<Props> = ({ onBack }) => {
                           </td>
 
                           {/* Actions */}
-                          <td className="py-3.5 px-4 text-right">
+                          <td className="py-2.5 px-4 text-right">
                             <div className="flex items-center justify-end gap-2">
                               {isEditing ? (
                                 <>
@@ -1709,6 +2229,14 @@ export const ParentDashboard: React.FC<Props> = ({ onBack }) => {
                   {uploadStatus.text}
                 </span>
               )}
+              <button
+                type="button"
+                onClick={() => handleOpenAiGenStoryModal()}
+                className="px-4 py-2.5 bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 hover:from-amber-400 hover:to-orange-400 text-slate-950 font-mono text-xs font-black rounded-xl shadow-lg shadow-amber-500/25 transition-all flex items-center gap-1.5 cursor-pointer active:scale-95 border border-amber-400/40"
+                title="基于当前关卡关联的生词库，利用 AI 一键构思并生成完整的英文绘本故事、逐页中英对照和阅读理解问答"
+              >
+                <span>✨</span> <span>AI 生词生成故事 (SYNTHESIZE)</span>
+              </button>
               <button
                 type="button"
                 onClick={handleOpenAiAppend}
@@ -2080,159 +2608,143 @@ export const ParentDashboard: React.FC<Props> = ({ onBack }) => {
                 )}
               </div>
 
-              {/* Section 3: 🧩 阅读理解问答 */}
-              <div className="bg-[#131B2E] border border-[#1F2D4A] rounded-2xl p-6 shadow-xl space-y-6">
-                <div className="flex items-center justify-between border-b border-[#1F2D4A] pb-3 flex-wrap gap-2">
-                  <div className="flex items-center gap-2">
-                    <span className="text-xl">🧩</span>
-                    <h3 className="text-base font-bold text-slate-100 uppercase tracking-widest font-mono">
-                      阅读理解问答 (Comprehension Questions)
-                    </h3>
-                  </div>
-                  <button 
-                    type="button" 
-                    onClick={addQuestion} 
-                    className="bg-[#131B2E] border border-[#1F2D4A] text-cyan-400 hover:border-cyan-500/50 hover:bg-[#1A2642] rounded-lg px-3.5 py-1.5 text-xs font-mono font-bold transition-all cursor-pointer shadow-sm flex items-center gap-1"
-                  >
-                    ➕ 添加问题 (ADD QUESTION)
-                  </button>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {storyQuestions.map((q, index) => (
-                    <div key={index} className="bg-slate-900/80 border border-slate-800 rounded-xl p-4 flex flex-col gap-3 relative group">
-                      <div className="flex justify-between items-center">
-                        <h4 className="text-xs font-bold text-cyan-400 font-mono flex items-center gap-1.5">
-                          <span>Q{index + 1}</span>
-                        </h4>
-                        {storyQuestions.length > 1 && (
-                          <button
-                            type="button"
-                            onClick={() => removeQuestion(index)}
-                            className="text-rose-400 hover:text-rose-300 text-xs font-bold font-mono cursor-pointer"
-                          >
-                            删除 ✕
-                          </button>
-                        )}
+              {/* Section 3: 🚀 专属生词库与问答配置快捷入口 (Vocabulary & Questions Shortcuts) */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* Card 1: 专属生词库 */}
+                <div className="bg-[#131B2E] border border-[#1F2D4A] hover:border-indigo-500/40 rounded-2xl p-6 shadow-xl flex flex-col justify-between gap-5 transition-all">
+                  <div className="flex flex-col gap-3">
+                    <div className="flex items-center justify-between border-b border-[#1F2D4A] pb-3">
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-9 h-9 rounded-xl bg-indigo-500/10 border border-indigo-500/30 flex items-center justify-center text-lg">
+                          📖
+                        </div>
+                        <div>
+                          <h4 className="text-sm font-bold text-indigo-400 uppercase tracking-widest font-mono">
+                            专属生词库 (VOCABULARY BANK)
+                          </h4>
+                          <span className="text-2xs text-slate-400 font-mono">
+                            独立生词管理与 AI 丰富解析
+                          </span>
+                        </div>
                       </div>
-                      <input
-                        type="text"
-                        value={q.question}
-                        onChange={(e) => updateQuestion(index, 'question', e.target.value)}
-                        placeholder="Question text (e.g. Where did the fox go?)"
-                        className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-100 font-mono placeholder-slate-600 focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500"
-                      />
-                      <input
-                        type="text"
-                        value={q.hint}
-                        onChange={(e) => updateQuestion(index, 'hint', e.target.value)}
-                        placeholder="Hint / 提示 (Optional)"
-                        className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-400 font-mono placeholder-slate-600 focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500"
-                      />
-                      <input
-                        type="text"
-                        value={q.answer}
-                        onChange={(e) => updateQuestion(index, 'answer', e.target.value)}
-                        placeholder="Correct Answer (e.g. He went to the forest.)"
-                        className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-emerald-300 font-mono placeholder-slate-600 focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500"
-                      />
+                      <span className="px-2.5 py-1 rounded-full text-2xs font-mono font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+                        {wordsList.length} 个词条
+                      </span>
                     </div>
-                  ))}
-                </div>
-              </div>
 
-              {/* Section 4: 🔤 核心练习单词库 */}
-              <div className="bg-[#131B2E] border border-[#1F2D4A] rounded-2xl p-6 shadow-xl space-y-6">
-                <div className="flex items-center justify-between border-b border-[#1F2D4A] pb-3 flex-wrap gap-2">
-                  <div className="flex items-center gap-2">
-                    <span className="text-xl">🔤</span>
-                    <h3 className="text-base font-bold text-slate-100 uppercase tracking-widest font-mono">
-                      核心练习单词库 (Associated Vocabulary - {wordsList.length} Words)
-                    </h3>
+                    <p className="text-xs text-slate-300 font-mono leading-relaxed">
+                      本故事的重点生词已与独立单词宝库全面打通。AI 智能绘本导入提取的单词已自动归入词库，支持一键 AI 深度解析音标、核心释义、趣味例句、反义词与词源趣谈。
+                    </p>
+
+                    {/* Raw words preview tag cloud */}
+                    {wordsList.length > 0 ? (
+                      <div className="flex flex-wrap gap-1.5 p-3 bg-slate-950/60 border border-slate-800/80 rounded-xl max-h-24 overflow-y-auto">
+                        {wordsList.map((w, idx) => (
+                          <span
+                            key={idx}
+                            className="px-2 py-0.5 rounded text-2xs font-mono bg-indigo-950/60 text-indigo-200 border border-indigo-800/50"
+                          >
+                            {w.word}
+                            {w.translation ? ` (${w.translation})` : ''}
+                          </span>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="p-3 bg-slate-950/40 border border-dashed border-slate-800 rounded-xl text-center text-2xs text-slate-500 font-mono">
+                        当前故事尚未提取或添加生词
+                      </div>
+                    )}
                   </div>
-                  <button
-                    type="button"
-                    onClick={addWordToList}
-                    className="bg-[#131B2E] border border-[#1F2D4A] text-cyan-400 hover:border-cyan-500/50 hover:bg-[#1A2642] rounded-lg px-3.5 py-1.5 text-xs font-mono font-bold transition-all cursor-pointer shadow-sm flex items-center gap-1"
-                  >
-                    ➕ 添加单词 (ADD WORD)
-                  </button>
+
+                  <div className="border-t border-[#1F2D4A] pt-4 flex items-center justify-between gap-3">
+                    {selectedIslandId ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const currentIsland = islands.find((isl) => isl.id === Number(selectedIslandId));
+                          if (currentIsland) {
+                            handleOpenEditWords(currentIsland);
+                          }
+                        }}
+                        className="w-full py-2.5 px-4 bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-500 hover:to-blue-500 text-white font-mono text-xs font-bold rounded-xl shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-95"
+                      >
+                        <span>📖</span>
+                        <span>前往编辑单词与 AI 解析 ➔</span>
+                      </button>
+                    ) : (
+                      <div className="w-full text-center py-2 text-2xs text-amber-400 font-mono bg-amber-950/20 border border-amber-500/20 rounded-xl">
+                        💡 点击下方保存故事后，即可直接前往「编辑单词」进行 AI 解析
+                      </div>
+                    )}
+                  </div>
                 </div>
 
-                <div className="table-responsive bg-[#0F172A] border border-[#1F2D4A] rounded-xl overflow-hidden shadow-xl">
-                  <table className="w-full text-xs text-left font-mono" id="table-vocabulary-edit">
-                    <thead>
-                      <tr className="bg-[#131B2E] border-b border-[#1F2D4A] text-slate-400 font-mono">
-                        <th className="p-3 font-semibold uppercase tracking-wider w-[18%]">英文单词 *</th>
-                        <th className="p-3 font-semibold uppercase tracking-wider w-[22%]">中文释义 *</th>
-                        <th className="p-3 font-semibold uppercase tracking-wider w-[27%]">例句 (CONTEXT)</th>
-                        <th className="p-3 font-semibold uppercase tracking-wider w-[27%]">例句翻译</th>
-                        <th className="p-3 font-semibold uppercase tracking-wider w-[6%] text-center">操作</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {wordsList.length === 0 ? (
-                        <tr>
-                          <td colSpan={5} className="p-8 text-center text-slate-500 italic select-none font-mono">
-                            暂无关联词汇。可点击【➕ 添加单词】或使用 AI 绘本导入引擎自动提取。
-                          </td>
-                        </tr>
-                      ) : (
-                        wordsList.map((w, index) => (
-                          <tr key={w.id || index} className="border-b border-[#1F2D4A]/50 hover:bg-[#131B2E]/40 transition-colors">
-                            <td className="p-2">
-                              <input
-                                type="text"
-                                value={w.word}
-                                placeholder="word"
-                                required
-                                onChange={(e) => updateWordInList(index, 'word', e.target.value)}
-                                className="w-full bg-slate-900 border border-slate-800 rounded px-2 py-1.5 text-xs text-cyan-300 font-mono focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500"
-                              />
-                            </td>
-                            <td className="p-2">
-                              <input
-                                type="text"
-                                value={w.translation}
-                                placeholder="Meaning"
-                                required
-                                onChange={(e) => updateWordInList(index, 'translation', e.target.value)}
-                                className="w-full bg-slate-900 border border-slate-800 rounded px-2 py-1.5 text-xs text-cyan-300 font-mono focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500"
-                              />
-                            </td>
-                            <td className="p-2">
-                              <input
-                                type="text"
-                                value={w.sentence}
-                                placeholder="Context sentence"
-                                onChange={(e) => updateWordInList(index, 'sentence', e.target.value)}
-                                className="w-full bg-slate-900 border border-slate-800 rounded px-2 py-1.5 text-xs text-slate-300 font-mono focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500"
-                              />
-                            </td>
-                            <td className="p-2">
-                              <input
-                                type="text"
-                                value={w.sentence_translation}
-                                placeholder="Sentence translation"
-                                onChange={(e) => updateWordInList(index, 'sentence_translation', e.target.value)}
-                                className="w-full bg-slate-900 border border-slate-800 rounded px-2 py-1.5 text-xs text-slate-300 font-mono focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500"
-                              />
-                            </td>
-                            <td className="p-2 text-center">
-                              <button
-                                type="button"
-                                onClick={() => removeWordFromList(index)}
-                                className="text-rose-400 hover:text-rose-300 cursor-pointer p-1 text-sm transition-all"
-                                title="删除单词"
-                              >
-                                ❌
-                              </button>
-                            </td>
-                          </tr>
-                        ))
-                      )}
-                    </tbody>
-                  </table>
+                {/* Card 2: 阅读理解问答 */}
+                <div className="bg-[#131B2E] border border-[#1F2D4A] hover:border-purple-500/40 rounded-2xl p-6 shadow-xl flex flex-col justify-between gap-5 transition-all">
+                  <div className="flex flex-col gap-3">
+                    <div className="flex items-center justify-between border-b border-[#1F2D4A] pb-3">
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-9 h-9 rounded-xl bg-purple-500/10 border border-purple-500/30 flex items-center justify-center text-lg">
+                          🧩
+                        </div>
+                        <div>
+                          <h4 className="text-sm font-bold text-purple-400 uppercase tracking-widest font-mono">
+                            阅读理解问答 (COMPREHENSION QUESTIONS)
+                          </h4>
+                          <span className="text-2xs text-slate-400 font-mono">
+                            独立问答配置与 AI 智能出题
+                          </span>
+                        </div>
+                      </div>
+                      <span className="px-2.5 py-1 rounded-full text-2xs font-mono font-bold bg-purple-500/20 text-purple-300 border border-purple-500/30">
+                        {storyQuestions.filter((q) => q.question && q.question.trim()).length} 道问答
+                      </span>
+                    </div>
+
+                    <p className="text-xs text-slate-300 font-mono leading-relaxed">
+                      学员在故事关卡第 3 阶段「挑战测试」时作答。系统支持由 AI 研读故事正文一键智能生成 3~10 道阅读理解问答、中文引导提示与参考答案。
+                    </p>
+
+                    {/* Questions preview */}
+                    {storyQuestions.filter((q) => q.question && q.question.trim()).length > 0 ? (
+                      <div className="flex flex-col gap-1.5 p-3 bg-slate-950/60 border border-slate-800/80 rounded-xl max-h-24 overflow-y-auto">
+                        {storyQuestions
+                          .filter((q) => q.question && q.question.trim())
+                          .map((q, idx) => (
+                            <div key={idx} className="text-2xs font-mono text-purple-200 truncate flex items-center gap-1.5">
+                              <span className="text-purple-400 font-bold">Q{idx + 1}:</span>
+                              <span className="truncate">{q.question}</span>
+                            </div>
+                          ))}
+                      </div>
+                    ) : (
+                      <div className="p-3 bg-slate-950/40 border border-dashed border-slate-800 rounded-xl text-center text-2xs text-slate-500 font-mono">
+                        当前故事尚未配置阅读理解问答
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="border-t border-[#1F2D4A] pt-4 flex items-center justify-between gap-3">
+                    {selectedIslandId ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const currentIsland = islands.find((isl) => isl.id === Number(selectedIslandId));
+                          if (currentIsland) {
+                            handleOpenEditQuestions(currentIsland);
+                          }
+                        }}
+                        className="w-full py-2.5 px-4 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-mono text-xs font-bold rounded-xl shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-95"
+                      >
+                        <span>🧩</span>
+                        <span>前往编辑问题与 AI 出题 ➔</span>
+                      </button>
+                    ) : (
+                      <div className="w-full text-center py-2 text-2xs text-amber-400 font-mono bg-amber-950/20 border border-amber-500/20 rounded-xl">
+                        💡 点击下方保存故事后，即可直接前往「编辑问题」进行 AI 出题
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
 
@@ -2269,133 +2781,422 @@ export const ParentDashboard: React.FC<Props> = ({ onBack }) => {
         </div>
       )}
 
-      {/* View 2: 📚 Story Library (故事关卡库管理列表) */}
-      {activeTab === 'stories' && !isEditingStory && (
+      {/* View: 🧩 Story Comprehension Questions Editor (故事阅读理解问答独立管理) */}
+      {activeTab === 'stories' && isEditingQuestions && editingQuestionsIsland && !isEditingStory && (
         <div className="flex flex-col gap-6 animate-fade-in">
-          {/* Top Story Library Action & Filter Bar */}
+          {/* Top Header Card */}
           <div className="bg-[#131B2E] border border-[#1F2D4A] rounded-2xl p-6 shadow-xl flex flex-col gap-5">
             <div className="flex flex-wrap items-center justify-between gap-4 border-b border-[#1F2D4A] pb-4">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-xl">
-                  📚
+                <button
+                  type="button"
+                  onClick={handleCloseEditQuestions}
+                  className="px-3.5 py-2 bg-slate-900 border border-slate-700 hover:border-slate-500 text-slate-300 hover:text-white rounded-xl font-mono text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5"
+                >
+                  <span>◀</span> <span>返回故事关卡库</span>
+                </button>
+                <div className="w-10 h-10 rounded-xl bg-purple-500/10 border border-purple-500/30 flex items-center justify-center text-xl">
+                  🧩
                 </div>
                 <div>
-                  <h3 className="text-base font-bold text-cyan-400 uppercase tracking-widest font-mono">
-                    STORY & SECTOR LIBRARY (故事关卡库)
-                  </h3>
-                  <p className="text-2xs text-slate-400 font-mono">
-                    浏览、检索与管理所有英语学习故事，支持独立编辑故事文本、翻译、问答与关联学员。
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h3 className="text-base font-bold text-purple-400 uppercase tracking-widest font-mono">
+                      {editingQuestionsIsland.story_title || editingQuestionsIsland.name}
+                    </h3>
+                    <span className="px-2 py-0.5 rounded-full text-2xs font-mono font-bold bg-purple-500/20 text-purple-300 border border-purple-500/30">
+                      SECTOR #{editingQuestionsIsland.id}
+                    </span>
+                    {editingQuestionsIsland.group_name && (
+                      <span className="px-2 py-0.5 rounded-full text-2xs font-mono bg-cyan-500/15 text-cyan-300 border border-cyan-500/30">
+                        {editingQuestionsIsland.group_name}
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-2xs text-slate-400 font-mono mt-0.5">
+                    管理与编辑本绘本的阅读理解问答，支持由 AI 深度分析故事自动出题。
                   </p>
                 </div>
               </div>
 
-              <div className="flex items-center gap-2.5 flex-wrap">
+              {/* Action Buttons */}
+              <div className="flex items-center gap-3 flex-wrap">
+                <div className="flex items-center gap-2 bg-slate-950/80 border border-slate-800 px-3 py-1.5 rounded-xl">
+                  <span className="text-2xs text-slate-400 font-mono">出题数量:</span>
+                  <select
+                    value={generateQuestionsCount}
+                    onChange={(e) => setGenerateQuestionsCount(Number(e.target.value))}
+                    className="bg-transparent text-purple-300 text-xs font-mono font-bold focus:outline-none cursor-pointer"
+                  >
+                    <option value={3} className="bg-slate-900 text-slate-200">3 道题</option>
+                    <option value={5} className="bg-slate-900 text-slate-200">5 道题 (推荐)</option>
+                    <option value={8} className="bg-slate-900 text-slate-200">8 道题</option>
+                    <option value={10} className="bg-slate-900 text-slate-200">10 道题</option>
+                  </select>
+                </div>
+
                 <button
                   type="button"
-                  onClick={handleOpenNewStory}
-                  className="px-4 py-2 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 font-black text-xs uppercase tracking-wider rounded-xl shadow-md shadow-cyan-500/20 transition-all cursor-pointer flex items-center gap-1.5 font-mono active:scale-95"
+                  onClick={() => handleGenerateQuestionsForIsland()}
+                  disabled={isGeneratingQuestions}
+                  className="px-4 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-mono text-xs font-bold rounded-xl shadow-lg shadow-purple-600/25 transition-all flex items-center gap-2 cursor-pointer active:scale-95 disabled:opacity-50"
+                  title="让 AI 自动阅读当前故事并生成中英阅读理解问答"
                 >
-                  <span>➕</span> <span>手动新建故事</span>
+                  <span>🤖</span>
+                  <span>{isGeneratingQuestions ? 'AI 正在阅读出题...' : '一键启动 AI 生成'}</span>
                 </button>
+
                 <button
                   type="button"
-                  onClick={() => { setActiveTab('ai_import'); setUploadStatus(null); }}
-                  className="px-4 py-2 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white font-bold text-xs uppercase tracking-wider rounded-xl shadow-md shadow-purple-500/20 transition-all cursor-pointer flex items-center gap-1.5 font-mono active:scale-95"
+                  onClick={handleSaveQuestionsForIsland}
+                  disabled={isSavingQuestions}
+                  className="px-5 py-2 bg-gradient-to-r from-cyan-500 to-teal-400 hover:from-cyan-400 hover:to-teal-300 text-slate-950 font-black text-xs uppercase tracking-wider rounded-xl shadow-lg shadow-cyan-500/25 transition-all cursor-pointer disabled:opacity-50 flex items-center gap-2 font-mono active:scale-95"
                 >
-                  <span>🤖</span> <span>AI 绘本一键导入</span>
+                  <span>💾</span>
+                  <span>{isSavingQuestions ? 'SAVING...' : '保存问答配置'}</span>
                 </button>
               </div>
             </div>
 
-            {storyListStatus && (
-              <div className={`p-3 rounded-xl text-xs font-mono border flex items-center justify-between shadow-md ${
-                storyListStatus.type === 'success' 
-                  ? 'bg-emerald-950/60 border-emerald-500/50 text-emerald-300' 
-                  : 'bg-rose-950/60 border-rose-500/50 text-rose-300'
-              }`}>
-                <div className="flex items-center gap-2">
-                  <span>{storyListStatus.type === 'success' ? '✅' : '⚠️'}</span>
-                  <span>{storyListStatus.text}</span>
-                </div>
-                <button 
-                  type="button" 
-                  onClick={() => setStoryListStatus(null)}
-                  className="opacity-60 hover:opacity-100 font-bold px-2 py-0.5 rounded cursor-pointer transition-opacity"
-                  title="Close"
+            {/* Status Alert Banner */}
+            {questionsEditStatus && (
+              <div
+                className={`p-3.5 rounded-xl border flex items-center justify-between text-xs font-mono animate-fade-in ${
+                  questionsEditStatus.type === 'success'
+                    ? 'bg-emerald-950/40 border-emerald-500/40 text-emerald-300'
+                    : 'bg-rose-950/40 border-rose-500/40 text-rose-300'
+                }`}
+              >
+                <span>{questionsEditStatus.text}</span>
+                <button
+                  type="button"
+                  onClick={() => setQuestionsEditStatus(null)}
+                  className="text-slate-400 hover:text-white text-sm px-2 cursor-pointer"
                 >
                   ✕
                 </button>
               </div>
             )}
 
-            {/* Filter and Search controls */}
-            <div className="flex flex-wrap items-center justify-between gap-4">
-              {/* Group Filter Pills */}
-              <div className="flex flex-wrap items-center gap-1.5 bg-slate-900/80 p-1.5 rounded-xl border border-slate-800">
-                <button
-                  type="button"
-                  onClick={() => setSelectedSectorGroupTab('ALL')}
-                  className={`px-3 py-1 text-xs rounded-lg font-mono font-bold transition-all cursor-pointer border ${
-                    selectedSectorGroupTab === 'ALL'
-                      ? 'bg-cyan-500 text-slate-950 border-cyan-400 font-black shadow-sm'
-                      : 'bg-slate-900 border-transparent text-slate-400 hover:text-slate-200'
-                  }`}
+            {/* Story Reference Accordion */}
+            <details className="group bg-slate-950/60 border border-slate-800/80 rounded-xl overflow-hidden transition-all">
+              <summary className="p-3.5 flex items-center justify-between cursor-pointer select-none hover:bg-slate-900/60 transition-colors">
+                <div className="flex items-center gap-2 text-xs font-mono font-bold text-slate-300">
+                  <span>📖</span>
+                  <span>故事参考正文 (STORY PASSAGE REFERENCE)</span>
+                  <span className="text-2xs font-normal text-slate-500 font-mono">
+                    (点击展开/折叠，查看 AI 出题依据的故事文本)
+                  </span>
+                </div>
+                <span className="text-xs text-slate-500 group-open:rotate-180 transition-transform">
+                  ▼
+                </span>
+              </summary>
+              <div className="p-4 border-t border-slate-800/60 text-xs font-mono text-slate-300 leading-relaxed max-h-60 overflow-y-auto whitespace-pre-wrap">
+                {(() => {
+                  if (
+                    editingQuestionsIsland.story_passage_json &&
+                    Array.isArray(editingQuestionsIsland.story_passage_json) &&
+                    editingQuestionsIsland.story_passage_json.length > 0
+                  ) {
+                    return editingQuestionsIsland.story_passage_json.map((s: any, idx: number) => (
+                      <div key={idx} className="mb-2 last:mb-0">
+                        <span className="text-cyan-400 font-bold mr-2">#{idx + 1}</span>
+                        <span>{s.sentence_text || s.en || ''}</span>
+                        {s.zh && <p className="text-slate-500 text-2xs pl-6 mt-0.5">{s.zh}</p>}
+                      </div>
+                    ));
+                  }
+                  return editingQuestionsIsland.story_passage || <span className="text-slate-500 italic">暂无故事正文文本</span>;
+                })()}
+              </div>
+            </details>
+          </div>
+
+          {/* Question List Card */}
+          <div className="bg-[#131B2E] border border-[#1F2D4A] rounded-2xl p-6 shadow-xl flex flex-col gap-5">
+            <div className="flex items-center justify-between border-b border-[#1F2D4A] pb-4">
+              <div className="flex items-center gap-2">
+                <h4 className="text-sm font-bold text-slate-200 font-mono uppercase tracking-wider">
+                  阅读理解问答列表 ({editingQuestionsList.length} 题)
+                </h4>
+                <span className="text-2xs text-slate-400 font-mono">
+                  学员在故事关卡第 3 阶段「挑战测试」时作答
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={addEditingQuestion}
+                className="px-3.5 py-1.5 bg-purple-950/60 hover:bg-purple-900 border border-purple-500/40 text-purple-300 hover:text-white rounded-lg font-mono text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5"
+              >
+                <span>➕</span> <span>添加问题</span>
+              </button>
+            </div>
+
+            {editingQuestionsList.length === 0 ? (
+              <div className="py-12 px-4 text-center border-2 border-dashed border-slate-800 rounded-2xl flex flex-col items-center gap-3">
+                <div className="text-3xl">🧩</div>
+                <p className="text-sm font-mono text-slate-400">
+                  当前故事关卡暂无阅读理解问答
+                </p>
+                <p className="text-xs font-mono text-slate-500 max-w-md">
+                  您可以点击上方【🤖 一键启动 AI 生成】由 AI 自动阅读当前故事并生成问答，或点击【➕ 添加问题】手动输入。
+                </p>
+                <div className="flex items-center gap-3 mt-2">
+                  <button
+                    type="button"
+                    onClick={() => handleGenerateQuestionsForIsland()}
+                    disabled={isGeneratingQuestions}
+                    className="px-4 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-mono text-xs font-bold rounded-xl shadow-md transition-all flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <span>🤖</span> <span>一键启动 AI 生成</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={addEditingQuestion}
+                    className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 font-mono text-xs font-bold rounded-xl transition-all cursor-pointer"
+                  >
+                    <span>➕</span> <span>手动添加问题</span>
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="flex flex-col gap-4">
+                {editingQuestionsList.map((item, index) => (
+                  <div
+                    key={index}
+                    className="bg-[#0B101B] border border-[#1F2D4A] hover:border-purple-500/40 rounded-xl p-4 sm:p-5 flex flex-col gap-3 transition-colors"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="w-7 h-7 rounded-lg bg-purple-500/20 border border-purple-500/40 text-purple-300 font-mono font-black text-xs flex items-center justify-center">
+                          Q{index + 1}
+                        </span>
+                        <span className="text-2xs text-slate-400 font-mono">
+                          QUESTION #{index + 1}
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => removeEditingQuestion(index)}
+                        className="text-xs text-rose-400/80 hover:text-rose-300 hover:bg-rose-950/40 px-2 py-1 rounded-md transition-colors font-mono cursor-pointer flex items-center gap-1"
+                        title="删除此题"
+                      >
+                        <span>🗑️</span> <span>删除</span>
+                      </button>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
+                      {/* Question Field */}
+                      <div className="md:col-span-12 flex flex-col gap-1">
+                        <label className="text-2xs font-mono font-bold text-slate-400 uppercase tracking-wider flex items-center justify-between">
+                          <span>问题 (QUESTION) *</span>
+                          <span className="text-slate-500 font-normal">英文提问</span>
+                        </label>
+                        <input
+                          type="text"
+                          value={item.question}
+                          onChange={(e) => updateEditingQuestion(index, 'question', e.target.value)}
+                          placeholder="例如: Why did the little bird leave its nest?"
+                          className="w-full bg-[#131B2E] border border-[#1F2D4A] focus:border-purple-400 focus:ring-1 focus:ring-purple-400 rounded-xl px-3.5 py-2 text-xs text-slate-200 font-mono transition-all"
+                        />
+                      </div>
+
+                      {/* Hint Field */}
+                      <div className="md:col-span-6 flex flex-col gap-1">
+                        <label className="text-2xs font-mono font-bold text-slate-400 uppercase tracking-wider flex items-center justify-between">
+                          <span>中文提示 / 引导 (HINT / CLUE)</span>
+                          <span className="text-slate-500 font-normal">选填</span>
+                        </label>
+                        <input
+                          type="text"
+                          value={item.hint || ''}
+                          onChange={(e) => updateEditingQuestion(index, 'hint', e.target.value)}
+                          placeholder="例如: 思考一下鸟妈妈教它学飞的情景..."
+                          className="w-full bg-[#131B2E] border border-[#1F2D4A] focus:border-purple-400 focus:ring-1 focus:ring-purple-400 rounded-xl px-3.5 py-2 text-xs text-slate-200 font-mono transition-all"
+                        />
+                      </div>
+
+                      {/* Answer Field */}
+                      <div className="md:col-span-6 flex flex-col gap-1">
+                        <label className="text-2xs font-mono font-bold text-slate-400 uppercase tracking-wider flex items-center justify-between">
+                          <span>标准答案 / 关键词 (ANSWER) *</span>
+                          <span className="text-slate-500 font-normal">判分参考</span>
+                        </label>
+                        <input
+                          type="text"
+                          value={item.answer || ''}
+                          onChange={(e) => updateEditingQuestion(index, 'answer', e.target.value)}
+                          placeholder="例如: To learn how to fly and find food."
+                          className="w-full bg-[#131B2E] border border-[#1F2D4A] focus:border-purple-400 focus:ring-1 focus:ring-purple-400 rounded-xl px-3.5 py-2 text-xs text-slate-200 font-mono transition-all"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Bottom Action Footer Bar */}
+          <div className="flex flex-wrap items-center justify-between gap-4 p-6 bg-[#131B2E] border border-[#1F2D4A] rounded-2xl shadow-xl">
+            <button
+              type="button"
+              onClick={handleCloseEditQuestions}
+              className="px-5 py-2.5 bg-slate-900 border border-slate-700 text-slate-400 hover:text-slate-200 rounded-xl font-mono text-xs font-bold transition-all cursor-pointer"
+            >
+              ◀ 返回故事关卡库 (CANCEL)
+            </button>
+
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => handleGenerateQuestionsForIsland()}
+                disabled={isGeneratingQuestions}
+                className="px-5 py-2.5 bg-purple-950/80 hover:bg-purple-900 border border-purple-500/40 text-purple-300 hover:text-white font-mono text-xs font-bold rounded-xl transition-all cursor-pointer flex items-center gap-2 disabled:opacity-50"
+              >
+                <span>🤖</span>
+                <span>{isGeneratingQuestions ? 'AI 生成中...' : '一键启动 AI 生成问答'}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleSaveQuestionsForIsland}
+                disabled={isSavingQuestions}
+                className="px-8 py-2.5 bg-gradient-to-r from-cyan-500 via-teal-400 to-emerald-500 hover:from-cyan-400 hover:to-emerald-400 text-slate-950 font-black text-xs uppercase tracking-wider rounded-xl shadow-lg shadow-cyan-500/25 transition-all cursor-pointer disabled:opacity-50 flex items-center gap-2 font-mono active:scale-95"
+              >
+                <span>💾</span>
+                <span>{isSavingQuestions ? 'SAVING...' : '保存问答配置 (SAVE QUESTIONS)'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* View 2: 📚 Story Library (故事关卡库管理列表) */}
+      {activeTab === 'stories' && !isEditingStory && !isEditingWords && !isEditingQuestions && (
+        <div className="flex flex-col gap-3 animate-fade-in">
+          {/* Single-Row Compact Toolbar: Title + Category Select + Search + Action Buttons */}
+          <div className="bg-[#131B2E] border border-[#1F2D4A] rounded-xl px-4 py-2.5 shadow-lg flex flex-wrap items-center justify-between gap-3">
+            {/* Left: Title + Category Dropdown + Manage Groups + Search */}
+            <div className="flex flex-wrap items-center gap-2.5 flex-1 min-w-0">
+              <div className="flex items-center gap-1.5 shrink-0 mr-1">
+                <span className="text-base">📚</span>
+                <h3 className="text-sm font-black text-cyan-400 font-mono tracking-wide">
+                  故事关卡库
+                </h3>
+                <span className="text-[11px] font-mono text-slate-400 bg-slate-900 border border-slate-800 px-2 py-0.5 rounded-md">
+                  {islands.length}篇
+                </span>
+              </div>
+
+              {/* Category Select Dropdown */}
+              <div className="flex items-center gap-1.5 shrink-0">
+                <select
+                  value={selectedSectorGroupTab}
+                  onChange={(e) => setSelectedSectorGroupTab(e.target.value)}
+                  className="bg-slate-900 border border-slate-700 focus:border-cyan-500 rounded-lg px-2.5 py-1.5 text-xs font-mono font-bold text-cyan-200 outline-none cursor-pointer transition-all"
+                  title="按分类筛选故事"
                 >
-                  ALL ({islands.length})
-                </button>
-                {storyGroups.map((grp) => {
-                  const grpCount = islands.filter(i => {
-                    let g = (i.group_name && i.group_name.trim()) || 'General';
-                    const upper = g.toUpperCase();
-                    if (upper === 'ALL' || upper === '__ALL__') g = 'General';
-                    return g === grp.name;
-                  }).length;
-                  return (
-                    <button
-                      key={grp.id}
-                      type="button"
-                      onClick={() => setSelectedSectorGroupTab(grp.name)}
-                      className={`px-3 py-1 text-xs rounded-lg font-mono font-bold transition-all cursor-pointer border ${
-                        selectedSectorGroupTab === grp.name
-                          ? 'bg-cyan-500 text-slate-950 border-cyan-400 font-black shadow-sm'
-                          : 'bg-slate-900 border-transparent text-slate-400 hover:text-slate-200'
-                      }`}
-                    >
-                      📁 {grp.name} ({grpCount})
-                    </button>
-                  );
-                })}
+                  <option value="ALL">📁 全部分类 ({islands.length})</option>
+                  {storyGroups.map((grp) => {
+                    const grpCount = islands.filter(i => {
+                      let g = (i.group_name && i.group_name.trim()) || 'General';
+                      const upper = g.toUpperCase();
+                      if (upper === 'ALL' || upper === '__ALL__') g = 'General';
+                      return g === grp.name;
+                    }).length;
+                    return (
+                      <option key={grp.id} value={grp.name}>
+                        📁 {grp.name} ({grpCount})
+                      </option>
+                    );
+                  })}
+                </select>
+
                 <button
                   type="button"
                   onClick={() => { setActiveTab('groups'); setGroupStatus(null); fetchStoryGroups(); }}
-                  className="px-2.5 py-1 text-xs rounded-lg font-mono text-cyan-400 hover:text-cyan-200 border border-cyan-500/30 hover:border-cyan-400 bg-cyan-950/40 transition-all cursor-pointer flex items-center gap-1 ml-1"
+                  className="px-2 py-1.5 text-xs rounded-lg font-mono text-cyan-400 hover:text-cyan-200 border border-cyan-500/30 hover:border-cyan-400 bg-cyan-950/40 transition-all cursor-pointer flex items-center gap-1 shrink-0"
                   title="管理所有故事分组"
                 >
-                  <span>⚙️</span> <span>管理分组</span>
+                  <span>⚙️</span> <span>分组</span>
                 </button>
               </div>
 
-              {/* Search Bar */}
-              <div className="relative min-w-[240px]">
+              {/* Search Bar (same row) */}
+              <div className="relative w-48 sm:w-60 shrink-0">
                 <input
                   type="text"
                   value={storySearchQuery}
                   onChange={(e) => setStorySearchQuery(e.target.value)}
-                  placeholder="🔍 搜索故事名称 / 标题..."
-                  className="w-full bg-slate-900 border border-slate-800 focus:border-cyan-500 rounded-xl px-4 py-1.5 text-xs font-mono text-cyan-200 placeholder-slate-500 outline-none transition-all"
+                  placeholder="🔍 搜索标题..."
+                  className="w-full bg-slate-900 border border-slate-700 focus:border-cyan-500 rounded-lg pl-3 pr-7 py-1.5 text-xs font-mono text-cyan-200 placeholder-slate-500 outline-none transition-all"
                 />
                 {storySearchQuery && (
                   <button
                     type="button"
                     onClick={() => setStorySearchQuery('')}
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 text-xs font-bold"
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 text-xs font-bold cursor-pointer"
                   >
                     ✕
                   </button>
                 )}
               </div>
             </div>
+
+            {/* Right: Compact Action Buttons */}
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsEditingStory(false);
+                  setEditingWordsTitle(null);
+                  setEditingWordsCategory(null);
+                  setEditingWordsBookId(null);
+                  setIsEditingWords(true);
+                }}
+                className="px-3 py-1.5 bg-indigo-600/90 hover:bg-indigo-500 text-white font-bold text-xs rounded-lg shadow-sm transition-all cursor-pointer flex items-center gap-1 font-mono active:scale-95"
+                title="管理所有独立词单、通用分类词库与生词批量导入"
+              >
+                <span>📖</span> <span>独立词库</span>
+              </button>
+              <button
+                type="button"
+                onClick={handleOpenNewStory}
+                className="px-3 py-1.5 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 font-black text-xs rounded-lg shadow-sm transition-all cursor-pointer flex items-center gap-1 font-mono active:scale-95"
+              >
+                <span>➕</span> <span>新建故事</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => { setActiveTab('ai_import'); setUploadStatus(null); }}
+                className="px-3 py-1.5 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white font-bold text-xs rounded-lg shadow-sm transition-all cursor-pointer flex items-center gap-1 font-mono active:scale-95"
+              >
+                <span>🤖</span> <span>AI导入</span>
+              </button>
+            </div>
           </div>
+
+          {storyListStatus && (
+            <div className={`px-3 py-2 rounded-lg text-xs font-mono border flex items-center justify-between shadow-sm ${
+              storyListStatus.type === 'success'
+                ? 'bg-emerald-950/60 border-emerald-500/50 text-emerald-300'
+                : 'bg-rose-950/60 border-rose-500/50 text-rose-300'
+            }`}>
+              <div className="flex items-center gap-2">
+                <span>{storyListStatus.type === 'success' ? '✅' : '⚠️'}</span>
+                <span>{storyListStatus.text}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setStoryListStatus(null)}
+                className="opacity-60 hover:opacity-100 font-bold px-2 py-0.5 rounded cursor-pointer transition-opacity"
+                title="Close"
+              >
+                ✕
+              </button>
+            </div>
+          )}
 
           {/* Story Cards Grid */}
           <SuspenseState isLoading={loadingIslands}>
@@ -2429,128 +3230,167 @@ export const ParentDashboard: React.FC<Props> = ({ onBack }) => {
               }
 
               return (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-                  {filteredIslands.map((sector) => {
-                    const assignedUsers = usersList.filter((u) => (sector.assigned_user_ids || []).includes(u.id));
-                    const sentencesCount = (sector.story_passage_json || []).length;
-                    const wordsCount = (sector.words || []).length;
-                    const questionsCount = (sector.story_questions || []).length;
+                <div className="bg-[#131B2E] border border-[#1F2D4A] rounded-2xl shadow-xl overflow-hidden">
+                  <div className="overflow-x-auto">
+                    <table className="w-full table-fixed text-left text-xs font-mono border-collapse">
+                      <thead>
+                        <tr className="bg-slate-950/60 border-b border-[#1F2D4A] text-slate-400 text-[11px] tracking-wider">
+                          <th className="py-2.5 px-2.5 font-bold w-14">ID</th>
+                          <th className="py-2.5 px-2.5 font-bold w-28">分组</th>
+                          <th className="py-2.5 px-2.5 font-bold w-40">标题</th>
+                          <th className="py-2.5 px-2.5 font-bold text-center w-44">内容统计</th>
+                          <th className="py-2.5 px-2.5 font-bold w-32">学员权限</th>
+                          <th className="py-2.5 px-2.5 font-bold text-right w-64">操作</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-[#1F2D4A]/80">
+                        {filteredIslands.map((sector) => {
+                          const assignedUsers = usersList.filter((u) => (sector.assigned_user_ids || []).includes(u.id));
+                          const sentencesCount = (sector.story_passage_json || []).length;
+                          const wordsCount = (sector.words || []).length;
+                          const questionsCount = (sector.story_questions || []).length;
+                          const illustrationsCount = new Set(
+                            (sector.story_passage_json || [])
+                              .filter((p) => p.illustration_url)
+                              .map((p) => p.illustration_url)
+                          ).size;
+                          const displayTitle = sector.story_title || sector.name;
 
-                    return (
-                      <div
-                        key={sector.id}
-                        className="story-grid-card bg-[#131B2E] border border-[#1F2D4A] rounded-2xl p-5 flex flex-col justify-between gap-4 shadow-xl hover:border-cyan-500/40 transition-all group"
-                      >
-                        <div className="space-y-3">
-                          {/* Card Top: Badge, Group & ID */}
-                          <div className="flex justify-between items-start gap-2">
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <span className="w-8 h-8 rounded-lg bg-cyan-950/80 border border-cyan-500/30 flex items-center justify-center text-sm">
-                                🏝️
-                              </span>
-                              <div>
-                                <h4 className="text-sm font-bold text-slate-100 font-mono group-hover:text-cyan-300 transition-colors">
-                                  {sector.name}
-                                </h4>
-                                <span className="text-[10px] font-mono bg-cyan-950/60 text-cyan-300 border border-cyan-500/30 px-2 py-0.5 rounded inline-block mt-0.5">
-                                  📁 {sector.group_name || 'General'}
+                          return (
+                            <tr
+                              key={sector.id}
+                              className="hover:bg-cyan-950/15 transition-colors group"
+                            >
+                              {/* ID */}
+                              <td className="py-2.5 px-2.5 text-slate-500 font-mono whitespace-nowrap">
+                                #{sector.id}
+                              </td>
+
+                              {/* Group */}
+                              <td className="py-2.5 px-2.5 whitespace-nowrap truncate">
+                                <span
+                                  className="text-[11px] font-mono bg-cyan-950/60 text-cyan-300 border border-cyan-500/30 px-2 py-0.5 rounded inline-block max-w-full truncate"
+                                  title={sector.group_name || 'General'}
+                                >
+                                  {sector.group_name || 'General'}
                                 </span>
-                              </div>
-                            </div>
-                            <span className="text-[10px] font-mono text-slate-500 bg-[#0B0F19] border border-slate-800 px-2 py-0.5 rounded shrink-0">
-                              ID: {sector.id}
-                            </span>
-                          </div>
+                              </td>
 
-                          {/* Story Title */}
-                          <div>
-                            <div className="text-xs font-bold text-cyan-400 font-mono line-clamp-1 flex items-center gap-1.5">
-                              <span>📖</span> <span>{sector.story_title || 'No Story Title'}</span>
-                            </div>
-                            {sector.story_passage && (
-                              <p className="text-[11px] text-slate-400 line-clamp-2 mt-1 font-sans leading-relaxed">
-                                {sector.story_passage}
-                              </p>
-                            )}
-                          </div>
-
-                          {/* Metric Chips */}
-                          <div className="flex flex-wrap gap-1.5 pt-1">
-                            <span className="text-[10px] font-mono bg-slate-900 border border-slate-800 text-slate-300 px-2 py-0.5 rounded-md flex items-center gap-1">
-                              <span>📝</span> <span>{sentencesCount} 句子</span>
-                            </span>
-                            <span className="text-[10px] font-mono bg-slate-900 border border-slate-800 text-slate-300 px-2 py-0.5 rounded-md flex items-center gap-1">
-                              <span>🔤</span> <span>{wordsCount} 单词</span>
-                            </span>
-                            <span className="text-[10px] font-mono bg-slate-900 border border-slate-800 text-slate-300 px-2 py-0.5 rounded-md flex items-center gap-1">
-                              <span>🧩</span> <span>{questionsCount} 问答</span>
-                            </span>
-                            {(sector.story_passage_json || []).some((p) => p.illustration_url) && (
-                              <span className="text-[10px] font-mono bg-indigo-950/80 border border-indigo-500/40 text-indigo-300 px-2 py-0.5 rounded-md flex items-center gap-1 shadow-sm">
-                                <span>🖼️</span>{' '}
-                                <span>
-                                  {new Set((sector.story_passage_json || []).filter((p) => p.illustration_url).map((p) => p.illustration_url)).size} 插图
+                              {/* Title */}
+                              <td className="py-2.5 px-2.5 truncate" title={displayTitle}>
+                                <span className="text-xs font-bold text-slate-100 group-hover:text-cyan-300 transition-colors">
+                                  {displayTitle}
                                 </span>
-                              </span>
-                            )}
-                          </div>
+                              </td>
 
-                          {/* Assigned Users Badge */}
-                          <div className="pt-1">
-                            <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider font-mono mb-1">
-                              学员权限 (ACCESS):
-                            </div>
-                            <div className="flex flex-wrap gap-1">
-                              {assignedUsers.length === 0 ? (
-                                <span className="text-[10px] font-mono text-amber-300/90 bg-amber-950/40 border border-amber-500/30 px-2 py-0.5 rounded">
-                                  🌐 全体公开 (Public)
-                                </span>
-                              ) : (
-                                assignedUsers.map((u) => (
-                                  <span key={u.id} className="text-[10px] font-mono bg-[#0B0F19] border border-slate-800 px-2 py-0.5 rounded text-cyan-300 flex items-center gap-1">
-                                    <span>{u.avatar || '👤'}</span>
-                                    <span>{u.username}</span>
+                              {/* Stats */}
+                              <td className="py-2.5 px-2.5 text-center whitespace-nowrap">
+                                <div className="inline-flex items-center gap-1 justify-center">
+                                  <span className="text-[10px] font-mono bg-slate-900 border border-slate-800 text-slate-300 px-1.5 py-0.5 rounded" title="句子数量">
+                                    {sentencesCount}句
                                   </span>
-                                ))
-                              )}
-                            </div>
-                          </div>
-                        </div>
+                                  <span className="text-[10px] font-mono bg-slate-900 border border-slate-800 text-slate-300 px-1.5 py-0.5 rounded" title="单词数量">
+                                    {wordsCount}词
+                                  </span>
+                                  <span className="text-[10px] font-mono bg-slate-900 border border-slate-800 text-slate-300 px-1.5 py-0.5 rounded" title="阅读理解问答数量">
+                                    {questionsCount}问
+                                  </span>
+                                  {illustrationsCount > 0 && (
+                                    <span className="text-[10px] font-mono bg-indigo-950/80 border border-indigo-500/40 text-indigo-300 px-1.5 py-0.5 rounded" title="插图数量">
+                                      {illustrationsCount}图
+                                    </span>
+                                  )}
+                                </div>
+                              </td>
 
-                        {/* Card Action Footer */}
-                        <div className="flex items-center justify-between border-t border-[#1F2D4A] pt-3 mt-1 gap-2">
-                          <button
-                            type="button"
-                            onClick={() => handleOpenEditStory(sector)}
-                            className="flex-1 text-xs py-1.5 bg-cyan-950/80 hover:bg-cyan-900 border border-cyan-500/40 text-cyan-300 hover:text-cyan-200 rounded-lg font-mono font-bold transition-all cursor-pointer flex items-center justify-center gap-1 shadow-sm"
-                          >
-                            <span>✏️</span> <span>编辑故事</span>
-                          </button>
+                              {/* Assigned Users */}
+                              <td className="py-2.5 px-2.5">
+                                <div className="flex flex-wrap gap-1">
+                                  {assignedUsers.length === 0 ? (
+                                    <span className="text-[10px] font-mono text-amber-300/90 bg-amber-950/40 border border-amber-500/30 px-1.5 py-0.5 rounded">
+                                      全体公开
+                                    </span>
+                                  ) : (
+                                    assignedUsers.map((u) => (
+                                      <span
+                                        key={u.id}
+                                        className="text-[10px] font-mono bg-[#0B0F19] border border-slate-800 px-1.5 py-0.5 rounded text-cyan-300 inline-flex items-center gap-0.5"
+                                      >
+                                        <span>{u.avatar || '👤'}</span>
+                                        <span>{u.username}</span>
+                                      </span>
+                                    ))
+                                  )}
+                                </div>
+                              </td>
 
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setAccessModalIsland(sector);
-                              setAccessModalUserIds(sector.assigned_user_ids || []);
-                            }}
-                            className="text-xs px-2.5 py-1.5 bg-slate-900 border border-slate-700 hover:border-cyan-400 text-slate-400 hover:text-cyan-300 rounded-lg font-mono transition-all cursor-pointer flex items-center gap-1"
-                            title="修改学员分配"
-                          >
-                            <span>👥</span>
-                          </button>
+                              {/* Actions */}
+                              <td className="py-2.5 px-2.5 text-right whitespace-nowrap">
+                                <div className="inline-flex items-center justify-end gap-1">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleOpenEditStory(sector)}
+                                    className="px-2 py-1 bg-cyan-950/80 hover:bg-cyan-900 border border-cyan-500/40 text-cyan-300 hover:text-cyan-200 rounded text-[11px] font-mono font-bold transition-all cursor-pointer"
+                                    title="编辑故事文本与句子"
+                                  >
+                                    故事
+                                  </button>
 
-                          <button
-                            type="button"
-                            onClick={() => handleDeleteIsland(sector)}
-                            className="text-xs px-2.5 py-1.5 bg-rose-950/40 hover:bg-rose-950 border border-rose-500/30 hover:border-rose-500 text-rose-400 rounded-lg font-mono transition-all cursor-pointer flex items-center gap-1"
-                            title="删除故事关卡"
-                          >
-                            <span>🗑️</span>
-                          </button>
-                        </div>
-                      </div>
-                    );
-                  })}
+                                  <button
+                                    type="button"
+                                    onClick={() => handleOpenEditWords(sector)}
+                                    className="px-2 py-1 bg-indigo-950/80 hover:bg-indigo-900 border border-indigo-500/40 text-indigo-300 hover:text-indigo-200 rounded text-[11px] font-mono font-bold transition-all cursor-pointer"
+                                    title="编辑当前故事的生词库"
+                                  >
+                                    单词
+                                  </button>
+
+                                  <button
+                                    type="button"
+                                    onClick={() => handleOpenEditQuestions(sector)}
+                                    className="px-2 py-1 bg-purple-950/80 hover:bg-purple-900 border border-purple-500/40 text-purple-300 hover:text-purple-200 rounded text-[11px] font-mono font-bold transition-all cursor-pointer"
+                                    title="编辑阅读理解问答"
+                                  >
+                                    问答
+                                  </button>
+
+                                  <button
+                                    type="button"
+                                    onClick={() => handleOpenAiGenStoryModal(sector)}
+                                    className="px-2 py-1 bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/40 text-amber-300 hover:text-amber-200 rounded text-[11px] font-mono font-bold transition-all cursor-pointer"
+                                    title="根据本关卡生词一键由 AI 生成故事绘本"
+                                  >
+                                    AI绘本
+                                  </button>
+
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setAccessModalIsland(sector);
+                                      setAccessModalUserIds(sector.assigned_user_ids || []);
+                                    }}
+                                    className="px-1.5 py-1 bg-slate-900 border border-slate-700 hover:border-cyan-400 text-slate-400 hover:text-cyan-300 rounded text-[11px] font-mono transition-all cursor-pointer"
+                                    title="修改学员分配权限"
+                                  >
+                                    👥
+                                  </button>
+
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeleteIsland(sector)}
+                                    className="px-1.5 py-1 bg-rose-950/40 hover:bg-rose-950 border border-rose-500/30 hover:border-rose-500 text-rose-400 rounded text-[11px] font-mono transition-all cursor-pointer"
+                                    title="删除故事关卡"
+                                  >
+                                    🗑️
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
               );
             })()}
@@ -2560,9 +3400,9 @@ export const ParentDashboard: React.FC<Props> = ({ onBack }) => {
 
       {/* View 3: 🤖 AI Story Synthesis & Import Studio (AI 绘本导入工作室) */}
       {activeTab === 'ai_import' && !isEditingStory && (
-        <div className="flex flex-col gap-6 animate-fade-in">
+        <div className="flex flex-col gap-3 animate-fade-in">
           <FormBoundary>
-            <div className="relative bg-[#131B2E] border border-[#1F2D4A] rounded-2xl p-6 sm:p-8 shadow-xl">
+            <div className="relative bg-[#131B2E] border border-[#1F2D4A] rounded-2xl p-4 sm:p-5 shadow-xl">
               <SuspenseState isLoading={isSavingAI} fallback={
                 <div className="fixed inset-0 bg-slate-950/85 backdrop-blur-md rounded-none z-[100] flex items-center justify-center p-4 text-center">
                   <div className="max-w-md w-full theme-card border theme-border rounded-2xl p-6 shadow-2xl shadow-cyan-500/20 flex flex-col items-center gap-4">
@@ -2587,180 +3427,114 @@ export const ParentDashboard: React.FC<Props> = ({ onBack }) => {
                   </div>
                 </div>
               }>
-                <div className="flex items-center gap-3 border-b border-[#1F2D4A] pb-4 mb-6">
-                  <div className="w-12 h-12 rounded-xl bg-purple-500/10 border border-purple-500/30 flex items-center justify-center text-2xl">
-                    🤖
-                  </div>
-                  <div>
-                    <h3 className="text-base font-bold text-cyan-400 uppercase tracking-widest font-mono">
-                      AI MULTIMODAL STORY SYNTHESIS ENGINE (AI 智能绘本导入工作室)
+                {/* Single-Row Compact Header + Mode Switcher */}
+                <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#1F2D4A] pb-3 mb-4">
+                  <div className="flex items-center gap-2">
+                    <span className="text-lg">🤖</span>
+                    <h3 className="text-sm font-black text-cyan-400 font-mono tracking-wide">
+                      AI 绘本智能导入
                     </h3>
-                    <p className="text-xs text-slate-400 font-mono">
-                      基于本地 Agent CLI (<span className="text-cyan-300 font-semibold">agy</span> / <span className="text-purple-300 font-semibold">codex</span>) 与多模态大模型。上传故事绘本扫描件，AI 将自动识别图文、生成中英对照句子、提炼核心生词并生成阅读理解题。
-                    </p>
                   </div>
-                </div>
 
-                <form onSubmit={importAiIsland} className="flex flex-col gap-6">
-                  {/* Mode Switcher: 🆕 创建新故事 vs ➕ 追加到当前故事 */}
-                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between bg-slate-900/90 border border-slate-800 rounded-xl p-3.5 gap-3">
-                    <div className="flex flex-wrap items-center gap-3">
-                      <span className="text-xs font-mono font-bold text-slate-400 uppercase tracking-wider">
-                        导入模式 (IMPORT MODE):
-                      </span>
-                      <div className="inline-flex rounded-lg bg-slate-950 p-1 border border-slate-800">
-                        <button
-                          type="button"
-                          onClick={() => setAiImportMode('new')}
-                          className={`px-3.5 py-1.5 rounded-md text-xs font-mono font-bold transition-all cursor-pointer ${
-                            aiImportMode === 'new'
-                              ? 'bg-cyan-500 text-slate-950 shadow-md shadow-cyan-500/30'
-                              : 'text-slate-400 hover:text-slate-200'
-                          }`}
-                        >
-                          🆕 创建新故事 (New Story)
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setAiImportMode('append')}
-                          className={`px-3.5 py-1.5 rounded-md text-xs font-mono font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
-                            aiImportMode === 'append'
-                              ? 'bg-purple-600 text-white shadow-md shadow-purple-600/30'
-                              : 'text-slate-400 hover:text-slate-200'
-                          }`}
-                        >
-                          <span>➕ 追加到当前故事 (Append Pages)</span>
-                          {storyPassageJson.length > 0 && (
-                            <span className="bg-purple-950 text-purple-200 border border-purple-400/30 text-[10px] px-1.5 py-0.2 rounded-full font-normal">
-                              已有 {Math.max(0, ...storyPassageJson.map((p: any) => p.paragraph_num || 1))} 页
-                            </span>
-                          )}
-                        </button>
-                      </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <div className="inline-flex rounded-lg bg-slate-950 p-0.5 border border-slate-800">
+                      <button
+                        type="button"
+                        onClick={() => setAiImportMode('new')}
+                        className={`px-3 py-1 rounded-md text-xs font-mono font-bold transition-all cursor-pointer ${
+                          aiImportMode === 'new'
+                            ? 'bg-cyan-500 text-slate-950 shadow-sm'
+                            : 'text-slate-400 hover:text-slate-200'
+                        }`}
+                      >
+                        🆕 创建新故事
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setAiImportMode('append')}
+                        className={`px-3 py-1 rounded-md text-xs font-mono font-bold transition-all cursor-pointer flex items-center gap-1 ${
+                          aiImportMode === 'append'
+                            ? 'bg-purple-600 text-white shadow-sm'
+                            : 'text-slate-400 hover:text-slate-200'
+                        }`}
+                      >
+                        <span>➕ 追加到当前故事</span>
+                        {storyPassageJson.length > 0 && (
+                          <span className="bg-purple-950 text-purple-200 border border-purple-400/30 text-[10px] px-1.5 rounded-full font-normal">
+                            已有{Math.max(0, ...storyPassageJson.map((p: any) => p.paragraph_num || 1))}页
+                          </span>
+                        )}
+                      </button>
                     </div>
 
                     {(storyPassageJson.length > 0 || storyTitle || newIslandName) && (
-                      <div className="flex items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setIsEditingStory(true);
-                            setActiveTab('stories');
-                          }}
-                          className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-cyan-300 text-xs font-mono rounded-lg transition-all cursor-pointer flex items-center gap-1.5 active:scale-95"
-                        >
-                          <span>📖</span>
-                          <span>返回故事编辑器 ({storyTitle || newIslandName || '当前故事'})</span>
-                        </button>
-                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsEditingStory(true);
+                          setActiveTab('stories');
+                        }}
+                        className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-cyan-300 text-xs font-mono rounded-lg transition-all cursor-pointer flex items-center gap-1"
+                      >
+                        <span>📖</span>
+                        <span>返回故事编辑器 ({storyTitle || newIslandName || '当前故事'})</span>
+                      </button>
                     )}
                   </div>
+                </div>
 
+                <form onSubmit={importAiIsland} className="flex flex-col gap-3.5">
                   {aiImportMode === 'append' && (
-                    <div className="p-4 bg-purple-950/40 border border-purple-500/40 rounded-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs font-mono text-purple-200 shadow-inner">
-                      <div className="flex items-start sm:items-center gap-2.5">
-                        <span className="text-xl">🔄</span>
-                        <div>
-                          <div className="font-bold text-purple-100 flex items-center gap-2">
-                            <span>追加导入模式已开启 (Append Mode Active)</span>
-                            <span className="text-3xs bg-purple-900 border border-purple-400/40 text-purple-200 px-2 py-0.5 rounded-full">
-                              目标故事: {storyTitle || newIslandName || '当前正在编辑的故事'}
-                            </span>
-                          </div>
-                          <p className="text-[11px] text-purple-300/90 mt-0.5 leading-relaxed">
-                            每次可上传 1-10 张扫描图。解析后将自动从第 <strong className="text-amber-300 underline font-black">{(storyPassageJson.length > 0 ? Math.max(0, ...storyPassageJson.map((p: any) => p.paragraph_num || 1)) : 0) + 1}</strong> 页开始顺延编号，图文、生词（自动去重）与阅读理解题将自动合并。您可以多次分批追加，最后在故事编辑器中统一保存！
-                          </p>
-                        </div>
-                      </div>
+                    <div className="px-3.5 py-2 bg-purple-950/40 border border-purple-500/40 rounded-lg flex items-center justify-between gap-2 text-xs font-mono text-purple-200">
+                      <span>
+                        🔄 追加模式：目标故事《<strong>{storyTitle || newIslandName || '当前故事'}</strong>》，将从第 <strong className="text-amber-300">{(storyPassageJson.length > 0 ? Math.max(0, ...storyPassageJson.map((p: any) => p.paragraph_num || 1)) : 0) + 1}</strong> 页起顺延合并。
+                      </span>
                     </div>
                   )}
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {/* 1. Sector Name */}
-                    <div className="flex flex-col gap-2">
-                      <label htmlFor="input-ai-island-name" className="text-xs text-slate-400 uppercase tracking-widest font-mono font-bold">
-                        Sector Name (关卡/故事名称)
+                  {/* Row 1: 5-Column Compact Config Bar */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-3">
+                    {/* 1. Sector Name (3 cols) */}
+                    <div className="lg:col-span-3 flex flex-col gap-1">
+                      <label htmlFor="input-ai-island-name" className="text-[11px] text-slate-400 font-mono font-bold">
+                        故事名称 (选填，默认AI提取)
                       </label>
                       <input
                         type="text"
                         id="input-ai-island-name"
                         value={aiIslandName}
                         onChange={(e) => setAiIslandName(e.target.value)}
-                        placeholder="选填（默认使用 AI 识别提取的故事英文标题）"
-                        className="bg-slate-900 border border-slate-800 rounded-lg px-4 py-2.5 text-sm text-cyan-300 font-mono placeholder-slate-600 focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500"
+                        placeholder="留空则由 AI 自动识别标题"
+                        className="bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-cyan-300 font-mono placeholder-slate-500 focus:outline-none focus:border-cyan-500"
                       />
                     </div>
 
-                    {/* 2. Story Group Name (Explicit Assignment) */}
-                    <div className="flex flex-col gap-2">
-                      <label htmlFor="input-ai-group-name" className="text-xs text-slate-400 uppercase tracking-widest font-mono font-bold flex items-center justify-between">
-                        <span className="flex items-center gap-1.5"><span>📁</span> Story Group (所属分组) *</span>
-                        <span className="text-[10px] text-cyan-400 font-mono font-normal">指定分组（非 AI 识别）</span>
+                    {/* 2. Story Group Name (3 cols) */}
+                    <div className="lg:col-span-3 flex flex-col gap-1">
+                      <label htmlFor="input-ai-group-name" className="text-[11px] text-slate-400 font-mono font-bold">
+                        📁 所属分组 *
                       </label>
                       <input
                         type="text"
                         id="input-ai-group-name"
                         value={aiGroupName}
                         onChange={(e) => setAiGroupName(e.target.value)}
-                        placeholder="e.g. General, RAZ Level E, Animals..."
+                        placeholder="选择或输入分组..."
                         list="ai-existing-group-names"
                         required
-                        className="bg-slate-900 border border-slate-800 rounded-lg px-4 py-2.5 text-sm text-cyan-300 font-mono placeholder-slate-600 focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500"
+                        className="bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-cyan-300 font-mono placeholder-slate-500 focus:outline-none focus:border-cyan-500"
                       />
                       <datalist id="ai-existing-group-names">
                         {storyGroups.map(g => (
                           <option key={g.id} value={g.name} />
                         ))}
                       </datalist>
-
-                      {/* Quick group selector chips */}
-                      {storyGroups.length > 0 && (
-                        <div className="flex flex-wrap gap-1.5 mt-0.5">
-                          <span className="text-[10px] text-slate-500 font-mono self-center">快捷选择:</span>
-                          {storyGroups.map(g => (
-                            <button
-                              key={g.id}
-                              type="button"
-                              onClick={() => setAiGroupName(g.name)}
-                              className={`px-2 py-0.5 rounded text-[10px] font-mono transition-all cursor-pointer border ${
-                                aiGroupName === g.name
-                                  ? 'bg-cyan-500/30 border-cyan-400 text-cyan-200 font-bold'
-                                  : 'bg-slate-900 border-slate-800 text-slate-400 hover:border-slate-600'
-                              }`}
-                            >
-                              📁 {g.name}
-                            </button>
-                          ))}
-                        </div>
-                      )}
                     </div>
-                  </div>
 
-                  {/* Comprehension Questions Count */}
-                  <div className="flex flex-col gap-2">
-                    <label htmlFor="input-ai-question-count" className="text-xs text-slate-400 uppercase tracking-widest font-mono font-bold">
-                      COMPREHENSION QUESTIONS ({aiQuestionCount} items / 阅读理解题数量)
-                    </label>
-                    <div className="flex items-center gap-4 bg-slate-900 border border-slate-800 rounded-lg px-4 py-2.5">
-                      <input
-                        type="range"
-                        id="input-ai-question-count"
-                        min="1"
-                        max="10"
-                        value={aiQuestionCount}
-                        onChange={(e) => setAiQuestionCount(Number(e.target.value))}
-                        className="flex-1 accent-cyan-500 h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer"
-                      />
-                      <span className="text-sm font-bold text-cyan-400 font-mono min-w-8 text-center">{aiQuestionCount} 题</span>
-                    </div>
-                  </div>
-                  
-                  {/* Two-level Cascading Selectors: Agent CLI & AI Model */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {/* 1. AGENT CLI */}
-                    <div className="flex flex-col gap-2">
-                      <label htmlFor="input-ai-cli" className="text-xs text-slate-400 uppercase tracking-widest font-mono font-bold flex items-center gap-1.5">
-                        <span>⚡</span> AGENT CLI ENGINE
+                    {/* 3. AGENT CLI (2 cols) */}
+                    <div className="lg:col-span-2 flex flex-col gap-1">
+                      <label htmlFor="input-ai-cli" className="text-[11px] text-slate-400 font-mono font-bold">
+                        ⚡ CLI 引擎
                       </label>
                       <select
                         id="input-ai-cli"
@@ -2770,141 +3544,143 @@ export const ParentDashboard: React.FC<Props> = ({ onBack }) => {
                           setAiCli(newCli);
                           fetchAiModels(newCli);
                         }}
-                        className="bg-slate-900 border border-slate-800 rounded-lg px-4 py-2.5 text-sm text-cyan-300 font-mono focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 cursor-pointer appearance-none"
-                        style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%2364748b' d='M6 8L1 3h10z'/%3E%3C/svg%3E")`, backgroundRepeat: 'no-repeat', backgroundPosition: 'right 12px center' }}
+                        className="bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-cyan-300 font-mono focus:outline-none focus:border-cyan-500 cursor-pointer"
                       >
-                        <option value="agy">Google Antigravity (agy)</option>
-                        <option value="codex">OpenAI Codex (codex)</option>
+                        <option value="agy">Antigravity (agy)</option>
+                        <option value="codex">Codex (codex)</option>
                       </select>
-                      <p className="text-3xs text-slate-500 font-mono">Select the local Agent CLI runner for multimodal story extraction.</p>
                     </div>
 
-                    {/* 2. AI MODEL */}
-                    <div className="flex flex-col gap-2">
-                      <label htmlFor="input-ai-model" className="text-xs text-slate-400 uppercase tracking-widest font-mono font-bold flex items-center justify-between">
-                        <span className="flex items-center gap-1.5"><span>🧠</span> AI MODEL ENGINE</span>
-                        {isLoadingAiModels && <span className="text-3xs text-cyan-400 animate-pulse font-mono">⏳ Fetching models...</span>}
+                    {/* 4. AI MODEL (2 cols) */}
+                    <div className="lg:col-span-2 flex flex-col gap-1">
+                      <label htmlFor="input-ai-model" className="text-[11px] text-slate-400 font-mono font-bold flex items-center justify-between">
+                        <span>🧠 AI 模型</span>
+                        {isLoadingAiModels && <span className="text-[10px] text-cyan-400 animate-pulse">...</span>}
                       </label>
                       <select
                         id="input-ai-model"
                         value={aiModel}
                         disabled={isLoadingAiModels}
                         onChange={(e) => setAiModel(e.target.value)}
-                        className="bg-slate-900 border border-slate-800 rounded-lg px-4 py-2.5 text-sm text-cyan-300 font-mono focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 cursor-pointer appearance-none disabled:opacity-60"
-                        style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%2364748b' d='M6 8L1 3h10z'/%3E%3C/svg%3E")`, backgroundRepeat: 'no-repeat', backgroundPosition: 'right 12px center' }}
+                        className="bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-cyan-300 font-mono focus:outline-none focus:border-cyan-500 cursor-pointer disabled:opacity-60"
                       >
                         {aiModelList.map((m) => (
                           <option key={m.id} value={m.id}>
-                            {m.name}{m.description && m.description !== m.name ? ` — ${m.description}` : ''}
+                            {m.name}
                           </option>
                         ))}
                       </select>
-                      <p className="text-3xs text-slate-500 font-mono">Real-time model options available under the active CLI environment.</p>
+                    </div>
+
+                    {/* 5. Comprehension Questions Count (2 cols) */}
+                    <div className="lg:col-span-2 flex flex-col gap-1">
+                      <label htmlFor="input-ai-question-count" className="text-[11px] text-slate-400 font-mono font-bold">
+                        🧩 阅读题数 ({aiQuestionCount}题)
+                      </label>
+                      <div className="flex items-center gap-2 bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 h-[30px]">
+                        <input
+                          type="range"
+                          id="input-ai-question-count"
+                          min="1"
+                          max="10"
+                          value={aiQuestionCount}
+                          onChange={(e) => setAiQuestionCount(Number(e.target.value))}
+                          className="flex-1 accent-cyan-500 h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer"
+                        />
+                        <span className="text-xs font-bold text-cyan-400 font-mono">{aiQuestionCount}</span>
+                      </div>
                     </div>
                   </div>
 
-                  {/* AI Prompt Customization Section */}
-                  <div className="ai-prompt-section flex flex-col gap-2 p-4 bg-slate-900/90 border border-slate-800 rounded-xl">
-                    <div className="ai-prompt-header flex items-center justify-between flex-wrap gap-2">
-                      <div className="flex items-center gap-2">
-                        <label htmlFor="input-ai-custom-prompt" className="text-xs text-slate-400 uppercase tracking-widest font-mono font-bold flex items-center gap-1.5">
-                          <span>⚙️</span> AI 解析提示词模板 (AI PROMPT TEMPLATE)
-                        </label>
+                  {/* Row 2: Scanned Page Images Upload + Prompt Template Accordion */}
+                  <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 items-start">
+                    {/* Scanned Page Images Upload (7 cols) */}
+                    <div className="lg:col-span-7 flex flex-col gap-1">
+                      <label htmlFor="input-ai-story-images" className="text-[11px] text-slate-400 font-mono font-bold">
+                        📸 上传绘本扫描图 (按页码顺序多选，最多10张，支持 jpg/png/webp) *
+                      </label>
+                      <input
+                        type="file"
+                        id="input-ai-story-images"
+                        key={aiFileKey}
+                        multiple
+                        accept="image/png, image/jpeg, image/webp"
+                        onChange={(e) => setAiStoryImages(e.target.files)}
+                        required
+                        className="bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-300 font-mono file:bg-[#131B2E] file:border file:border-[#1F2D4A] file:text-cyan-400 file:px-2.5 file:py-0.5 file:rounded file:mr-3 file:text-xs file:font-mono hover:file:bg-[#1A2642] transition-all cursor-pointer"
+                      />
+                    </div>
+
+                    {/* AI Prompt Customization Compact Bar (5 cols) */}
+                    <div className="lg:col-span-5 flex flex-col gap-1">
+                      <span className="text-[11px] text-slate-400 font-mono font-bold flex items-center gap-1.5">
+                        <span>⚙️ AI 解析提示词模板</span>
                         {aiCustomPrompt.trim() !== savedPromptTemplate.trim() ? (
-                          <span className="ai-prompt-badge text-[10px] bg-amber-500/20 text-amber-300 border border-amber-500/40 px-2 py-0.5 rounded font-mono font-semibold">
-                            MODIFIED (有未保存修改)
-                          </span>
+                          <span className="text-[10px] bg-amber-500/20 text-amber-300 border border-amber-500/40 px-1.5 rounded font-mono">未保存</span>
                         ) : aiCustomPrompt.trim() !== DEFAULT_AI_PROMPT.trim() ? (
-                          <span className="ai-prompt-badge text-[10px] bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 px-2 py-0.5 rounded font-mono font-semibold">
-                            SAVED (已保存自定义模板)
-                          </span>
+                          <span className="text-[10px] bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 px-1.5 rounded font-mono">自定义</span>
                         ) : (
-                          <span className="ai-prompt-badge text-[10px] bg-slate-700/40 text-slate-400 border border-slate-600/40 px-2 py-0.5 rounded font-mono font-semibold">
-                            DEFAULT (系统预设)
-                          </span>
+                          <span className="text-[10px] bg-slate-800 text-slate-400 px-1.5 rounded font-mono">系统预设</span>
                         )}
-                      </div>
-                      <div className="ai-prompt-actions flex items-center flex-wrap gap-2">
+                      </span>
+                      <div className="flex items-center gap-1.5 bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5">
                         <button
                           type="button"
                           id="btn-toggle-ai-prompt"
                           onClick={() => setShowPromptConfig(!showPromptConfig)}
-                          className="ai-prompt-toggle-btn text-xs px-2.5 py-1 bg-[#131B2E] border border-[#1F2D4A] text-cyan-400 rounded hover:border-cyan-500/50 hover:bg-[#1A2642] transition-all cursor-pointer font-mono"
+                          className="text-xs px-2 py-0.5 bg-[#131B2E] border border-[#1F2D4A] text-cyan-400 rounded hover:border-cyan-500/50 transition-all cursor-pointer font-mono"
                         >
-                          {showPromptConfig ? '🔼 折叠提示词 / HIDE' : '🔽 展开并编辑提示词 / EDIT'}
+                          {showPromptConfig ? '🔼 收起模板' : '🔽 展开编辑'}
                         </button>
                         <button
                           type="button"
                           id="btn-save-ai-prompt"
                           onClick={handleSavePromptTemplate}
                           disabled={isSavingAiPrompt || aiCustomPrompt.trim() === savedPromptTemplate.trim()}
-                          className="ai-prompt-save-btn text-xs px-2.5 py-1 bg-[#131B2E] border border-cyan-500/40 text-cyan-300 rounded hover:border-cyan-400 hover:bg-[#1A2642] transition-all cursor-pointer font-mono disabled:opacity-40 disabled:pointer-events-none flex items-center gap-1"
+                          className="text-xs px-2 py-0.5 bg-[#131B2E] border border-cyan-500/40 text-cyan-300 rounded hover:border-cyan-400 transition-all cursor-pointer font-mono disabled:opacity-40 disabled:pointer-events-none"
                         >
-                          {isSavingAiPrompt ? '⏳ 保存中...' : '💾 保存为默认模板 / SAVE'}
+                          {isSavingAiPrompt ? '保存中...' : '💾 保存'}
                         </button>
                         <button
                           type="button"
                           id="btn-reset-ai-prompt"
                           onClick={handleResetPromptTemplate}
                           disabled={aiCustomPrompt.trim() === DEFAULT_AI_PROMPT.trim()}
-                          className="ai-prompt-reset-btn text-xs px-2.5 py-1 bg-[#131B2E] border border-[#1F2D4A] text-slate-400 rounded hover:border-rose-500/50 hover:text-rose-400 hover:bg-[#1A2642] transition-all cursor-pointer font-mono disabled:opacity-40 disabled:pointer-events-none"
+                          className="text-xs px-2 py-0.5 bg-[#131B2E] border border-[#1F2D4A] text-slate-400 rounded hover:text-rose-400 transition-all cursor-pointer font-mono disabled:opacity-40 disabled:pointer-events-none"
                         >
-                          🔄 恢复系统预设 / RESET
+                          🔄 预设
                         </button>
                       </div>
                     </div>
-
-                    {promptSaveStatus && (
-                      <div className={`text-xs px-3 py-1.5 rounded-lg border font-mono ${
-                        promptSaveStatus.type === 'success' ? 'bg-emerald-950/40 border-emerald-500/40 text-emerald-300' : 'bg-rose-950/40 border-rose-500/40 text-rose-300'
-                      }`}>
-                        {promptSaveStatus.text}
-                      </div>
-                    )}
-
-                    {showPromptConfig && (
-                      <div className="flex flex-col gap-2 mt-2">
-                        <textarea
-                          id="input-ai-custom-prompt"
-                          value={aiCustomPrompt}
-                          onChange={(e) => setAiCustomPrompt(e.target.value)}
-                          rows={11}
-                          className="ai-prompt-textarea w-full bg-[#0D1322] border border-cyan-500/30 focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400/50 text-cyan-200 placeholder:text-slate-600 rounded-lg p-3 text-xs font-mono leading-relaxed resize-y"
-                          placeholder="Enter custom prompt instructions for the AI model..."
-                        />
-                        <p className="text-3xs text-slate-500 font-mono">
-                          ℹ️ System uses <code className="text-cyan-400">{`{question_count}`}</code> placeholder to dynamically inject the question count.
-                        </p>
-                      </div>
-                    )}
                   </div>
 
-                  {/* Scanned Page Images Upload */}
-                  <div className="flex flex-col gap-2">
-                    <label htmlFor="input-ai-story-images" className="text-xs text-slate-400 uppercase tracking-widest font-mono font-bold flex items-center gap-1.5">
-                      <span>📸</span> STORY SCANNED PAGE IMAGES (多张绘本按顺序多选上传, MAX 10 IMAGES) *
-                    </label>
-                    <input
-                      type="file"
-                      id="input-ai-story-images"
-                      key={aiFileKey}
-                      multiple
-                      accept="image/png, image/jpeg, image/webp"
-                      onChange={(e) => setAiStoryImages(e.target.files)}
-                      required
-                      className="bg-slate-900 border border-slate-800 rounded-lg px-4 py-2.5 text-sm text-slate-300 font-mono file:bg-[#131B2E] file:border file:border-[#1F2D4A] file:text-cyan-400 file:px-3 file:py-1 file:rounded-md file:mr-4 file:text-xs file:font-mono hover:file:bg-[#1A2642] transition-all cursor-pointer"
-                    />
-                    <p className="text-3xs text-slate-500 font-mono">
-                      支持 .jpg, .jpeg, .png, .webp 格式。请在系统文件选择框中按页码顺序多选上传。
-                    </p>
-                  </div>
+                  {promptSaveStatus && (
+                    <div className={`text-xs px-3 py-1.5 rounded-lg border font-mono ${
+                      promptSaveStatus.type === 'success' ? 'bg-emerald-950/40 border-emerald-500/40 text-emerald-300' : 'bg-rose-950/40 border-rose-500/40 text-rose-300'
+                    }`}>
+                      {promptSaveStatus.text}
+                    </div>
+                  )}
+
+                  {showPromptConfig && (
+                    <div className="flex flex-col gap-1.5">
+                      <textarea
+                        id="input-ai-custom-prompt"
+                        value={aiCustomPrompt}
+                        onChange={(e) => setAiCustomPrompt(e.target.value)}
+                        rows={7}
+                        className="ai-prompt-textarea w-full bg-[#0D1322] border border-cyan-500/30 focus:border-cyan-400 text-cyan-200 rounded-lg p-2.5 text-xs font-mono leading-relaxed resize-y"
+                        placeholder="Enter custom prompt instructions for the AI model..."
+                      />
+                    </div>
+                  )}
 
                   {renderUserSelectionGroup(aiUserIds, setAiUserIds)}
-                  
+
                   <button 
                     type="submit" 
                     id="btn-submit-ai-island" 
-                    className={`w-full mt-2 py-3.5 text-white font-black text-xs uppercase tracking-wider rounded-xl shadow-lg active:scale-[0.99] transition-all disabled:opacity-50 cursor-pointer font-mono ${
+                    className={`w-full py-2.5 text-white font-black text-xs uppercase tracking-wider rounded-xl shadow-lg active:scale-[0.99] transition-all disabled:opacity-50 cursor-pointer font-mono ${
                       aiImportMode === 'append'
                         ? 'bg-gradient-to-r from-purple-600 via-indigo-600 to-cyan-600 shadow-purple-600/25 hover:from-purple-500 hover:to-cyan-500'
                         : 'bg-gradient-to-r from-cyan-500 via-purple-500 to-pink-600 shadow-cyan-500/25 hover:from-cyan-400 hover:to-pink-500'
@@ -2914,11 +3690,11 @@ export const ParentDashboard: React.FC<Props> = ({ onBack }) => {
                     {isSavingAI 
                       ? 'AI COMPILATION RUNNING...' 
                       : (aiImportMode === 'append'
-                          ? `➕ START MULTIMODAL SYNTHESIS & APPEND (开始解析并追加至第 ${(storyPassageJson.length > 0 ? Math.max(0, ...storyPassageJson.map((p: any) => p.paragraph_num || 1)) : 0) + 1} 页起)`
-                          : '🚀 LAUNCH AI SYNTHESIS PROCESS (开始解析并载入新故事)')}
+                          ? `➕ 开始解析并追加至第 ${(storyPassageJson.length > 0 ? Math.max(0, ...storyPassageJson.map((p: any) => p.paragraph_num || 1)) : 0) + 1} 页起`
+                          : '🚀 开始 AI 解析并导入新绘本')}
                   </button>
                   {aiStatus && (
-                    <p className={`p-3 text-xs rounded-lg border mt-2 font-mono ${
+                    <p className={`p-2.5 text-xs rounded-lg border font-mono ${
                       aiStatus.type === 'success' 
                         ? 'bg-emerald-950/40 border-emerald-500/40 text-emerald-400' 
                         : 'bg-rose-950/40 border-rose-500/40 text-rose-400'
@@ -3979,6 +4755,287 @@ export const ParentDashboard: React.FC<Props> = ({ onBack }) => {
           </div>
         </div>
       )}
+
+      {/* AI Generate Story From Vocab Modal */}
+      {isAiGenModalOpen && (
+        <div className="fixed inset-0 bg-[#0B0F19]/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
+          <div className="bg-[#131B2E] border border-amber-500/40 rounded-2xl p-6 w-full max-w-xl max-h-[90vh] overflow-y-auto shadow-2xl shadow-amber-950/50 animate-in fade-in zoom-in duration-150 space-y-5">
+            {/* Header */}
+            <div className="flex justify-between items-center border-b border-[#1F2D4A] pb-3">
+              <div className="flex items-center gap-2.5">
+                <span className="text-2xl">✨</span>
+                <div>
+                  <h3 className="text-base font-bold text-amber-300 font-mono flex items-center gap-2">
+                    AI 一键构思与生成绘本故事
+                  </h3>
+                  <p className="text-[11px] text-slate-400 font-mono">
+                    基于核心生词库，由 AI 自动生成连贯故事情节、中英逐词逐句对照、插图提示词及阅读理解问答
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => !isAiGenLoading && setIsAiGenModalOpen(false)}
+                disabled={isAiGenLoading}
+                className="text-slate-500 hover:text-slate-300 text-sm font-bold p-1 cursor-pointer disabled:opacity-30"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Target Sector Info Badge */}
+            {aiGenTargetIsland && (
+              <div className="bg-[#0B0F19] border border-slate-800 rounded-xl p-3 flex items-center justify-between text-xs font-mono">
+                <div className="flex items-center gap-2">
+                  <span className="text-cyan-400 font-bold">🏝️ 目标关卡:</span>
+                  <span className="text-slate-200">{aiGenTargetIsland.name}</span>
+                  <span className="text-slate-500 text-[10px]">(ID: {aiGenTargetIsland.id})</span>
+                </div>
+                <span className="px-2 py-0.5 bg-cyan-950/60 border border-cyan-500/30 text-cyan-300 rounded text-[10px]">
+                  📁 {aiGenTargetIsland.group_name || 'General'}
+                </span>
+              </div>
+            )}
+
+            {/* Status Alert */}
+            {aiGenStatus && (
+              <div className={`p-3 rounded-xl text-xs font-mono border ${
+                aiGenStatus.type === 'success'
+                  ? 'bg-emerald-950/50 border-emerald-500/40 text-emerald-300'
+                  : 'bg-rose-950/50 border-rose-500/40 text-rose-300'
+              }`}>
+                {aiGenStatus.text}
+              </div>
+            )}
+
+            {/* Form Fields */}
+            <div className="space-y-4">
+              {/* Words textarea */}
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-xs font-bold text-slate-300 font-mono">
+                    🔤 核心目标单词 (Target Vocabulary) *
+                  </label>
+                  <span className="text-[10px] text-slate-500 font-mono">
+                    支持逗号、空格或换行分隔
+                  </span>
+                </div>
+                <textarea
+                  value={aiGenWords}
+                  onChange={(e) => setAiGenWords(e.target.value)}
+                  placeholder="e.g. sofa, table, chair, bed, lamp, kitchen..."
+                  rows={3}
+                  disabled={isAiGenLoading}
+                  className="w-full bg-[#0D1322] border border-slate-700 focus:border-amber-400 focus:ring-1 focus:ring-amber-400/50 text-amber-100 placeholder:text-slate-600 rounded-xl p-3 text-xs font-mono outline-none transition-all leading-relaxed"
+                />
+              </div>
+
+              {/* Title & Category */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-300 font-mono mb-1.5">
+                    📖 故事标题 / 主题线索 (Title / Seed)
+                  </label>
+                  <input
+                    type="text"
+                    value={aiGenTitle}
+                    onChange={(e) => setAiGenTitle(e.target.value)}
+                    placeholder="如: Barnaby's Cozy Room"
+                    disabled={isAiGenLoading}
+                    className="w-full bg-[#0D1322] border border-slate-700 focus:border-amber-400 focus:ring-1 focus:ring-amber-400/50 text-slate-200 rounded-xl px-3 py-2 text-xs font-mono outline-none transition-all"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-300 font-mono mb-1.5">
+                    📁 关卡分类 (Category)
+                  </label>
+                  <input
+                    type="text"
+                    value={aiGenCategory}
+                    onChange={(e) => setAiGenCategory(e.target.value)}
+                    placeholder="如: House and Furniture"
+                    disabled={isAiGenLoading}
+                    className="w-full bg-[#0D1322] border border-slate-700 focus:border-amber-400 focus:ring-1 focus:ring-amber-400/50 text-slate-200 rounded-xl px-3 py-2 text-xs font-mono outline-none transition-all"
+                  />
+                </div>
+              </div>
+
+              {/* Story Theme Style */}
+              <div>
+                <label className="block text-xs font-bold text-slate-300 font-mono mb-1.5">
+                  🎨 故事风格与基调 (Story Style)
+                </label>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                  {[
+                    { id: 'animal_tale', name: '🐱 趣味动物故事', desc: '温馨可爱的小动物' },
+                    { id: 'daily_life', name: '🏠 日常生活情境', desc: '家庭、学校与伙伴' },
+                    { id: 'adventure', name: '🗺️ 奇幻魔法探险', desc: '探索未知与寻宝' },
+                    { id: 'detective', name: '🔍 侦探线索解谜', desc: '寻找失物与推理' },
+                    { id: 'humor', name: '🎈 幽默搞笑风趣', desc: '搞怪反转与欢笑' },
+                  ].map((style) => (
+                    <button
+                      key={style.id}
+                      type="button"
+                      disabled={isAiGenLoading}
+                      onClick={() => setAiGenThemeStyle(style.id)}
+                      className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
+                        aiGenThemeStyle === style.id
+                          ? 'bg-amber-950/60 border-amber-400 text-amber-200 shadow-md shadow-amber-950/30'
+                          : 'bg-[#0D1322] border-slate-800 text-slate-400 hover:border-slate-700'
+                      }`}
+                    >
+                      <div className="text-xs font-bold">{style.name}</div>
+                      <div className="text-[10px] text-slate-500 mt-0.5">{style.desc}</div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Pages & Questions Count */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-300 font-mono mb-1.5">
+                    📑 绘本页数 (Pages)
+                  </label>
+                  <select
+                    value={aiGenPageCount}
+                    onChange={(e) => setAiGenPageCount(Number(e.target.value))}
+                    disabled={isAiGenLoading}
+                    className="w-full bg-[#0D1322] border border-slate-700 text-slate-200 rounded-xl px-3 py-2 text-xs font-mono outline-none"
+                  >
+                    <option value={3}>3 页 (短小精练)</option>
+                    <option value={4}>4 页 (标准推荐)</option>
+                    <option value={5}>5 页 (故事丰富)</option>
+                    <option value={6}>6 页 (深度阅读)</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-300 font-mono mb-1.5">
+                    🧩 问答题数 (Questions)
+                  </label>
+                  <select
+                    value={aiGenQuestionCount}
+                    onChange={(e) => setAiGenQuestionCount(Number(e.target.value))}
+                    disabled={isAiGenLoading}
+                    className="w-full bg-[#0D1322] border border-slate-700 text-slate-200 rounded-xl px-3 py-2 text-xs font-mono outline-none"
+                  >
+                    <option value={3}>3 道问答题</option>
+                    <option value={4}>4 道问答题 (推荐)</option>
+                    <option value={5}>5 道问答题</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-300 font-mono mb-1.5">
+                    🎯 目标阅读难度 (Level)
+                  </label>
+                  <select
+                    value={aiGenTargetLevel}
+                    onChange={(e) => setAiGenTargetLevel(e.target.value)}
+                    disabled={isAiGenLoading}
+                    className="w-full bg-[#0D1322] border border-slate-700 text-slate-200 rounded-xl px-3 py-2 text-xs font-mono outline-none"
+                  >
+                    <option value="RAZ C-E">RAZ C-E (小学低段)</option>
+                    <option value="RAZ F-I">RAZ F-I (进阶阅读)</option>
+                    <option value="RAZ A-B">RAZ A-B (零基础启蒙)</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* CLI & Model */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                <div>
+                  <label className="block text-xs font-bold text-slate-300 font-mono mb-1.5">
+                    ⚙️ 执行引擎 (Engine CLI)
+                  </label>
+                  <select
+                    value={aiGenCli}
+                    onChange={(e) => {
+                      const newCli = e.target.value as 'agy' | 'codex';
+                      setAiGenCli(newCli);
+                      fetchAiModels(newCli);
+                    }}
+                    disabled={isAiGenLoading}
+                    className="w-full bg-[#0D1322] border border-slate-700 text-slate-200 rounded-xl px-3 py-2 text-xs font-mono outline-none"
+                  >
+                    <option value="agy">Antigravity CLI (agy)</option>
+                    <option value="codex">Codex CLI (codex)</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-300 font-mono mb-1.5">
+                    🤖 选用模型 (AI Model)
+                  </label>
+                  <select
+                    value={aiGenModel}
+                    onChange={(e) => setAiGenModel(e.target.value)}
+                    disabled={isAiGenLoading}
+                    className="w-full bg-[#0D1322] border border-slate-700 text-slate-200 rounded-xl px-3 py-2 text-xs font-mono outline-none"
+                  >
+                    {aiModelList.map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.name || m.id}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {/* Auto Save Option */}
+              {aiGenTargetIsland && (
+                <div className="pt-1">
+                  <label className="flex items-center gap-2 cursor-pointer text-xs font-mono text-slate-300">
+                    <input
+                      type="checkbox"
+                      checked={aiGenAutoSave}
+                      onChange={(e) => setAiGenAutoSave(e.target.checked)}
+                      disabled={isAiGenLoading}
+                      className="rounded border-slate-700 text-amber-500 focus:ring-amber-500"
+                    />
+                    <span>直接将生成结果自动保存至该关卡（更新故事正文、逐句对照及阅读理解题）</span>
+                  </label>
+                </div>
+              )}
+            </div>
+
+            {/* Footer Buttons */}
+            <div className="flex justify-end gap-3 border-t border-[#1F2D4A] pt-4">
+              <button
+                type="button"
+                onClick={() => setIsAiGenModalOpen(false)}
+                disabled={isAiGenLoading}
+                className="text-xs px-4 py-2.5 bg-slate-900 border border-slate-800 text-slate-400 rounded-xl hover:bg-slate-800 transition-all cursor-pointer font-mono disabled:opacity-50"
+              >
+                取消 (CANCEL)
+              </button>
+              <button
+                type="button"
+                onClick={handleExecuteAiGenStory}
+                disabled={isAiGenLoading}
+                className="text-xs px-6 py-2.5 bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 hover:from-amber-400 hover:to-orange-400 text-slate-950 font-black rounded-xl shadow-lg shadow-amber-500/20 transition-all cursor-pointer disabled:opacity-50 font-mono flex items-center gap-2"
+              >
+                {isAiGenLoading ? (
+                  <>
+                    <span className="animate-spin text-sm">⏳</span>
+                    <span>AI 正在构思创作绘本故事中...</span>
+                  </>
+                ) : (
+                  <>
+                    <span>✨</span>
+                    <span>立即生成绘本故事 (SYNTHESIZE)</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Admin Change Password Modal */}
+      <ChangePasswordModal
+        isOpen={isChangePasswordOpen}
+        userId={1}
+        onClose={() => setIsChangePasswordOpen(false)}
+      />
     </div>
   );
 };

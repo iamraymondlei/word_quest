@@ -13,8 +13,8 @@ import {
 } from './StoryChaseAssets';
 import { isIPadOrTabletDevice } from '../utils/device';
 import { apiService } from '../utils/apiService';
-import { isForcedOffline } from '../utils/offlineMode';
 import { StoryIllustration } from './StoryIllustration';
+import { tokenizePassageWithLemmas } from '../utils/lemmatizer';
 import './GamePlay.css';
 
 export interface GameSettings {
@@ -70,6 +70,7 @@ export interface StoryChasePage {
 interface Props {
   island: Island;
   gameMode: 'story' | 'listening' | 'translation' | 'falling';
+  initialMatchingSubMode?: 'reading' | 'testing';
   currentUser: {
     id: number;
     username: string;
@@ -87,6 +88,7 @@ interface Props {
 export const GamePlay: React.FC<Props> = ({
   island,
   gameMode,
+  initialMatchingSubMode,
   currentUser,
   fontScale = '130',
   onFontScaleChange,
@@ -100,7 +102,9 @@ export const GamePlay: React.FC<Props> = ({
     left: number;
     type: 'word' | 'sentence';
     original: string;
+    lemma?: string;
     translation: string;
+    phonetic?: string;
     sentence?: string;
     sentence_translation?: string;
   }
@@ -110,6 +114,7 @@ export const GamePlay: React.FC<Props> = ({
   const [stage, setStage] = useState<'story' | 'listening' | 'translation' | 'falling' | 'success' | 'listening_success' | 'translation_success' | 'falling_success'>('story');
   const [feedback, setFeedback] = useState<{ isError: boolean; message: string } | null>(null);
   const [isSaving, setIsSaving] = useState<boolean>(false);
+  const [passageCollapsed, setPassageCollapsed] = useState<boolean>(false);
 
   const [earnedStageCoins, setEarnedStageCoins] = useState<number>(100);
   const [earnedTranslationCoins, setEarnedTranslationCoins] = useState<number>(100);
@@ -148,13 +153,13 @@ export const GamePlay: React.FC<Props> = ({
   };
 
   const handlePlayAudioHint = (idx: number, text: string) => {
-    if (isForcedOffline()) return;
     if (!('speechSynthesis' in window)) {
       alert('⚠️ Your browser does not support Speech Synthesis API.');
       return;
     }
 
     window.speechSynthesis.cancel(); // Stop any active playback
+    lastTtsActiveTimeRef.current = Date.now();
 
     const rate = audioRates[idx] ?? 1.0;
     const utterance = new SpeechSynthesisUtterance(text);
@@ -167,9 +172,18 @@ export const GamePlay: React.FC<Props> = ({
       utterance.voice = offlineVoice;
     }
 
-    utterance.onstart = () => setPlayingIdx(idx);
-    utterance.onend = () => setPlayingIdx(null);
-    utterance.onerror = () => setPlayingIdx(null);
+    utterance.onstart = () => {
+      lastTtsActiveTimeRef.current = Date.now();
+      setPlayingIdx(idx);
+    };
+    utterance.onend = () => {
+      lastTtsActiveTimeRef.current = Date.now();
+      setPlayingIdx(null);
+    };
+    utterance.onerror = () => {
+      lastTtsActiveTimeRef.current = Date.now();
+      setPlayingIdx(null);
+    };
 
     window.speechSynthesis.speak(utterance);
   };
@@ -198,13 +212,13 @@ export const GamePlay: React.FC<Props> = ({
   // --- translation drill mode state and refs ---
 
   const playChineseTTS = (text: string) => {
-    if (isForcedOffline()) return;
     if (!('speechSynthesis' in window)) {
       alert('⚠️ Your browser does not support Speech Synthesis API.');
       return;
     }
 
     window.speechSynthesis.cancel(); // Stop any active playback
+    lastTtsActiveTimeRef.current = Date.now();
 
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = 'zh-HK';
@@ -220,6 +234,13 @@ export const GamePlay: React.FC<Props> = ({
     if (matchedVoice) {
       utterance.voice = matchedVoice;
     }
+
+    utterance.onend = () => {
+      lastTtsActiveTimeRef.current = Date.now();
+    };
+    utterance.onerror = () => {
+      lastTtsActiveTimeRef.current = Date.now();
+    };
 
     window.speechSynthesis.speak(utterance);
   };
@@ -248,18 +269,24 @@ export const GamePlay: React.FC<Props> = ({
   const [speechError, setSpeechError] = useState<string | null>(null);
   const [spokenTranscript, setSpokenTranscript] = useState<string>('');
   const [passedEffect, setPassedEffect] = useState<boolean>(false);
-  const [matchingSubMode, setMatchingSubMode] = useState<'reading' | 'testing' | null>(null);
+  const [matchingSubMode, setMatchingSubMode] = useState<'reading' | 'testing'>(initialMatchingSubMode || 'reading');
   const [showMatchingIllustration, setShowMatchingIllustration] = useState<boolean>(false);
   const recognitionRef = useRef<any>(null);
+  const lastTtsActiveTimeRef = useRef<number>(0);
+  const speechTimeoutRef = useRef<any>(null);
   const translationInputRef = useRef<HTMLInputElement>(null);
   const translationNavItemRefs = useRef<Record<number, HTMLButtonElement | null>>({});
 
-  const handleSwitchSubMode = useCallback((mode: 'reading' | 'testing' | null) => {
+  const handleSwitchSubMode = useCallback((mode: 'reading' | 'testing') => {
     setMatchingSubMode(mode);
     setTranslationTypedText('');
     setSpokenTranscript('');
     setSpeechError(null);
     setPassedEffect(false);
+    if (speechTimeoutRef.current) {
+      clearTimeout(speechTimeoutRef.current);
+      speechTimeoutRef.current = null;
+    }
     if (recognitionRef.current) {
       try {
         recognitionRef.current.abort();
@@ -360,6 +387,21 @@ export const GamePlay: React.FC<Props> = ({
   const [fallingWords, setFallingWords] = useState<any[]>([]);
   const [earnedCoins, setEarnedCoins] = useState<number>(0);
 
+  const [storyVocab, setStoryVocab] = useState<Array<{
+    id: number;
+    word: string;
+    translation: string;
+    phonetic?: string;
+    sentence?: string;
+    sentence_translation?: string;
+    isFromWordBook?: boolean;
+  }>>([]);
+  const [isVocabLoading, setIsVocabLoading] = useState<boolean>(false);
+
+  // Active vocabulary list (prioritizes Word Bank, falls back to island.words)
+  const activeWordsList = storyVocab.length > 0 ? storyVocab : (island.words || []);
+  const fallingVocab = activeWordsList;
+
   const [bullets, setBullets] = useState<Bullet[]>([]);
   const [explosions, setExplosions] = useState<Explosion[]>([]);
   const [isBaseHit, setIsBaseHit] = useState<boolean>(false);
@@ -371,14 +413,83 @@ export const GamePlay: React.FC<Props> = ({
   const totalSpawnedRef = useRef(0);
   const bulletsRef = useRef<Bullet[]>([]);
 
+  // Load words for reading passage & games: prioritize Word Bank (word_books/vocabulary_words), fallback to island.words
+  useEffect(() => {
+    let isMounted = true;
+    const loadVocab = async () => {
+      setIsVocabLoading(true);
+      if (island.word_book_id) {
+        try {
+          const bookWords = await apiService.getBookWords(island.word_book_id, currentUser?.id);
+          if (isMounted && Array.isArray(bookWords) && bookWords.length > 0) {
+            setStoryVocab(
+              bookWords.map(bw => {
+                let sentence = '';
+                let sentence_translation = '';
+                if (bw.fun_sentences_json) {
+                  let parsed = bw.fun_sentences_json;
+                  if (typeof parsed === 'string') {
+                    try { parsed = JSON.parse(parsed); } catch(e) {}
+                  }
+                  if (Array.isArray(parsed) && parsed.length > 0) {
+                    sentence = parsed[0].en || '';
+                    sentence_translation = parsed[0].zh || '';
+                  }
+                }
+                return {
+                  id: bw.id,
+                  word: bw.word,
+                  translation: bw.translation,
+                  phonetic: bw.phonetic,
+                  sentence,
+                  sentence_translation,
+                  isFromWordBook: true
+                };
+              })
+            );
+            setIsVocabLoading(false);
+            return;
+          }
+        } catch (err) {
+          console.warn('[GamePlay] Failed to load words from word_book, falling back to island.words:', err);
+        }
+      }
+
+      if (isMounted) {
+        const fallbackWords = (island.words || []).map(w => ({
+          id: w.id,
+          word: w.word,
+          translation: w.translation,
+          phonetic: (w as any).phonetic,
+          sentence: w.sentence,
+          sentence_translation: w.sentence_translation,
+          isFromWordBook: false
+        }));
+        setStoryVocab(fallbackWords);
+        setIsVocabLoading(false);
+      }
+    };
+
+    loadVocab();
+    return () => {
+      isMounted = false;
+    };
+  }, [island.id, island.word_book_id, currentUser?.id]);
+
   // Play TTS voice
   const playTTS = (text: string) => {
-    if (isForcedOffline()) return;
     if ('speechSynthesis' in window) {
       window.speechSynthesis.cancel();
+      lastTtsActiveTimeRef.current = Date.now();
       const utterance = new SpeechSynthesisUtterance(text);
       utterance.lang = 'en-US';
       utterance.rate = ttsSpeedRef.current;
+      utterance.onend = () => {
+        lastTtsActiveTimeRef.current = Date.now();
+      };
+      utterance.onerror = () => {
+        lastTtsActiveTimeRef.current = Date.now();
+      };
       window.speechSynthesis.speak(utterance);
     }
   };
@@ -416,9 +527,43 @@ export const GamePlay: React.FC<Props> = ({
 
 
 
+  const getIslandCompletedMask = (isl: Island): number => {
+    const unlocked = isl.unlocked_stage ?? 1;
+    let mask = isl.completed_stages_mask || 0;
+    if (mask === 0 && unlocked > 1) {
+      if (unlocked === 2) mask = 1;
+      else if (unlocked === 3) mask = 3;
+      else if (unlocked === 4) mask = 7;
+      else if (unlocked >= 5) mask = 15;
+    }
+    if ((mask & 4) !== 0) {
+      mask |= 16;
+    }
+    return mask & 31;
+  };
+
   // Reset state on island or gameMode changes
   useEffect(() => {
-    setUserInputs(new Array(questions.length).fill(''));
+    const completedMask = getIslandCompletedMask(island);
+    const isStage1Done = (completedMask & 1) !== 0;
+
+    const initialInputs = new Array(questions.length).fill('');
+    // Only display previously filled answers when Stage 1 is marked as Done
+    if (isStage1Done) {
+      if (Array.isArray(island.stage1_answers) && island.stage1_answers.length > 0) {
+        for (let i = 0; i < questions.length; i++) {
+          if (island.stage1_answers[i] !== undefined && island.stage1_answers[i] !== null) {
+            initialInputs[i] = island.stage1_answers[i];
+          }
+        }
+      } else {
+        // Fallback for historical completed records if stage1_answers wasn't filled yet
+        for (let i = 0; i < questions.length; i++) {
+          initialInputs[i] = questions[i].answer || '';
+        }
+      }
+    }
+    setUserInputs(initialInputs);
     setActiveBubble(null);
     setStage(gameMode);
     setFeedback(null);
@@ -440,13 +585,21 @@ export const GamePlay: React.FC<Props> = ({
     // Reset translation state
     setTranslationSentenceIdx(0);
     setTranslationTypedText('');
-    setMatchingSubMode(null);
+    setMatchingSubMode(initialMatchingSubMode || 'reading');
     setIsListening(false);
     setSpeechError(null);
     setSpokenTranscript('');
     setPassedEffect(false);
+    if (speechTimeoutRef.current) {
+      clearTimeout(speechTimeoutRef.current);
+      speechTimeoutRef.current = null;
+    }
     if (recognitionRef.current) {
       try {
+        recognitionRef.current.onstart = null;
+        recognitionRef.current.onresult = null;
+        recognitionRef.current.onerror = null;
+        recognitionRef.current.onend = null;
         recognitionRef.current.abort();
       } catch (e) {}
       recognitionRef.current = null;
@@ -620,7 +773,7 @@ export const GamePlay: React.FC<Props> = ({
                 e.stopPropagation();
                 handlePlayAudioHint(idx, answer);
               }}
-              aria-label="播放当前句子原声提示 (Play audio hint)"
+              aria-label="Play audio hint"
               className={`px-3 py-1.5 rounded-lg text-xs font-bold font-mono transition-colors flex items-center gap-1.5 cursor-pointer relative z-20 focus-visible:ring-2 focus-visible:ring-cyan-400 focus-visible:outline-none ${
                 playingIdx === idx
                   ? 'bg-amber-500 text-white shadow-md animate-pulse'
@@ -637,10 +790,10 @@ export const GamePlay: React.FC<Props> = ({
                 e.stopPropagation();
                 handleTouchClear(idx);
               }}
-              aria-label="清空并重填当前句子"
+              aria-label="Clear current sentence"
               className="px-2.5 py-1.5 rounded-lg text-xs font-bold transition-colors bg-slate-700/60 hover:bg-slate-700 text-slate-300 border border-slate-600 flex items-center gap-1 cursor-pointer relative z-20 focus-visible:ring-2 focus-visible:ring-cyan-400 focus-visible:outline-none"
             >
-              🗑️ 重填
+              🗑️ Clear
             </button>
           </div>
 
@@ -657,7 +810,7 @@ export const GamePlay: React.FC<Props> = ({
                     e.stopPropagation();
                     setAudioRates(prev => ({ ...prev, [idx]: rate }));
                   }}
-                  aria-label={`朗读语速 ${rate} 倍速`}
+                  aria-label={`Speech rate ${rate}x`}
                   aria-pressed={isActive}
                   className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold tabular-nums transition-colors cursor-pointer border focus-visible:ring-2 focus-visible:ring-cyan-400 focus-visible:outline-none ${
                     isActive
@@ -725,46 +878,10 @@ export const GamePlay: React.FC<Props> = ({
     );
   };
 
-  // Word tokenization
+  // Word tokenization with lemmatization & phrase matching
   const tokenizePassage = (text: string, wordsList: any[]) => {
-    const regex = /([a-zA-Z'-]+)/g;
-    const parts = [];
-    let lastIndex = 0;
-    let match;
-
-    while ((match = regex.exec(text)) !== null) {
-      if (match.index > lastIndex) {
-        parts.push({
-          text: text.substring(lastIndex, match.index),
-          isWord: false
-        });
-      }
-      const wordText = match[0];
-      const cleaned = wordText.toLowerCase().replace(/'s?$/i, "");
-
-      const matchedWord = wordsList.find(
-        w => w.word.toLowerCase().replace(/'s?$/i, "").trim() === cleaned ||
-             w.word.toLowerCase().trim() === wordText.toLowerCase().trim()
-      );
-
-      parts.push({
-        text: wordText,
-        isWord: true,
-        matchedWord: matchedWord || null
-      });
-      lastIndex = regex.lastIndex;
-    }
-
-    if (lastIndex < text.length) {
-      parts.push({
-        text: text.substring(lastIndex),
-        isWord: false
-      });
-    }
-
-    return parts;
+    return tokenizePassageWithLemmas(text, wordsList);
   };
-
 
   const findSentenceTranslation = (sentenceText: string, wordsList: any[]) => {
     const cleaned = cleanText(sentenceText).toLowerCase();
@@ -779,16 +896,20 @@ export const GamePlay: React.FC<Props> = ({
   };
 
   // Click handlers
-  const handleWordClick = (wordObj: any, e: React.MouseEvent) => {
+  const handleWordClick = (wordObj: any, e: React.MouseEvent, surfaceText?: string) => {
     const rect = e.currentTarget.getBoundingClientRect();
     const top = rect.bottom + window.scrollY + 8;
     const left = rect.left + window.scrollX + (rect.width / 2);
+    const surface = surfaceText || wordObj.word;
+    const isDifferent = wordObj.word.trim().toLowerCase() !== surface.trim().toLowerCase();
     setActiveBubble({
       top,
       left,
       type: 'word',
-      original: wordObj.word,
+      original: surface,
+      lemma: isDifferent ? wordObj.word : undefined,
       translation: wordObj.translation,
+      phonetic: wordObj.phonetic,
       sentence: wordObj.sentence,
       sentence_translation: wordObj.sentence_translation
     });
@@ -807,7 +928,7 @@ export const GamePlay: React.FC<Props> = ({
 
     if (typeof sentenceObjOrText === 'string') {
       original = sentenceObjOrText;
-      const trans = findSentenceTranslation(sentenceObjOrText, island.words || []);
+      const trans = findSentenceTranslation(sentenceObjOrText, activeWordsList);
       translation = trans || 'No translation available for this sentence. Click the core words to translate!';
     } else {
       original = sentenceObjOrText.sentence_text;
@@ -827,19 +948,23 @@ export const GamePlay: React.FC<Props> = ({
   const handleCompleteStory = async () => {
     setIsSaving(true);
     setFeedback(null);
-    const isRepeat = ((island.completed_stages_mask || 0) & 1) !== 0 || (island.unlocked_stage ?? 1) > 1;
+    const isRepeat = (getIslandCompletedMask(island) & 1) !== 0;
     const baseCoins = chaseGameSettings.coins_stage1_reading || 100;
     const multiplier = chaseGameSettings.coins_review_multiplier ?? 0.2;
     const coins = isRepeat ? Math.round(baseCoins * multiplier) : baseCoins;
     setEarnedStageCoins(coins);
     try {
+      island.stage1_answers = [...userInputs];
+      island.completed_stages_mask = ((island.completed_stages_mask || 0) | 1) & 15;
+      island.unlocked_stage = Math.max(island.unlocked_stage || 1, 2);
       await apiService.updateStageProgress({
         user_id: currentUser.id,
         island_id: island.id,
         completed: true,
         stage: 2,
         score: 100,
-        mistakes: []
+        mistakes: [],
+        stage1_answers: userInputs
       });
 
       await apiService.addCoins(currentUser.id, coins);
@@ -933,9 +1058,9 @@ export const GamePlay: React.FC<Props> = ({
                 // word mode
                 return (
                   <span key={sentIdx}>
-                    {tokenizePassage(sentence.sentence_text, island.words || []).map((token, tokenIdx) => {
+                    {tokenizePassage(sentence.sentence_text, activeWordsList).map((token, tokenIdx) => {
                       if (token.isWord && token.matchedWord) {
-                        const isWordSelected = activeBubble?.original === token.matchedWord.word;
+                        const isWordSelected = activeBubble?.original === token.text || (token.matchedWord && activeBubble?.original === token.matchedWord.word);
                         return (
                           <span
                             key={tokenIdx}
@@ -944,7 +1069,7 @@ export const GamePlay: React.FC<Props> = ({
                                 ? 'bg-cyan-500/30 text-cyan-400 border-b-2 border-cyan-400 shadow-[0_0_8px_rgba(0,240,255,0.4)] opacity-100'
                                 : 'text-cyan-500 border-b border-dashed border-cyan-500/50 hover:bg-cyan-500/20 opacity-90 hover:opacity-100'
                             }`}
-                            onClick={(e) => handleWordClick(token.matchedWord, e)}
+                            onClick={(e) => handleWordClick(token.matchedWord, e, token.text)}
                           >
                             {token.text}
                           </span>
@@ -1000,9 +1125,9 @@ export const GamePlay: React.FC<Props> = ({
                 // word mode
                 return (
                   <span key={sentIdx}>
-                    {tokenizePassage(sentText, island.words || []).map((token, tokenIdx) => {
+                    {tokenizePassage(sentText, activeWordsList).map((token, tokenIdx) => {
                       if (token.isWord && token.matchedWord) {
-                        const isWordSelected = activeBubble?.original === token.matchedWord.word;
+                        const isWordSelected = activeBubble?.original === token.text || (token.matchedWord && activeBubble?.original === token.matchedWord.word);
                         return (
                           <span
                             key={tokenIdx}
@@ -1011,7 +1136,7 @@ export const GamePlay: React.FC<Props> = ({
                                 ? 'bg-cyan-500/30 text-cyan-300 border-b-2 border-cyan-400 shadow-[0_0_8px_rgba(0,240,255,0.4)] opacity-100'
                                 : 'text-cyan-300/90 border-b border-dashed border-cyan-500/50 hover:bg-cyan-500/20 hover:text-white opacity-80 hover:opacity-100'
                             }`}
-                            onClick={(e) => handleWordClick(token.matchedWord, e)}
+                            onClick={(e) => handleWordClick(token.matchedWord, e, token.text)}
                           >
                             {token.text}
                           </span>
@@ -1246,7 +1371,7 @@ export const GamePlay: React.FC<Props> = ({
     const speedBonus = chaseSelectedSpeed === 'fast' ? (chaseGameSettings.coins_speed_bonus || 50) : 0;
     const fullHeartsBonus = chaseHearts === (chaseGameSettings.initial_hearts || 3) ? (chaseGameSettings.coins_full_hearts_bonus || 30) : 0;
     const totalCoins = baseCoins + speedBonus + fullHeartsBonus;
-    const isRepeat = ((island.completed_stages_mask || 0) & 2) !== 0 || (island.unlocked_stage ?? 1) > 2;
+    const isRepeat = (getIslandCompletedMask(island) & 2) !== 0;
     const multiplier = chaseGameSettings.coins_review_multiplier ?? 0.2;
     const finalAwardedCoins = isRepeat ? Math.round(totalCoins * multiplier) : totalCoins;
     setChaseEarnedCoins(finalAwardedCoins);
@@ -1672,6 +1797,29 @@ export const GamePlay: React.FC<Props> = ({
     return matchWords(targetTokens, activeInputText);
   }, [targetTokens, activeInputText]);
 
+  const completedSentencesCount = React.useMemo(() => {
+    return translationSentences.filter((_, idx) => {
+      const stat = translationStats[idx];
+      const hasPassedBefore = Boolean(stat && stat.successCount > 0);
+      const isCurrentlyPassed = idx === translationSentenceIdx && isAllMatched;
+      return hasPassedBefore || isCurrentlyPassed;
+    }).length;
+  }, [translationSentences, translationStats, translationSentenceIdx, isAllMatched]);
+
+  const totalSentencesCount = translationSentences.length;
+  const isAllSentencesPassed = totalSentencesCount > 0 && completedSentencesCount >= totalSentencesCount;
+
+  const uncompletedSentenceIndices = React.useMemo(() => {
+    return translationSentences
+      .map((_, idx) => idx)
+      .filter((idx) => {
+        const stat = translationStats[idx];
+        const hasPassedBefore = Boolean(stat && stat.successCount > 0);
+        const isCurrentlyPassed = idx === translationSentenceIdx && isAllMatched;
+        return !hasPassedBefore && !isCurrentlyPassed;
+      });
+  }, [translationSentences, translationStats, translationSentenceIdx, isAllMatched]);
+
   const levelProgress = React.useMemo(() => {
     if (gameMode === 'story') {
       if (questions.length === 0) return 0;
@@ -1685,14 +1833,14 @@ export const GamePlay: React.FC<Props> = ({
       return Math.min(100, ((chasePageIdx + pageFraction) / storyChasePages.length) * 100);
     }
     if (gameMode === 'translation') {
-      if (translationSentences.length === 0) return 0;
-      return ((translationSentenceIdx + (isAllMatched ? 1 : 0)) / translationSentences.length) * 100;
+      if (totalSentencesCount === 0) return 0;
+      return (completedSentencesCount / totalSentencesCount) * 100;
     }
     if (gameMode === 'falling') {
       return Math.min(100, (score / 300) * 100);
     }
     return 0;
-  }, [gameMode, questions, userInputs, storyChasePages, chasePageIdx, chaseCorrectLen, translationSentences, translationSentenceIdx, isAllMatched, score]);
+  }, [gameMode, questions, userInputs, storyChasePages, chasePageIdx, chaseCorrectLen, totalSentencesCount, completedSentencesCount, score]);
 
   const streak = React.useMemo(() => {
     if (gameMode === 'story') {
@@ -1718,41 +1866,74 @@ export const GamePlay: React.FC<Props> = ({
     }
   }, []);
 
-  // Stop listening helper
-  const stopListening = useCallback(() => {
-    if (recognitionRef.current) {
+  // Helper to force iOS Safari / WebKit to flush and release the hardware microphone session
+  const forceReleaseMicrophone = useCallback(() => {
+    if (typeof navigator !== 'undefined' && navigator.mediaDevices && typeof navigator.mediaDevices.getUserMedia === 'function') {
       try {
-        recognitionRef.current.abort();
+        navigator.mediaDevices.getUserMedia({ audio: true })
+          .then(stream => {
+            stream.getTracks().forEach(track => {
+              try {
+                track.stop();
+              } catch (e) {}
+            });
+          })
+          .catch(() => {});
       } catch (e) {}
-      recognitionRef.current = null;
     }
-    setIsListening(false);
   }, []);
 
-  // Start listening trigger
-  const startListening = useCallback(() => {
-    if (isForcedOffline()) {
-      setSpeechError('离线模式下已关闭可能联网的语音识别，请使用键盘输入。');
-      return;
+  // Stop listening helper
+  const stopListening = useCallback(() => {
+    if (speechTimeoutRef.current) {
+      clearTimeout(speechTimeoutRef.current);
+      speechTimeoutRef.current = null;
     }
+    if (recognitionRef.current) {
+      const rec = recognitionRef.current;
+      recognitionRef.current = null;
+      try {
+        rec.stop();
+      } catch (e) {
+        try {
+          rec.abort();
+        } catch (e2) {}
+      }
+    }
+    setIsListening(false);
+    forceReleaseMicrophone();
+  }, [forceReleaseMicrophone]);
+
+  // Start listening trigger (SYNCHRONOUS for iOS Safari User Gesture Activation)
+  const startListening = useCallback(() => {
     const SpeechRecognitionClass = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition || (globalThis as any).SpeechRecognition || (globalThis as any).webkitSpeechRecognition;
     if (!SpeechRecognitionClass) {
       setSpeechSupported(false);
-      setSpeechError('⚠️ 您的浏览器未开启语音识别功能，建议直接在输入框打字或使用 iPad 键盘自带麦克风。');
+      setSpeechError('⚠️ Speech recognition is not supported in this browser. Please type or use keyboard dictation.');
       setIsListening(false);
       return;
     }
 
-    // Cancel any speech synthesis that might lock audio session
+    // Cancel any active speech synthesis immediately
     if ('speechSynthesis' in window) {
-      window.speechSynthesis.cancel();
+      try {
+        if (window.speechSynthesis.speaking || window.speechSynthesis.pending) {
+          window.speechSynthesis.cancel();
+        }
+      } catch (e) {}
     }
 
+    // Clean up any prior recognition instance immediately
     if (recognitionRef.current) {
-      try {
-        recognitionRef.current.abort();
-      } catch (e) {}
+      const prior = recognitionRef.current;
       recognitionRef.current = null;
+      try {
+        prior.stop();
+      } catch (e) {
+        try {
+          prior.abort();
+        } catch (e2) {}
+      }
     }
 
     setSpeechError(null);
@@ -1762,64 +1943,115 @@ export const GamePlay: React.FC<Props> = ({
     try {
       const recognition = new SpeechRecognitionClass();
       recognition.lang = 'en-US';
-      recognition.continuous = false;
+      recognition.continuous = false; // Standard for mobile WebKit to cleanly release mic across sentences
       recognition.interimResults = true;
       recognition.maxAlternatives = 1;
+
+      let hasReceivedResult = false;
 
       recognition.onstart = () => {
         setIsListening(true);
         setSpeechError(null);
+
+        // Auto-stop silence timer: if no result after 10s, stop listening
+        if (speechTimeoutRef.current) clearTimeout(speechTimeoutRef.current);
+        speechTimeoutRef.current = setTimeout(() => {
+          if (!hasReceivedResult) {
+            stopListening();
+          }
+        }, 10000);
       };
 
       recognition.onresult = (event: any) => {
+        hasReceivedResult = true;
+
         let currentFinal = '';
         let currentInterim = '';
 
+        let hasFinal = false;
         for (let i = 0; i < event.results.length; ++i) {
           const item = event.results[i];
-          if (item.isFinal) {
-            currentFinal += item[0].transcript + ' ';
-          } else {
-            currentInterim += item[0].transcript;
+          if (item && item[0]) {
+            if (item.isFinal) {
+              currentFinal += item[0].transcript + ' ';
+              hasFinal = true;
+            } else {
+              currentInterim += item[0].transcript;
+            }
           }
         }
 
-        const combined = (currentFinal || currentInterim || '').trim();
+        const combined = `${currentFinal} ${currentInterim}`.trim().replace(/\s+/g, ' ');
         if (combined) {
           setSpokenTranscript(combined);
           setTranslationTypedText(combined);
         }
+
+        if (hasFinal) {
+          try {
+            recognition.stop();
+          } catch (e) {}
+        }
+      };
+
+      recognition.onspeechend = () => {
+        try {
+          recognition.stop();
+        } catch (e) {}
       };
 
       recognition.onerror = (event: any) => {
         console.warn('Speech recognition error:', event.error);
-        if (event.error === 'not-allowed' || event.error === 'service-not-allowed' || event.error === 'permission-denied') {
-          setSpeechError('⚠️ 麦克风权限未开启：请点击 Safari 顶部地址栏左侧【aA / 大小 ➔ 网站设置 ➔ 麦克风 ➔ 改为“允许”】，或在 iPad【设置 ➔ Safari ➔ 麦克风】中设为“允许”并刷新页面。');
-        } else if (event.error === 'no-speech') {
-          setSpeechError('⚠️ 未检测到发音，请靠近麦克风大声朗读，点击录音按钮重试。');
-        } else if (event.error === 'audio-capture') {
-          setSpeechError('⚠️ 未找到可用麦克风或麦克风被其他应用占用。');
-        } else if (event.error === 'network') {
-          setSpeechError('⚠️ 语音网络连接异常（离线模式）：屏幕麦克风需联网，建议直接点击下方输入框，使用 iPad 键盘右下角的 🎙️ 自带麦克风 朗读（苹果端侧离线听写）。');
-        } else if (event.error !== 'aborted') {
-          setSpeechError(`⚠️ 识别提示: ${event.error || '请重试'}`);
+        if (speechTimeoutRef.current) {
+          clearTimeout(speechTimeoutRef.current);
+          speechTimeoutRef.current = null;
         }
         setIsListening(false);
+        try {
+          recognition.abort();
+        } catch (e) {}
+        recognitionRef.current = null;
+        forceReleaseMicrophone();
+
+        if (event.error === 'not-allowed' || event.error === 'service-not-allowed' || event.error === 'permission-denied') {
+          setSpeechError('⚠️ Mic access denied. Please allow microphone permissions in browser and device settings.');
+        } else if (event.error === 'no-speech') {
+          if (!hasReceivedResult) {
+            setSpeechError('⚠️ No speech detected. Please speak clearly into the mic and try again.');
+          }
+        } else if (event.error === 'audio-capture') {
+          setSpeechError('⚠️ Mic audio channel is busy. Please try again or use iPad keyboard dictation 🎙️.');
+        } else if (event.error === 'network') {
+          setSpeechError('⚠️ Speech network connection error. Please retry or use iPad keyboard dictation 🎙️.');
+        } else if (event.error !== 'aborted') {
+          setSpeechError(`⚠️ Speech tip: ${event.error || 'Please try again'}`);
+        }
       };
 
       recognition.onend = () => {
         setIsListening(false);
+        if (speechTimeoutRef.current) {
+          clearTimeout(speechTimeoutRef.current);
+          speechTimeoutRef.current = null;
+        }
+        try {
+          recognition.abort();
+        } catch (e) {}
         recognitionRef.current = null;
+        forceReleaseMicrophone();
       };
 
       recognitionRef.current = recognition;
+      // Must be invoked synchronously directly within the user gesture
       recognition.start();
     } catch (err: any) {
-      console.error('Failed to start speech recognition:', err);
-      setSpeechError('⚠️ 启动语音识别失败，请检查麦克风权限。');
+      console.warn('Failed to start speech recognition synchronously:', err);
+      setSpeechError('⚠️ Failed to start speech recognition. Please try again.');
       setIsListening(false);
+      recognitionRef.current = null;
+      forceReleaseMicrophone();
     }
-  }, []);
+  }, [stopListening, forceReleaseMicrophone]);
 
   // Clean up recognition on sentence change or unmount
   useEffect(() => {
@@ -1829,12 +2061,13 @@ export const GamePlay: React.FC<Props> = ({
   }, [translationSentenceIdx, gameMode, stage, stopListening]);
 
   const handlePlayTranslationEngHint = () => {
-    if (isForcedOffline()) return;
     if (!('speechSynthesis' in window)) {
       alert('⚠️ Your browser does not support Speech Synthesis API.');
       return;
     }
+    stopListening();
     window.speechSynthesis.cancel();
+    lastTtsActiveTimeRef.current = Date.now();
     const utterance = new SpeechSynthesisUtterance(targetEngSentence);
     utterance.lang = 'en-US';
     utterance.rate = ttsSpeedRef.current;
@@ -1844,6 +2077,13 @@ export const GamePlay: React.FC<Props> = ({
     if (offlineVoice) {
       utterance.voice = offlineVoice;
     }
+
+    utterance.onend = () => {
+      lastTtsActiveTimeRef.current = Date.now();
+    };
+    utterance.onerror = () => {
+      lastTtsActiveTimeRef.current = Date.now();
+    };
 
     window.speechSynthesis.speak(utterance);
   };
@@ -1864,9 +2104,24 @@ export const GamePlay: React.FC<Props> = ({
   };
 
   const handleCompleteTranslation = async () => {
+    // Option A: Strictly verify 100% of sentences have been completed
+    if (!isAllSentencesPassed) {
+      if (uncompletedSentenceIndices.length > 0) {
+        setTranslationSentenceIdx(uncompletedSentenceIndices[0]);
+        setTranslationTypedText('');
+        setSpokenTranscript('');
+        setSpeechError(null);
+        setPassedEffect(false);
+        stopListening();
+      }
+      return;
+    }
+
     setIsSaving(true);
     setFeedback(null);
-    const isRepeat = ((island.completed_stages_mask || 0) & 4) !== 0 || (island.unlocked_stage ?? 1) > 3;
+    const targetBit = matchingSubMode === 'testing' ? 16 : 4;
+    const completedStage = matchingSubMode === 'testing' ? 5 : 3;
+    const isRepeat = (getIslandCompletedMask(island) & targetBit) !== 0;
     const baseCoins = chaseGameSettings.coins_stage3_matching || 100;
     const multiplier = chaseGameSettings.coins_review_multiplier ?? 0.2;
     const coins = isRepeat ? Math.round(baseCoins * multiplier) : baseCoins;
@@ -1876,12 +2131,15 @@ export const GamePlay: React.FC<Props> = ({
         user_id: currentUser.id,
         island_id: island.id,
         completed: true,
-        stage: 4,
+        completed_stage: completedStage,
+        stage: completedStage + 1,
         score: 100,
         mistakes: []
       });
 
       await apiService.addCoins(currentUser.id, coins);
+
+      island.completed_stages_mask = ((island.completed_stages_mask || 0) | targetBit | (targetBit === 4 ? 16 : 0)) & 31;
 
       onProgressUpdated();
       setStage('translation_success');
@@ -1997,7 +2255,7 @@ export const GamePlay: React.FC<Props> = ({
       // 1. Spawning
       const elapsed = timestamp - lastSpawnTime;
       if (elapsed >= spawnInterval && totalSpawnedRef.current < maxWords) {
-        const vocab = island.words || [];
+        const vocab = fallingVocab.length > 0 ? fallingVocab : (island.words || []);
         if (vocab.length > 0) {
           const randWord = vocab[Math.floor(Math.random() * vocab.length)];
           const LANES = [15, 32, 50, 68, 85];
@@ -2028,6 +2286,8 @@ export const GamePlay: React.FC<Props> = ({
 
           const newFalling = {
             id: Date.now() + Math.random(),
+            vocabId: randWord.id,
+            isFromWordBook: !!randWord.isFromWordBook,
             word: randWord.word,
             translation: randWord.translation,
             x: chosenX,
@@ -2052,6 +2312,16 @@ export const GamePlay: React.FC<Props> = ({
           shieldDeducted += 1;
           scoreDeducted += 50;
           triggeredBaseHit = true;
+
+          if (w.isFromWordBook && w.vocabId && currentUser?.id) {
+            apiService.recordVocabularyProgress(
+              w.vocabId,
+              currentUser.id,
+              'spelling',
+              false,
+              { answer: '' }
+            ).catch(e => console.warn('[WordDefender] record vocab failure error:', e));
+          }
         } else {
           remaining.push(w);
         }
@@ -2152,7 +2422,7 @@ export const GamePlay: React.FC<Props> = ({
     return () => {
       cancelAnimationFrame(animationFrameId);
     };
-  }, [stage, fallingGameState, island]);
+  }, [stage, fallingGameState, island, fallingVocab]);
 
   const handleDosInputSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -2167,6 +2437,16 @@ export const GamePlay: React.FC<Props> = ({
       const targetWord = matches.reduce((prev, current) =>
         (prev.y > current.y) ? prev : current
       );
+
+      if (targetWord.isFromWordBook && targetWord.vocabId && currentUser?.id) {
+        apiService.recordVocabularyProgress(
+          targetWord.vocabId,
+          currentUser.id,
+          'spelling',
+          true,
+          { answer: typed }
+        ).catch(e => console.warn('[WordDefender] record vocab pass error:', e));
+      }
 
       fallingWordsRef.current = fallingWordsRef.current.map(w =>
         w.id === targetWord.id ? { ...w, targeted: true } : w
@@ -2202,7 +2482,7 @@ export const GamePlay: React.FC<Props> = ({
     let coinsReward = 0;
     if (isVictory) {
       const rawCoins = Math.round(finalScore * difficulty.multiplier);
-      const isRepeat = ((island.completed_stages_mask || 0) & 8) !== 0 || (island.unlocked_stage ?? 1) >= 5;
+      const isRepeat = (getIslandCompletedMask(island) & 8) !== 0;
       const multiplier = chaseGameSettings.coins_review_multiplier ?? 0.2;
       coinsReward = isRepeat ? Math.round(rawCoins * multiplier) : rawCoins;
     }
@@ -2343,14 +2623,14 @@ export const GamePlay: React.FC<Props> = ({
 
             <div className="space-y-3 relative z-10">
               <h2 className="text-xl sm:text-2xl font-black text-cyan-300 tracking-wide text-balance">
-                该模式仅支持在电脑端游玩
+                Physical Keyboard Required
               </h2>
               <div className="text-xs text-slate-300 leading-relaxed bg-slate-900/90 p-4 rounded-2xl border border-slate-800 space-y-2 text-left">
                 <p>
-                  • <strong>{gameMode === 'listening' ? '02 // Story Chase 打字追逐' : '04 // Space Defender 太空防卫'}</strong> 需要配合电脑实体键盘进行高速键入或按键操作，iPad 设备无法获得最佳操作体验。
+                  • <strong>{gameMode === 'listening' ? '01 // Story Chase' : '02 // Space Defender'}</strong> requires a physical keyboard for fast typing and arcade controls.
                 </p>
                 <p className="text-amber-300">
-                  • <strong>建议</strong>：请在电脑端浏览器登录进入本模式；在 iPad 上请体验 <strong>01 绘本阅读</strong> 与 <strong>03 朗读匹配</strong>！
+                  • <strong>Tip</strong>: Play this mode on a desktop or laptop. On iPad, enjoy <strong>Reading & Typing</strong> and <strong>Word Matching</strong>!
                 </p>
               </div>
             </div>
@@ -2358,10 +2638,10 @@ export const GamePlay: React.FC<Props> = ({
             <button
               type="button"
               onClick={onBack}
-              aria-label="返回探险地图"
+              aria-label="Back to Map"
               className="w-full py-3.5 px-6 rounded-xl bg-gradient-to-r from-cyan-500 to-teal-400 hover:opacity-95 text-slate-950 font-bold text-xs uppercase tracking-wider shadow-lg hover:scale-102 active:scale-98 transition-all cursor-pointer relative z-10 focus-visible:ring-2 focus-visible:ring-cyan-400 focus-visible:outline-none"
             >
-              🗺️ 返回探险地图 (Back to Map)
+              🗺️ Back to Map
             </button>
           </div>
         </div>
@@ -2486,52 +2766,75 @@ export const GamePlay: React.FC<Props> = ({
             <div className="flex-grow flex flex-col justify-center">
               {/* === STAGE 1: STORY MODE === */}
               {gameMode === 'story' && stage === 'story' && (
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
+                <div className="flex flex-col gap-6 items-stretch w-full">
                   
-                  {/* Left Column: Passage Card */}
+                  {/* Top: Passage Card (collapsible) */}
                   <div className="theme-card border theme-border rounded-2xl p-6 shadow-xl flex flex-col w-full">
-                    <h2 className="text-xl font-bold theme-text mb-6 text-center tracking-tight flex items-center justify-center gap-2 border-b theme-border pb-3 font-mono">
-                      📖 {title}
-                    </h2>
+                    <div className={`flex items-center justify-between gap-3 border-b theme-border pb-3 ${passageCollapsed ? 'mb-0 border-b-0 pb-0' : 'mb-6'}`}>
+                      <h2 className="text-xl font-bold theme-text tracking-tight flex items-center gap-2 font-mono min-w-0">
+                        <span>📖</span>
+                        <span className="truncate">{title}</span>
+                      </h2>
+                      <button
+                        type="button"
+                        onClick={() => setPassageCollapsed(prev => !prev)}
+                        aria-expanded={!passageCollapsed}
+                        className="shrink-0 px-3 py-1.5 rounded-lg border theme-border bg-black/10 dark:bg-white/10 hover:bg-cyan-500/20 text-cyan-400 text-xs font-bold font-mono cursor-pointer transition-all touch-manipulation"
+                      >
+                        {passageCollapsed ? '▼ Show Story' : '▲ Hide Story'}
+                      </button>
+                    </div>
 
+                    {!passageCollapsed && (
+                    <>
                     {/* Translation Switcher Bar */}
-                    <div className="flex bg-black/10 dark:bg-white/10 border theme-border p-1 rounded-xl mb-6">
-                      <button
-                        type="button"
-                        className={`flex-grow border-0 bg-transparent py-2 px-3 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                          translationMode === 'word' ? 'theme-accent-btn font-black shadow-sm' : 'theme-text-muted hover:theme-text'
-                        }`}
-                        onClick={() => setTranslationMode('word')}
-                      >
-                        Word Translation
-                      </button>
-                      <button
-                        type="button"
-                        className={`flex-grow border-0 bg-transparent py-2 px-3 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                          translationMode === 'sentence' ? 'theme-accent-btn font-black shadow-sm' : 'theme-text-muted hover:theme-text'
-                        }`}
-                        onClick={() => setTranslationMode('sentence')}
-                      >
-                        Sentence Translation
-                      </button>
-                      <button
-                        type="button"
-                        className={`flex-grow border-0 bg-transparent py-2 px-3 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                          translationMode === 'off' ? 'theme-accent-btn font-black shadow-sm' : 'theme-text-muted hover:theme-text'
-                        }`}
-                        onClick={() => setTranslationMode('off')}
-                      >
-                        Disable Hints
-                      </button>
+                    <div className="flex flex-wrap items-center justify-between gap-2 bg-black/10 dark:bg-white/10 border theme-border p-1 rounded-xl mb-6">
+                      <div className="flex flex-grow gap-1">
+                        <button
+                          type="button"
+                          className={`flex-grow border-0 bg-transparent py-2 px-3 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                            translationMode === 'word' ? 'theme-accent-btn font-black shadow-sm' : 'theme-text-muted hover:theme-text'
+                          }`}
+                          onClick={() => setTranslationMode('word')}
+                        >
+                          Word Translation
+                        </button>
+                        <button
+                          type="button"
+                          className={`flex-grow border-0 bg-transparent py-2 px-3 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                            translationMode === 'sentence' ? 'theme-accent-btn font-black shadow-sm' : 'theme-text-muted hover:theme-text'
+                          }`}
+                          onClick={() => setTranslationMode('sentence')}
+                        >
+                          Sentence Translation
+                        </button>
+                        <button
+                          type="button"
+                          className={`flex-grow border-0 bg-transparent py-2 px-3 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                            translationMode === 'off' ? 'theme-accent-btn font-black shadow-sm' : 'theme-text-muted hover:theme-text'
+                          }`}
+                          onClick={() => setTranslationMode('off')}
+                        >
+                          Disable Hints
+                        </button>
+                      </div>
+                      {storyVocab.some(w => w.isFromWordBook) && (
+                        <div className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-mono text-cyan-400/90 bg-cyan-950/30 border border-cyan-500/30 rounded-lg select-none">
+                          <span className="w-1.5 h-1.5 rounded-full bg-cyan-400"></span>
+                          <span>Vocab Lab Linked ({activeWordsList.length} words)</span>
+                        </div>
+                      )}
                     </div>
 
                     {/* Story Passage Content */}
                     <div className="min-h-[150px] mb-6">
                       {renderPassage()}
                     </div>
+                    </>
+                    )}
                   </div>
 
-                  {/* Right Column: Q&A Section */}
+                  {/* Bottom: Q&A Section */}
                   <div className="theme-card rounded-2xl p-6 flex flex-col w-full shadow-xl border theme-border">
                     <div className="flex flex-wrap items-center justify-between gap-3 mb-2">
                       <h3 className="text-lg font-bold theme-text flex items-center gap-2 font-mono">
@@ -2609,7 +2912,7 @@ export const GamePlay: React.FC<Props> = ({
                   
                   <div className="w-full space-y-3 mb-8">
                     <div className="bg-yellow-950/20 border border-yellow-500/30 text-yellow-400 px-4 py-3 rounded-xl font-bold text-xs flex items-center justify-center gap-2">
-                      ⚡ +{earnedStageCoins} 探险经验 (EXP) {earnedStageCoins < 100 && '(复习奖励)'}
+                      ⚡ +{earnedStageCoins} Quest EXP {earnedStageCoins < 100 && '(Review Reward)'}
                     </div>
                     <div className="bg-cyan-950/20 border border-cyan-500/30 text-cyan-400 px-4 py-3 rounded-xl font-bold text-xs flex items-center justify-center gap-2">
                       ⛵ Acoustic Capture Decryption Unlocked
@@ -2649,10 +2952,10 @@ export const GamePlay: React.FC<Props> = ({
                           <span className="text-3xl sm:text-4xl text-purple-400 animate-pulse">👾</span>
                         </div>
                         <h3 className="text-xl sm:text-3xl font-black theme-text tracking-wide font-mono bg-gradient-to-r from-cyan-400 via-teal-300 to-purple-400 bg-clip-text text-transparent text-balance">
-                          STORY CHASE 打字追逐大冒险
+                          STORY CHASE
                         </h3>
                         <p className="text-xs sm:text-sm text-slate-300 max-w-lg font-mono leading-relaxed">
-                          根据故事原文逐字符打字。打对变绿，打错标红！怪兽在后方持续追击，被追上会扣除一颗生命心。请选择探险难度：
+                          Type the story text character by character. Green is correct, red is an error! The monster is chasing you—don't let it catch you. Choose difficulty:
                         </p>
                       </div>
 
@@ -2690,18 +2993,18 @@ export const GamePlay: React.FC<Props> = ({
                         👾
                       </div>
                       <h3 className="text-2xl font-black text-rose-400 font-mono tracking-wide relative z-10 text-balance">
-                        逃跑失败！被怪兽追上了
+                        CAUGHT BY THE MONSTER!
                       </h3>
                       <p className="text-xs text-slate-300 font-mono leading-relaxed relative z-10">
-                        怪兽抓住了你的小探险家。不要灰心，深呼吸多练习指法，重新选择速度再战！
+                        The monster caught your explorer! Take a breath, practice typing, and try again!
                       </p>
                       <button
                         type="button"
                         onClick={() => setChaseSelectedSpeed(null)}
-                        aria-label="重新选择难度再试一次"
+                        aria-label="Retry Chase"
                         className="w-full mt-4 py-3.5 px-6 rounded-xl bg-gradient-to-r from-rose-500 via-amber-500 to-rose-500 hover:opacity-95 text-slate-950 font-mono font-black text-xs uppercase tracking-widest shadow-lg hover:scale-103 active:scale-98 transition-all cursor-pointer shadow-rose-500/20 relative z-10 focus-visible:ring-2 focus-visible:ring-rose-400 focus-visible:outline-none"
                       >
-                        🔄 重新选择难度再试一次 (Retry Chase)
+                        🔄 Retry Chase
                       </button>
                     </div>
                   ) : (
@@ -2741,8 +3044,8 @@ export const GamePlay: React.FC<Props> = ({
                             </span>
                             <span>
                               {chaseMonsterWaiting
-                                ? `⏳ 怪兽即将在 ${Math.ceil(chaseWaitCountdown)}s 后出现...`
-                                : `怪兽追击中 (距离: ${Math.max(0, chaseCorrectLen - Math.floor(chaseMonsterPos))} 字符)`}
+                                ? `⏳ Monster arrives in ${Math.ceil(chaseWaitCountdown)}s...`
+                                : `Monster Chasing (Dist: ${Math.max(0, chaseCorrectLen - Math.floor(chaseMonsterPos))} chars)`}
                             </span>
                           </div>
 
@@ -2755,14 +3058,14 @@ export const GamePlay: React.FC<Props> = ({
                                   const buddyLoc = getLineAndColForGlobalChar(chaseCorrectLen, currentChasePage.lines);
                                   const isRoof = buddyLoc.lineIndex === currentChasePage.lines.length - 1;
                                   return isRoof
-                                    ? `${buddyLoc.lineIndex + 1}F ROOF // 观星天台 👑`
-                                    : `${buddyLoc.lineIndex + 1}F // 城堡${['地牢大门 🏰', '魔法长廊 🪟', '骑士大厅 ⚔️', '藏书阁 📜'][buddyLoc.lineIndex % 4]}`;
+                                    ? `${buddyLoc.lineIndex + 1}F ROOF // Stargaze Deck 👑`
+                                    : `${buddyLoc.lineIndex + 1}F // Castle ${['Dungeon Gate 🏰', 'Magic Corridor 🪟', 'Knight Hall ⚔️', 'Library 📜'][buddyLoc.lineIndex % 4]}`;
                                 })()}
                               </span>
                             </span>
 
                             <span className="text-[11px] px-2.5 py-1 rounded-lg font-bold bg-slate-800 text-cyan-300 border border-slate-700 shadow-sm">
-                              {chaseSelectedSpeed === 'slow' ? '🐢 慢速' : chaseSelectedSpeed === 'medium' ? '🦊 中速' : '⚡ 快速'}
+                              {chaseSelectedSpeed === 'slow' ? '🐢 Slow' : chaseSelectedSpeed === 'medium' ? '🦊 Medium' : '⚡ Fast'}
                             </span>
 
                             <button
@@ -2772,11 +3075,11 @@ export const GamePlay: React.FC<Props> = ({
                                 setChaseConsecutiveErrors(0);
                                 chaseInputRef.current?.focus();
                               }}
-                              aria-label="重填当前页面"
+                              aria-label="Reset page"
                               className="px-2.5 py-1 rounded-lg text-xs font-bold transition-colors bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 flex items-center gap-1 cursor-pointer font-mono shadow-sm hover:scale-102 focus-visible:ring-2 focus-visible:ring-cyan-400 focus-visible:outline-none"
-                              title="重填当前页面"
+                              title="Reset page"
                             >
-                              🗑️ 重填
+                              🗑️ Reset
                             </button>
                             <span className="text-xs text-slate-400 font-mono font-bold uppercase tracking-widest tabular-nums pl-1">
                               PAGE {chasePageIdx + 1}/{storyChasePages.length}
@@ -2862,7 +3165,7 @@ export const GamePlay: React.FC<Props> = ({
                       {/* Consecutive Error Warning Banner */}
                       {chaseConsecutiveErrors >= (chaseGameSettings.consecutive_error_limit || 10) - 2 && (
                         <div role="alert" aria-live="polite" className="bg-rose-950/80 border border-rose-500/60 px-4 py-2.5 mx-6 rounded-xl text-center text-xs font-mono text-rose-300 font-bold animate-pulse shadow-md shadow-rose-500/20 tabular-nums">
-                          ⚠️ 连续错字达到上限 ({chaseConsecutiveErrors} / {chaseGameSettings.consecutive_error_limit || 10})！请按退格键删除错字后继续打字。
+                          ⚠️ Error limit reached ({chaseConsecutiveErrors} / {chaseGameSettings.consecutive_error_limit || 10})! Press Backspace to fix.
                         </div>
                       )}
 
@@ -2879,11 +3182,11 @@ export const GamePlay: React.FC<Props> = ({
 
                         <div className="text-xs text-amber-200 flex items-center gap-2 w-full sm:w-auto relative z-10">
                           <span className="font-black text-amber-300 shrink-0 bg-red-950/80 border border-orange-500/60 px-2.5 py-1 rounded-lg shadow-md flex items-center gap-1">
-                            <span>🌋 熔岩火海</span>
-                            <span className="text-orange-400">| 地牢底部</span>
+                            <span>🌋 Molten Lava</span>
+                            <span className="text-orange-400">| Dungeon Floor</span>
                           </span>
                           <span className="text-slate-300 text-[11px] hidden sm:inline">
-                            底层翻滚着滚烫岩浆！快速打字沿石阶一路爬上 5 楼天台脱出！
+                            Boiling lava below! Type fast to climb to the rooftop and escape!
                           </span>
                         </div>
 
@@ -2905,7 +3208,7 @@ export const GamePlay: React.FC<Props> = ({
                                     : 'bg-slate-900/90 border-slate-800 text-slate-500'
                                 }`}
                               >
-                                {isPassed ? '✓' : isLast ? '🏆 终点' : `🚪 关卡 ${idx + 1}`}
+                                {isPassed ? '✓' : isLast ? '🏆 Goal' : `🚪 Room ${idx + 1}`}
                               </div>
                             );
                           })}
@@ -2941,35 +3244,35 @@ export const GamePlay: React.FC<Props> = ({
                     🎉 🏃💨 💨
                   </div>
                   <h2 className="text-2xl sm:text-3xl font-black text-amber-400 mb-2 tracking-wider font-mono relative z-10 text-balance">
-                    CHASE ESCAPED! 逃脱成功
+                    CHASE ESCAPED!
                   </h2>
                   <p className="text-slate-300 text-xs mb-6 font-mono leading-relaxed relative z-10">
-                    你成功甩开了所有追击怪兽，完成了故事 **{island.name}** 的全部打字挑战！
+                    You outran all monsters and completed the typing challenge for **{island.name}**!
                   </p>
 
                   {/* EXP & Reward Breakdown */}
                   <div className="w-full space-y-2.5 mb-6 font-mono relative z-10 tabular-nums">
                     <div className="bg-amber-950/40 border border-amber-500/40 text-amber-300 px-4 py-2.5 rounded-xl font-bold text-xs flex justify-between items-center shadow-sm">
-                      <span>🎯 基础通关经验:</span>
+                      <span>🎯 Clear EXP:</span>
                       <span className="font-extrabold text-sm">+{chaseGameSettings.coins_completion || 150} EXP</span>
                     </div>
 
                     {chaseSelectedSpeed === 'fast' && (
                       <div className="bg-purple-950/40 border border-purple-500/40 text-purple-300 px-4 py-2.5 rounded-xl font-bold text-xs flex justify-between items-center shadow-sm">
-                        <span>⚡ 极速冲刺经验:</span>
+                        <span>⚡ Speed Bonus EXP:</span>
                         <span className="font-extrabold text-sm">+{chaseGameSettings.coins_speed_bonus || 50} EXP</span>
                       </div>
                     )}
 
                     {chaseHearts === (chaseGameSettings.initial_hearts || 3) && (
                       <div className="bg-rose-950/40 border border-rose-500/40 text-rose-300 px-4 py-2.5 rounded-xl font-bold text-xs flex justify-between items-center shadow-sm">
-                        <span>💖 满血无伤逃脱经验:</span>
+                        <span>💖 Full Health Bonus:</span>
                         <span className="font-extrabold text-sm">+{chaseGameSettings.coins_full_hearts_bonus || 30} EXP</span>
                       </div>
                     )}
 
                     <div className="bg-gradient-to-r from-amber-500/25 to-emerald-500/25 border border-amber-400/70 text-amber-200 px-4 py-3 rounded-xl font-black text-sm flex justify-between items-center shadow-lg">
-                      <span>✨ 总计获得经验:</span>
+                      <span>✨ Total EXP:</span>
                       <span className="text-base text-cyan-300 font-mono">⚡ +{chaseEarnedCoins} EXP</span>
                     </div>
                   </div>
@@ -2980,7 +3283,7 @@ export const GamePlay: React.FC<Props> = ({
                     onClick={onBack}
                     disabled={isSaving}
                   >
-                    🗺️ 返回故事探险地图 (Return to Map)
+                    🗺️ Back to Story Map
                   </button>
                 </div>
               )}
@@ -2990,56 +3293,7 @@ export const GamePlay: React.FC<Props> = ({
                 <div className="w-full max-w-5xl mx-auto bg-slate-900/50 backdrop-blur-md border border-slate-800 rounded-2xl p-3 sm:p-5 shadow-2xl flex flex-col relative overflow-hidden transition-all duration-300">
                   <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-amber-500 via-cyan-500 to-amber-500"></div>
 
-                  {matchingSubMode === null ? (
-                    /* Mode Selection Screen on Entry */
-                    <div className="w-full max-w-2xl mx-auto my-2 p-5 sm:p-6 bg-slate-950/90 border border-slate-800 rounded-2xl shadow-2xl flex flex-col items-center gap-4 animate-fade-in text-center">
-                      <div className="flex flex-col items-center gap-1.5">
-                        <span className="text-3xl sm:text-4xl">🔤</span>
-                        <h3 className="text-lg sm:text-xl font-black theme-text tracking-wide">
-                          请选择 Word Matching 练习模式
-                        </h3>
-                        <p className="text-xs text-slate-400 max-w-md">
-                          根据当前的口语学习需求，选择适合的练习模式开始挑战：
-                        </p>
-                      </div>
-
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full mt-1">
-                        {/* Reading Mode Card */}
-                        <button
-                          type="button"
-                          onClick={() => handleSwitchSubMode('reading')}
-                          className="group p-4 sm:p-5 rounded-xl bg-gradient-to-b from-slate-900 to-slate-950 border-2 border-cyan-500/40 hover:border-cyan-400 hover:shadow-[0_0_20px_rgba(34,211,238,0.25)] transition-all flex flex-col items-center text-center gap-2 cursor-pointer active:scale-95"
-                        >
-                          <span className="text-3xl group-hover:scale-110 transition-transform">📖</span>
-                          <div className="font-black text-base text-cyan-300">阅读模式</div>
-                          <div className="text-2xs sm:text-xs text-slate-400 leading-relaxed min-h-[40px]">
-                            显示英文原句与中文释义，对着麦克风自由朗读跟读，实时高亮读准的单词与发音纠音。
-                          </div>
-                          <span className="mt-1 text-xs font-mono font-bold px-3 py-1.5 rounded-lg bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 group-hover:bg-cyan-500 group-hover:text-slate-950 transition-colors">
-                            进入阅读模式 ▶
-                          </span>
-                        </button>
-
-                        {/* Testing Mode Card */}
-                        <button
-                          type="button"
-                          onClick={() => handleSwitchSubMode('testing')}
-                          className="group p-4 sm:p-5 rounded-xl bg-gradient-to-b from-slate-900 to-slate-950 border-2 border-purple-500/40 hover:border-purple-400 hover:shadow-[0_0_20px_rgba(168,85,247,0.25)] transition-all flex flex-col items-center text-center gap-2 cursor-pointer active:scale-95"
-                        >
-                          <span className="text-3xl group-hover:scale-110 transition-transform">📝</span>
-                          <div className="font-black text-base text-purple-300">测试模式</div>
-                          <div className="text-2xs sm:text-xs text-slate-400 leading-relaxed min-h-[40px]">
-                            仅显示中文释义，挑战背诵英文句子！提供发音得分与挖空填词反馈，全部读准方可通关。
-                          </div>
-                          <span className="mt-1 text-xs font-mono font-bold px-3 py-1.5 rounded-lg bg-purple-500/20 text-purple-300 border border-purple-500/40 group-hover:bg-purple-600 group-hover:text-white transition-colors">
-                            进入测试模式 ▶
-                          </span>
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    <>
-                      {/* Header Control Bar */}
+                  {/* Header Control Bar */}
                       <div className="flex flex-wrap justify-between items-center gap-2 mb-2 border-b border-slate-800/80 pb-2">
                         <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
                           <span className="bg-amber-950 border border-amber-500/40 text-amber-400 text-[10px] font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wider">
@@ -3057,7 +3311,7 @@ export const GamePlay: React.FC<Props> = ({
                                   : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900/60'
                               }`}
                             >
-                              <span>📖 阅读模式</span>
+                              <span>📖 Read Aloud</span>
                             </button>
                             <button
                               type="button"
@@ -3068,7 +3322,7 @@ export const GamePlay: React.FC<Props> = ({
                                   : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900/60'
                               }`}
                             >
-                              <span>📝 测试模式</span>
+                              <span>🎯 Challenge</span>
                             </button>
                           </div>
 
@@ -3082,17 +3336,21 @@ export const GamePlay: React.FC<Props> = ({
                                   ? 'bg-amber-500/20 text-amber-300 border-amber-400 shadow-md font-black'
                                   : 'bg-purple-950/70 hover:bg-purple-900/80 text-purple-300 border-purple-500/40 hover:border-purple-400'
                               }`}
-                              title={showMatchingIllustration ? '收起绘本插图' : '展开本页绘本插图'}
+                              title={showMatchingIllustration ? 'Hide illustration' : 'Show illustration'}
                             >
                               <span>🖼️</span>
-                              <span>{showMatchingIllustration ? '收起插图' : `插图 (P.${currentSentencePage})`}</span>
+                              <span>{showMatchingIllustration ? 'Hide Art' : `Art (P.${currentSentencePage})`}</span>
                             </button>
                           )}
                         </div>
 
                         <div className="flex items-center gap-2">
-                          <span className="text-xs text-slate-400 font-mono font-bold uppercase tracking-widest bg-slate-950 px-2.5 py-1 rounded-lg border border-slate-800">
-                            Sentence {translationSentenceIdx + 1} / {translationSentences.length}
+                          <span className="text-xs text-slate-400 font-mono font-bold uppercase tracking-widest bg-slate-950 px-2.5 py-1 rounded-lg border border-slate-800 flex items-center gap-2">
+                            <span>Sentence {translationSentenceIdx + 1} / {totalSentencesCount}</span>
+                            <span className="text-slate-600">|</span>
+                            <span className={isAllSentencesPassed ? "text-emerald-400 font-black" : "text-amber-400 font-black"}>
+                              {completedSentencesCount}/{totalSentencesCount} Done
+                            </span>
                           </span>
                         </div>
                       </div>
@@ -3106,7 +3364,7 @@ export const GamePlay: React.FC<Props> = ({
                           {translationSentences.map((_, idx) => {
                             const isCurrent = idx === translationSentenceIdx;
                             const stat = translationStats[idx];
-                            const hasPassed = stat && stat.successCount > 0;
+                            const hasPassed = (stat && stat.successCount > 0) || (idx === translationSentenceIdx && isAllMatched);
                             return (
                               <button
                                 key={idx}
@@ -3122,7 +3380,7 @@ export const GamePlay: React.FC<Props> = ({
                                   setPassedEffect(false);
                                   stopListening();
                                 }}
-                                aria-label={`切换到第 ${idx + 1} 句`}
+                                aria-label={`Switch to sentence ${idx + 1}`}
                                 className={`shrink-0 px-2.5 py-1 rounded-lg text-xs font-mono font-bold tabular-nums transition-colors border flex items-center gap-1 cursor-pointer focus-visible:ring-2 focus-visible:ring-cyan-400 focus-visible:outline-none ${
                                   isCurrent
                                     ? 'bg-amber-500 text-slate-950 border-amber-400 shadow-md scale-105 font-black'
@@ -3136,7 +3394,7 @@ export const GamePlay: React.FC<Props> = ({
                                 <span>{isCurrent ? `▶ S${idx + 1}` : hasPassed ? `✓ S${idx + 1}` : `S${idx + 1}`}</span>
                                 {hasPassed && (
                                   <span className="text-[9px] bg-black/40 px-1 py-0.2 rounded-full font-sans font-bold text-amber-300 tabular-nums">
-                                    x{stat.successCount}
+                                    x{stat?.successCount ?? 1}
                                   </span>
                                 )}
                               </button>
@@ -3176,7 +3434,7 @@ export const GamePlay: React.FC<Props> = ({
                           {matchingSubMode === 'reading' ? (
                             <div className="bg-slate-950/90 border border-slate-800 p-3 sm:p-4 rounded-xl text-center shadow-inner relative group flex flex-col justify-center items-center">
                               <div className="text-[10px] font-mono text-cyan-400 font-bold tracking-widest uppercase mb-1">
-                                ENGLISH ORIGINAL SENTENCE (英文原句)
+                                ENGLISH ORIGINAL SENTENCE
                               </div>
                               <div className="flex items-center justify-center gap-2 flex-wrap my-0.5">
                                 <p className="text-lg sm:text-xl font-bold theme-text leading-snug tracking-wide font-mono text-balance">
@@ -3185,18 +3443,18 @@ export const GamePlay: React.FC<Props> = ({
                                 <button
                                   type="button"
                                   onClick={handlePlayTranslationEngHint}
-                                  title="点击播放英文原句发音 🔊"
-                                  aria-label="播放英文原句发音"
+                                  title="Listen to English sentence 🔊"
+                                  aria-label="Listen to English sentence"
                                   className="px-2 py-0.5 rounded-lg bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 hover:border-cyan-400 transition-colors cursor-pointer select-none active:scale-95 shrink-0 flex items-center gap-1 text-xs font-bold font-mono focus-visible:ring-2 focus-visible:ring-cyan-400 focus-visible:outline-none"
                                 >
                                   <span className="text-sm">🔊</span>
-                                  <span>英文原声</span>
+                                  <span>English</span>
                                 </button>
                                 {currentIllustrationUrl && (
                                   <button
                                     type="button"
                                     onClick={() => setShowMatchingIllustration(prev => !prev)}
-                                    title={showMatchingIllustration ? '点击收起绘本插图' : '点击查看本页绘本插图'}
+                                    title={showMatchingIllustration ? 'Hide illustration' : 'Show illustration'}
                                     className={`px-2 py-0.5 rounded-lg transition-colors cursor-pointer select-none active:scale-95 shrink-0 flex items-center gap-1 text-xs font-bold font-mono border ${
                                       showMatchingIllustration
                                         ? 'bg-amber-500/20 text-amber-300 border-amber-400'
@@ -3204,7 +3462,7 @@ export const GamePlay: React.FC<Props> = ({
                                     }`}
                                   >
                                     <span>🖼️</span>
-                                    <span>{showMatchingIllustration ? '收起插图' : `插图 (P.${currentSentencePage})`}</span>
+                                    <span>{showMatchingIllustration ? 'Hide Art' : `Art (P.${currentSentencePage})`}</span>
                                   </button>
                                 )}
                               </div>
@@ -3215,19 +3473,19 @@ export const GamePlay: React.FC<Props> = ({
                                 <button
                                   type="button"
                                   onClick={() => playChineseTTS(targetZhTranslation)}
-                                  title="点击播放粤语释义朗读 🔊"
-                                  aria-label="播放粤语释义朗读"
+                                  title="Listen in Cantonese 🔊"
+                                  aria-label="Listen in Cantonese"
                                   className="px-2 py-0.5 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 hover:border-amber-400 transition-colors text-2xs sm:text-xs font-bold font-sans flex items-center gap-1 cursor-pointer select-none active:scale-95 shrink-0 focus-visible:ring-2 focus-visible:ring-amber-400 focus-visible:outline-none"
                                 >
                                   <span>🔊</span>
-                                  <span>粤语朗读</span>
+                                  <span>Cantonese</span>
                                 </button>
                               </div>
                             </div>
                           ) : (
                             <div className="bg-slate-950/90 border border-slate-800 p-3 sm:p-4 rounded-xl text-center shadow-inner relative group flex flex-col justify-center items-center">
                               <div className="text-[10px] font-mono text-amber-500/80 font-bold tracking-widest uppercase mb-1">
-                                CHINESE SOURCE TEXT (中文释义)
+                                CHINESE MEANING
                               </div>
                               <div className="flex items-center justify-center gap-2 flex-wrap my-0.5">
                                 <p className="text-lg sm:text-xl font-bold theme-text leading-snug tracking-wide text-balance">
@@ -3236,18 +3494,18 @@ export const GamePlay: React.FC<Props> = ({
                                 <button
                                   type="button"
                                   onClick={() => playChineseTTS(targetZhTranslation)}
-                                  title="点击播放粤语释义朗读 🔊"
-                                  aria-label="播放粤语释义朗读"
+                                  title="Listen in Cantonese 🔊"
+                                  aria-label="Listen in Cantonese"
                                   className="px-2.5 py-1 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 hover:border-amber-400 transition-colors cursor-pointer select-none active:scale-95 shrink-0 flex items-center gap-1 text-xs font-bold focus-visible:ring-2 focus-visible:ring-amber-400 focus-visible:outline-none"
                                 >
                                   <span className="text-sm">🔊</span>
-                                  <span>粤语朗读</span>
+                                  <span>Cantonese</span>
                                 </button>
                                 {currentIllustrationUrl && (
                                   <button
                                     type="button"
                                     onClick={() => setShowMatchingIllustration(prev => !prev)}
-                                    title={showMatchingIllustration ? '点击收起绘本插图' : '点击查看本页绘本插图'}
+                                    title={showMatchingIllustration ? 'Hide illustration' : 'Show illustration'}
                                     className={`px-2 py-0.5 rounded-lg transition-colors cursor-pointer select-none active:scale-95 shrink-0 flex items-center gap-1 text-xs font-bold font-mono border ${
                                       showMatchingIllustration
                                         ? 'bg-amber-500/20 text-amber-300 border-amber-400'
@@ -3255,7 +3513,7 @@ export const GamePlay: React.FC<Props> = ({
                                     }`}
                                   >
                                     <span>🖼️</span>
-                                    <span>{showMatchingIllustration ? '收起插图' : `插图 (P.${currentSentencePage})`}</span>
+                                    <span>{showMatchingIllustration ? 'Hide Art' : `Art (P.${currentSentencePage})`}</span>
                                   </button>
                                 )}
                               </div>
@@ -3267,15 +3525,15 @@ export const GamePlay: React.FC<Props> = ({
                             <div className="bg-slate-950/90 border border-cyan-500/30 p-2.5 rounded-xl shadow-inner flex flex-col justify-between items-center relative animate-fade-in">
                               <div className="w-full flex items-center justify-between pb-1 px-1 border-b border-slate-800/80 mb-1">
                                 <span className="text-[11px] font-mono font-bold text-cyan-300 flex items-center gap-1.5">
-                                  <span>🎨</span> <span>第 {currentSentencePage} 页绘本插图</span>
+                                  <span>🎨</span> <span>Page {currentSentencePage} Illustration</span>
                                 </span>
                                 <button
                                   type="button"
                                   onClick={() => setShowMatchingIllustration(false)}
                                   className="text-[10px] text-slate-400 hover:text-rose-300 px-2 py-0.5 rounded bg-slate-900 border border-slate-700 hover:border-rose-500/40 font-mono transition-colors cursor-pointer"
-                                  title="关闭插图"
+                                  title="Close"
                                 >
-                                  ✕ 收起
+                                  ✕ Close
                                 </button>
                               </div>
                               <StoryIllustration
@@ -3294,7 +3552,7 @@ export const GamePlay: React.FC<Props> = ({
                             <button
                               type="button"
                               onClick={isListening ? stopListening : startListening}
-                              aria-label={isListening ? "停止语音录音 (Stop listening)" : "点击开始朗读英语 (Tap to speak)"}
+                              aria-label={isListening ? "Stop listening" : "Tap to speak"}
                               aria-pressed={isListening}
                               className={`relative group px-6 py-2.5 sm:py-3 rounded-xl font-black text-xs sm:text-sm uppercase tracking-wider transition-all duration-200 flex items-center justify-center gap-2 cursor-pointer select-none shadow-lg focus-visible:ring-2 focus-visible:ring-cyan-400 focus-visible:outline-none ${
                                 isListening
@@ -3308,23 +3566,23 @@ export const GamePlay: React.FC<Props> = ({
                                     <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75"></span>
                                     <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-white"></span>
                                   </span>
-                                  <span>🔴 正在倾听… 请对着 iPad 朗读 (点击停止)</span>
+                                  <span>🔴 Listening... Speak clearly (Tap to stop)</span>
                                 </>
                               ) : (
                                 <>
                                   <span className="text-lg">🎙️</span>
-                                  <span>点击开始读英语 (Tap to Speak)</span>
+                                  <span>Tap to Speak</span>
                                 </>
                               )}
                             </button>
                           ) : (
                             <div className="text-xs text-amber-300 bg-amber-950/50 border border-amber-500/40 p-3 rounded-xl max-w-xl text-left space-y-1 shadow-inner">
                               <div className="font-bold flex items-center gap-1.5 text-amber-400">
-                                <span>⚠️ 当前环境未开启屏幕大麦克风（Web 语音接口）</span>
+                                <span>⚠️ Web Speech API Not Enabled</span>
                               </div>
                               <div className="text-[11px] text-slate-300 leading-relaxed space-y-0.5">
-                                <p>• <strong>最简离线方案</strong>：点击下方输入框唤起 iPad 键盘，点击键盘右下角的 <strong>🎙️ 自带麦克风</strong> 进行朗读听写（苹果系统离线听写，断网亦支持逐词比对！）。</p>
-                                <p>• <strong>开启大麦克风</strong>：需使用 <strong>https://</strong> 地址访问本站并在 iPad【设置 ➔ Safari ➔ 麦克风】中设为“允许”。</p>
+                                <p>• <strong>Offline Tip</strong>: Tap the input box below to open the iPad keyboard, then tap the keyboard <strong>🎙️ Mic</strong> for offline speech dictation.</p>
+                                <p>• <strong>Web Mic</strong>: Requires <strong>https://</strong> and Safari Microphone permission set to Allow.</p>
                               </div>
                             </div>
                           )}
@@ -3332,7 +3590,7 @@ export const GamePlay: React.FC<Props> = ({
                           {/* Spoken real-time stream feedback */}
                           {spokenTranscript && (
                             <div className="mt-1.5 px-3 py-1 rounded-lg bg-slate-950 border border-cyan-500/30 text-xs font-mono text-cyan-300 flex items-center gap-2 max-w-xl text-center shadow-inner">
-                              <span className="text-slate-400 shrink-0">🗣️ 识别到:</span>
+                              <span className="text-slate-400 shrink-0">🗣️ Heard:</span>
                               <span className="font-bold text-slate-100 tracking-wide break-all">{spokenTranscript}</span>
                             </div>
                           )}
@@ -3347,7 +3605,7 @@ export const GamePlay: React.FC<Props> = ({
                           {matchingSubMode === 'reading' && (activeInputText.length > 0 || isListening) && (
                             <div className="w-full flex flex-col items-center bg-slate-950/90 border border-slate-800 rounded-xl p-3 sm:p-3.5 shadow-inner animate-fade-in mt-1.5 max-w-3xl">
                               <div className="text-[10px] font-mono text-cyan-400 font-bold tracking-widest uppercase mb-1.5 text-center">
-                                ENGLISH SENTENCE STRUCTURE (点击单词可单独听发音)
+                                ENGLISH SENTENCE STRUCTURE (Tap word to listen)
                               </div>
 
                               <div className="flex flex-wrap items-center justify-center gap-1.5 sm:gap-2 my-1 max-w-3xl">
@@ -3359,7 +3617,7 @@ export const GamePlay: React.FC<Props> = ({
                                       key={token.id}
                                       type="button"
                                       onClick={() => playTTS(token.clean)}
-                                      title="点击单听发音 🔊"
+                                      title="Listen to word 🔊"
                                       className={`group px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-lg border text-sm sm:text-base font-bold font-mono transition-all duration-200 flex items-center gap-1 cursor-pointer select-none active:scale-95 ${
                                         isMatched
                                           ? 'bg-emerald-500/20 border-emerald-400/80 text-emerald-300 shadow-[0_0_10px_rgba(52,211,153,0.35)] scale-102'
@@ -3377,7 +3635,7 @@ export const GamePlay: React.FC<Props> = ({
                                         </span>
                                       ) : isProblematic ? (
                                         <span className="text-2xs bg-rose-500/30 text-rose-300 rounded-full px-1 py-0.2 ml-0.5">
-                                          ⚠️ 纠音
+                                          ⚠️ Retry
                                         </span>
                                       ) : (
                                         <span className="text-[9px] text-slate-500 group-hover:text-cyan-300 ml-0.5 transition-colors">
@@ -3390,7 +3648,7 @@ export const GamePlay: React.FC<Props> = ({
                               </div>
 
                               <div className="text-center text-[10px] text-slate-400 font-mono mt-1">
-                                💡 提示：点击任意单词卡片可单听发音 🔊，读准的单词自动点亮为绿色 ✓
+                                💡 Tip: Tap any word card to hear audio 🔊. Correct words turn green ✓
                               </div>
                             </div>
                           )}
@@ -3406,7 +3664,7 @@ export const GamePlay: React.FC<Props> = ({
                                 {/* Score & Progress Header */}
                                 <div className="flex flex-wrap items-center justify-between w-full border-b border-slate-800 pb-1.5 px-1 gap-2">
                                   <div className="flex items-center gap-2">
-                                    <span className="text-xs font-mono text-slate-400 font-bold uppercase tracking-wider">🎯 本次发音得分:</span>
+                                    <span className="text-xs font-mono text-slate-400 font-bold uppercase tracking-wider">🎯 Pronunciation Score:</span>
                                     <span className={`px-2 py-0.5 rounded font-mono font-black text-xs sm:text-sm border ${
                                       scorePct >= 80
                                         ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
@@ -3414,18 +3672,18 @@ export const GamePlay: React.FC<Props> = ({
                                         ? 'bg-amber-500/10 border-amber-500/30 text-amber-300'
                                         : 'bg-rose-500/10 border-rose-500/30 text-rose-300'
                                     }`}>
-                                      {scorePct}分
+                                      {scorePct}%
                                     </span>
                                   </div>
                                   <div className="text-xs font-mono text-slate-400">
-                                    准确命中: <span className="text-emerald-400 font-bold">{matchedCount}</span> / <span className="text-slate-300 font-bold">{validTokens.length}</span> 词
+                                    Matched: <span className="text-emerald-400 font-bold">{matchedCount}</span> / <span className="text-slate-300 font-bold">{validTokens.length}</span> words
                                   </div>
                                 </div>
 
                                 {/* Cloze / Blank Sentence Display */}
                                 <div className="w-full bg-slate-900/90 border border-slate-800 rounded-lg p-2.5 text-center shadow-inner">
                                   <div className="text-[10px] font-mono text-slate-500 uppercase tracking-widest font-bold mb-1.5">
-                                    SENTENCE RECOGNITION (挖空部分为读音有误或未读出的单词)
+                                    SENTENCE RECOGNITION (Blanks indicate words needing improvement)
                                   </div>
                                   <div className="text-sm sm:text-base font-mono leading-relaxed flex flex-wrap items-center justify-center gap-x-1.5 gap-y-1.5">
                                     {targetTokens.map((token, idx) => {
@@ -3453,7 +3711,7 @@ export const GamePlay: React.FC<Props> = ({
 
                                 <div className="text-[10px] text-slate-400 font-mono text-center flex items-center gap-1">
                                   <span>💡</span>
-                                  <span>提示：将挖空 <strong>______</strong> 处的单词读准，点击大麦克风重新朗读整句！</span>
+                                  <span>Tip: Speak the <strong>______</strong> blank words clearly, then tap mic to re-read the full sentence!</span>
                                 </div>
                               </div>
                             );
@@ -3466,15 +3724,19 @@ export const GamePlay: React.FC<Props> = ({
                                 <span className="text-2xl">🎉</span>
                                 <div>
                                   <div className="font-black text-sm sm:text-base text-emerald-200">
-                                    PERFECT! 本句全部单词发音正确！
+                                    PERFECT! All words pronounced correctly!
                                   </div>
                                   <div className="text-[11px] text-emerald-400/90 font-mono">
-                                    请点击右侧按钮进入下一句。
+                                    {isAllSentencesPassed
+                                      ? '🎉 全关所有句子已全部朗读完成！点击通关按钮领取奖励。'
+                                      : translationSentenceIdx < totalSentencesCount - 1
+                                      ? 'Tap Next Sentence to continue.'
+                                      : `本句已达标！尚有 ${totalSentencesCount - completedSentencesCount} 句未完成，需全部读完方可通关。`}
                                   </div>
                                 </div>
                               </div>
 
-                              {translationSentenceIdx < translationSentences.length - 1 ? (
+                              {translationSentenceIdx < totalSentencesCount - 1 ? (
                                 <button
                                   type="button"
                                   onClick={handleNextSentence}
@@ -3482,51 +3744,67 @@ export const GamePlay: React.FC<Props> = ({
                                 >
                                   Next Sentence ▶
                                 </button>
-                              ) : (
+                              ) : isAllSentencesPassed ? (
                                 <button
                                   type="button"
                                   onClick={handleCompleteTranslation}
                                   disabled={isSaving}
-                                  className="shrink-0 px-4 py-2 rounded-xl font-black text-xs font-mono uppercase tracking-wider bg-cyan-400 hover:bg-cyan-300 text-slate-950 shadow transition-all cursor-pointer hover:scale-102 active:scale-95"
+                                  className="shrink-0 px-4 py-2 rounded-xl font-black text-xs font-mono uppercase tracking-wider bg-cyan-400 hover:bg-cyan-300 text-slate-950 shadow transition-all cursor-pointer hover:scale-102 active:scale-95 animate-pulse"
                                 >
-                                  {isSaving ? 'Saving...' : '🎉 完成关卡 (+100 🪙)'}
+                                  {isSaving ? 'Saving...' : '🎉 Clear Stage (+100 🪙)'}
+                                </button>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (uncompletedSentenceIndices.length > 0) {
+                                      setTranslationSentenceIdx(uncompletedSentenceIndices[0]);
+                                      setTranslationTypedText('');
+                                      setSpokenTranscript('');
+                                      setSpeechError(null);
+                                      setPassedEffect(false);
+                                      stopListening();
+                                    }
+                                  }}
+                                  className="shrink-0 px-4 py-2 rounded-xl font-black text-xs font-mono uppercase tracking-wider bg-amber-400 hover:bg-amber-300 text-slate-950 shadow transition-all cursor-pointer hover:scale-102 active:scale-95 flex items-center gap-1.5"
+                                  title="点击跳转到尚未朗读完成的句子"
+                                >
+                                  <span>👉 前往 S{(uncompletedSentenceIndices[0] ?? 0) + 1} ({completedSentencesCount}/{totalSentencesCount})</span>
                                 </button>
                               )}
                             </div>
                           )}
                         </div>
 
-                        {/* Explicit iPad Keyboard / Manual Input Fallback (Testing Mode Only) */}
-                        {matchingSubMode === 'testing' && (
-                          <div className="w-full bg-slate-950/90 border border-slate-800 rounded-xl p-2 sm:p-2.5 flex flex-col gap-1">
-                            <div className="flex justify-between items-center text-[11px] font-mono text-slate-400">
-                              <span className="flex items-center gap-1">
-                                ⌨️ 键盘备用输入（支持 iPad 键盘自带麦克风听写）：
-                              </span>
-                              {(translationTypedText || spokenTranscript) && (
-                                <button
-                                  type="button"
-                                  onClick={handleTranslationTouchClear}
-                                  className="text-slate-400 hover:text-rose-400 flex items-center gap-1 cursor-pointer bg-transparent border-0 font-bold text-[11px]"
-                                >
-                                  🗑️ 清空重试
-                                </button>
-                              )}
-                            </div>
-                            <input
-                              ref={translationInputRef}
-                              type="text"
-                              className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-slate-100 placeholder-slate-500 font-mono text-xs sm:text-sm focus:outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400 transition-all shadow-inner"
-                              placeholder="点击此处在输入框打字..."
-                              value={translationTypedText}
-                              onChange={handleTranslationTypingChange}
-                              autoComplete="off"
-                              autoCapitalize="off"
-                              autoCorrect="off"
-                              spellCheck={false}
-                            />
+                        {/* Explicit iPad Keyboard / Manual Input Fallback (Both Read Aloud & Challenge) */}
+                        <div className="w-full bg-slate-950/90 border border-slate-800 rounded-xl p-2 sm:p-2.5 flex flex-col gap-1">
+                          <div className="flex justify-between items-center text-[11px] font-mono text-slate-400">
+                            <span className="flex items-center gap-1">
+                              ⌨️ Keyboard Input (Supports iPad mic dictation):
+                            </span>
+                            {(translationTypedText || spokenTranscript) && (
+                              <button
+                                type="button"
+                                onClick={handleTranslationTouchClear}
+                                className="text-slate-400 hover:text-rose-400 flex items-center gap-1 cursor-pointer bg-transparent border-0 font-bold text-[11px]"
+                              >
+                                🗑️ Clear
+                              </button>
+                            )}
                           </div>
-                        )}
+                          <input
+                            ref={translationInputRef}
+                            type="text"
+                            className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-slate-100 placeholder-slate-500 font-mono text-xs sm:text-sm focus:outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400 transition-all shadow-inner"
+                            placeholder="Type or dictate sentence here..."
+                            value={translationTypedText}
+                            onChange={handleTranslationTypingChange}
+                            autoComplete="off"
+                            autoCapitalize="off"
+                            autoCorrect="off"
+                            spellCheck={false}
+                          />
+                        </div>
 
                         {/* Next / Previous Sentence Navigation Controls */}
                         <div className="flex flex-wrap items-center justify-between gap-2.5 w-full pt-1">
@@ -3543,7 +3821,7 @@ export const GamePlay: React.FC<Props> = ({
                             ◀ Previous
                           </button>
 
-                          {translationSentenceIdx < translationSentences.length - 1 ? (
+                          {translationSentenceIdx < totalSentencesCount - 1 ? (
                             <button
                               type="button"
                               onClick={handleNextSentence}
@@ -3558,24 +3836,36 @@ export const GamePlay: React.FC<Props> = ({
                             >
                               Next Sentence ▶
                             </button>
+                          ) : isAllSentencesPassed ? (
+                            <button
+                              type="button"
+                              disabled={isSaving}
+                              onClick={handleCompleteTranslation}
+                              className="px-4 py-1.5 rounded-xl text-xs font-bold font-mono transition-all border flex items-center gap-1.5 shadow-md bg-gradient-to-r from-cyan-500 via-emerald-400 to-teal-400 text-slate-950 border-cyan-400 cursor-pointer font-black hover:scale-102 active:scale-95 animate-pulse"
+                            >
+                              {isSaving ? 'Saving...' : '🎉 Clear Stage (+100 🪙)'}
+                            </button>
                           ) : (
                             <button
                               type="button"
-                              disabled={matchingSubMode === 'testing' ? (!isAllMatched || isSaving) : isSaving}
-                              onClick={handleCompleteTranslation}
-                              className={`px-4 py-1.5 rounded-xl text-xs font-bold font-mono transition-all border flex items-center gap-1.5 shadow-md ${
-                                matchingSubMode === 'reading' || isAllMatched
-                                  ? 'bg-gradient-to-r from-cyan-500 via-emerald-400 to-teal-400 text-slate-950 border-cyan-400 cursor-pointer font-black'
-                                  : 'bg-slate-900/40 text-slate-600 border-slate-800/50 cursor-not-allowed opacity-50'
-                              }`}
+                              onClick={() => {
+                                if (uncompletedSentenceIndices.length > 0) {
+                                  setTranslationSentenceIdx(uncompletedSentenceIndices[0]);
+                                  setTranslationTypedText('');
+                                  setSpokenTranscript('');
+                                  setSpeechError(null);
+                                  setPassedEffect(false);
+                                  stopListening();
+                                }
+                              }}
+                              className="px-3.5 py-1.5 rounded-xl text-xs font-bold font-mono transition-all border flex items-center gap-1.5 shadow-md bg-slate-900 border-amber-500/40 text-amber-300 hover:bg-amber-950/40 cursor-pointer"
+                              title="点击跳转到尚未完成朗读的句子"
                             >
-                              {isSaving ? 'Saving...' : '🎉 完成关卡 (+100 🪙)'}
+                              <span>⚠️ 需完成全部句子 ({completedSentencesCount}/{totalSentencesCount})</span>
                             </button>
                           )}
                         </div>
                       </div>
-                    </>
-                  )}
                 </div>
               )}
 
@@ -3585,14 +3875,18 @@ export const GamePlay: React.FC<Props> = ({
                   <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-amber-500 via-cyan-500 to-amber-500"></div>
                   <div className="text-5xl mb-4 animate-bounce text-yellow-400 select-none">👑</div>
                   <div className="text-4xl mb-4 animate-pulse select-none">🚀💨</div>
-                  <h2 className="text-2xl font-black text-cyan-400 mb-3 tracking-wider">🎉 TRANSLATION MASTERED!</h2>
+                  <h2 className="text-2xl font-black text-cyan-400 mb-3 tracking-wider">
+                    {matchingSubMode === 'reading' ? '🎉 READING & PRONUNCIATION MASTERED!' : '🎉 WORD CHALLENGE MASTERED!'}
+                  </h2>
                   <p className="text-slate-300 text-sm mb-6 leading-relaxed">
-                    You have successfully completed the Chinese-to-English translation drill for **{island.name}**!
+                    {matchingSubMode === 'reading'
+                      ? `You have successfully completed the Word Matching Read-Aloud drill for **${island.name}**!`
+                      : `You have successfully passed the Word Matching Testing Challenge for **${island.name}**!`}
                   </p>
                   
                   <div className="w-full space-y-3 mb-8">
                     <div className="bg-yellow-950/20 border border-yellow-500/30 text-yellow-400 px-4 py-3 rounded-xl font-bold text-xs flex items-center justify-center gap-2">
-                      ⚡ +{earnedTranslationCoins} 探险经验 (EXP) {earnedTranslationCoins < 100 && '(复习奖励)'}
+                      ⚡ +{earnedTranslationCoins} Quest EXP {earnedTranslationCoins < 100 && '(Review Reward)'}
                     </div>
                     <div className="bg-cyan-950/20 border border-cyan-500/30 text-cyan-400 px-4 py-3 rounded-xl font-bold text-xs flex items-center justify-center gap-2">
                       👾 Intrusion Matrix Decryption Unlocked
@@ -3650,12 +3944,23 @@ export const GamePlay: React.FC<Props> = ({
                         </div>
                       </div>
 
+                      {/* Vocabulary Source Indicator Badge */}
+                      <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-slate-950/80 border border-slate-800 text-xs text-slate-300 mb-6 font-mono">
+                        <span className={`w-2 h-2 rounded-full ${fallingVocab.some(w => w.isFromWordBook) ? 'bg-cyan-400 animate-pulse' : 'bg-amber-400'}`}></span>
+                        <span>
+                          {fallingVocab.some(w => w.isFromWordBook)
+                            ? `📚 Vocab Lab (${fallingVocab.length} words · Linked)`
+                            : `📖 Story Words (${(fallingVocab.length > 0 ? fallingVocab : island.words || []).length} words)`}
+                        </span>
+                      </div>
+
                       <button
                         type="button"
-                        className="bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-black px-8 py-4 rounded-xl text-xs tracking-widest uppercase transition-all shadow-[0_0_20px_rgba(6,182,212,0.3)] animate-pulse hover:scale-[1.02] cursor-pointer"
+                        disabled={isVocabLoading}
+                        className="bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-black px-8 py-4 rounded-xl text-xs tracking-widest uppercase transition-all shadow-[0_0_20px_rgba(6,182,212,0.3)] animate-pulse hover:scale-[1.02] cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                         onClick={() => setFallingGameState('playing')}
                       >
-                        &gt; RUN WORD_DEFENDER.EXE
+                        {isVocabLoading ? '> INITIALIZING_CORE_DATA...' : '> RUN WORD_DEFENDER.EXE'}
                       </button>
                     </div>
                   )}
@@ -3819,12 +4124,12 @@ export const GamePlay: React.FC<Props> = ({
                           <span>{difficulty.label} ({difficulty.multiplier}x)</span>
                         </div>
                         <div className="flex justify-between text-sm font-black text-cyan-400 border-t border-slate-800 pt-2 font-mono">
-                          <span>EXP Earned (获得经验):</span>
+                          <span>EXP Earned:</span>
                           <span>
                             {fallingGameState === 'victory' ? (
-                              `⚡ +${earnedCoins} EXP${((island.completed_stages_mask || 0) & 8) !== 0 || (island.unlocked_stage ?? 1) >= 5 ? ' (复习奖励)' : ''}`
+                              `⚡ +${earnedCoins} EXP${(getIslandCompletedMask(island) & 8) !== 0 ? ' (Review Reward)' : ''}`
                             ) : (
-                              <span className="text-slate-400 font-normal">0 (战败未发放)</span>
+                              <span className="text-slate-400 font-normal">0 (Defeated)</span>
                             )}
                           </span>
                         </div>
@@ -3869,7 +4174,17 @@ export const GamePlay: React.FC<Props> = ({
           </div>
           <div className="space-y-2.5">
             <div className="flex items-center justify-between gap-2">
-              <span className="text-sm font-black text-white tracking-wide">{activeBubble.original}</span>
+              <div className="flex items-baseline gap-2 flex-wrap">
+                <span className="text-sm font-black text-white tracking-wide">{activeBubble.original}</span>
+                {activeBubble.lemma && (
+                  <span className="text-[10px] font-mono font-bold text-amber-300 bg-amber-950/60 border border-amber-500/40 px-1.5 py-0.5 rounded shadow-sm" title="Root Word">
+                    Root: {activeBubble.lemma}
+                  </span>
+                )}
+                {activeBubble.phonetic && (
+                  <span className="text-[11px] font-mono text-cyan-400 font-normal">[{activeBubble.phonetic}]</span>
+                )}
+              </div>
               <button
                 type="button"
                 className="bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 rounded px-2 py-0.5 text-[10px] font-bold transition-all flex items-center gap-1 cursor-pointer"
@@ -3885,9 +4200,9 @@ export const GamePlay: React.FC<Props> = ({
                 type="button"
                 className="self-start bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 rounded px-2 py-0.5 text-[10px] font-bold transition-all flex items-center gap-1 cursor-pointer mt-0.5"
                 onClick={() => playChineseTTS(activeBubble.translation)}
-                title="粤语朗读"
+                title="Listen in Cantonese"
               >
-                🗣️ 粤语朗读
+                🗣️ Cantonese
               </button>
             </div>
             {activeBubble.type === 'word' && activeBubble.sentence && (

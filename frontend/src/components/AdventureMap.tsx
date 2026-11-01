@@ -1,7 +1,6 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import './AdventureMap.css';
 import { OfflineSyncBadge } from './OfflineSyncBadge';
-import { isIPadOrTabletDevice } from '../utils/device';
 import { apiService } from '../utils/apiService';
 import {
   BuddySelectorModal,
@@ -19,8 +18,10 @@ export interface Island {
   story_passage: string;
   story_questions: any;
   words?: any[];
+  word_book_id?: number | null;
   unlocked_stage: number;
   completed_stages_mask?: number;
+  stage1_answers?: string[];
   assigned_user_ids?: number[];
   story_passage_json?: Array<{
     paragraph_num: number;
@@ -38,13 +39,39 @@ interface AdventureMapProps {
   fontScale?: '100' | '115' | '130';
   onThemeChange?: (theme: 'cyber' | 'bright') => void;
   onFontScaleChange?: (scale: '100' | '115' | '130') => void;
-  onStartGame: (island: Island, mode: 'story' | 'listening' | 'translation' | 'falling') => void;
+  onStartGame: (island: Island, mode: 'story' | 'listening' | 'translation' | 'falling', subMode?: 'reading' | 'testing') => void;
   onLogout: () => void;
   onUpdateUser?: (updatedUser: any) => void;
   onOpenWordBank?: () => void;
   onOpenSongs?: () => void;
   hideHeader?: boolean;
 }
+
+const normalizeGroupName = (raw?: string): string => {
+  const g = (raw && raw.trim()) || 'General';
+  if (g.toUpperCase() === 'ALL' || g.toUpperCase() === '__ALL__') return 'General';
+  return g;
+};
+
+const getSectorMask = (sector: Island): number => {
+  const stage = sector.unlocked_stage ?? 1;
+  let mask = sector.completed_stages_mask || 0;
+  if (mask === 0 && stage > 1) {
+    if (stage === 2) mask = 1;
+    else if (stage === 3) mask = 3;
+    else if (stage === 4) mask = 7;
+    else if (stage >= 5) mask = 15;
+  }
+  if ((mask & 4) !== 0) {
+    mask |= 16;
+  }
+  return mask & 31;
+};
+
+const isSectorCompleted = (sector: Island): boolean => {
+  const mask = getSectorMask(sector);
+  return (mask & 1) !== 0 && (mask & 4) !== 0 && (mask & 16) !== 0;
+};
 
 export const AdventureMap: React.FC<AdventureMapProps> = ({
   islands,
@@ -80,22 +107,8 @@ export const AdventureMap: React.FC<AdventureMapProps> = ({
       setIsBuddyModalOpen(false);
     }
   };
-  // Extract unique groups from islands (excluding reserved ALL and __ALL__)
-  const availableGroups = useMemo(() => {
-    const groupSet = new Set<string>();
-    islands.forEach((sector) => {
-      let g = (sector.group_name && sector.group_name.trim()) || 'General';
-      if (g.toUpperCase() === 'ALL' || g.toUpperCase() === '__ALL__') g = 'General';
-      groupSet.add(g);
-    });
-    return Array.from(groupSet).sort((a, b) => {
-      if (a === 'General') return -1;
-      if (b === 'General') return 1;
-      return a.localeCompare(b);
-    });
-  }, [islands]);
 
-  // Persistent selected group state (null means ALL stories / No filter, outside user string namespace)
+  // Persistent selected group state (null means ALL stories / No filter)
   const [selectedGroup, setSelectedGroup] = useState<string | null>(() => {
     try {
       const saved = localStorage.getItem('wordquest_selected_group');
@@ -119,21 +132,31 @@ export const AdventureMap: React.FC<AdventureMapProps> = ({
     }
   };
 
-  // Device detection: detect iPad / tablet to restrict desktop-only stages
-  const isTabletOrIPad = useMemo(() => isIPadOrTabletDevice(), []);
-  const [desktopOnlyPrompt, setDesktopOnlyPrompt] = useState<string | null>(null);
+  // "Show 4-Star Completed Stories" toggle state per user (default: false -> 4-star completed cards are hidden)
+  const showCompletedStorageKey = `wordquest_show_completed_4star_${currentUser.id}`;
+  const [showCompletedCards, setShowCompletedCards] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem(showCompletedStorageKey) === 'true';
+    } catch {
+      return false;
+    }
+  });
 
-  // Card Folding State: Set of collapsed island IDs
-  const [collapsedCardIds, setCollapsedCardIds] = useState<Set<number>>(() => new Set());
+  useEffect(() => {
+    try {
+      setShowCompletedCards(localStorage.getItem(showCompletedStorageKey) === 'true');
+    } catch {
+      setShowCompletedCards(false);
+    }
+  }, [showCompletedStorageKey]);
 
-  const toggleCardCollapse = (e: React.MouseEvent, id: number) => {
-    e.stopPropagation();
-    setCollapsedCardIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) {
-        next.delete(id);
-      } else {
-        next.add(id);
+  const handleToggleShowCompleted = () => {
+    setShowCompletedCards((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem(showCompletedStorageKey, String(next));
+      } catch (e) {
+        console.error('Failed to save showCompleted state', e);
       }
       return next;
     });
@@ -144,84 +167,83 @@ export const AdventureMap: React.FC<AdventureMapProps> = ({
     const all = {
       count: islands.length,
       totalStars: 0,
-      maxStars: islands.length * 4,
+      maxStars: islands.length * 3,
       completedCount: 0
     };
     const groups: Record<string, { count: number; totalStars: number; maxStars: number; completedCount: number }> = {};
 
     islands.forEach((sector) => {
-      const stage = sector.unlocked_stage ?? 1;
-      let mask = sector.completed_stages_mask || 0;
-      if (mask === 0 && stage > 1) {
-        if (stage === 2) mask = 1;
-        else if (stage === 3) mask = 3;
-        else if (stage === 4) mask = 7;
-        else if (stage >= 5) mask = 15;
-      }
-      const stars = (mask & 1 ? 1 : 0) + (mask & 2 ? 1 : 0) + (mask & 4 ? 1 : 0) + (mask & 8 ? 1 : 0);
-      const isCompleted = (mask & 15) === 15 || stage >= 5;
+      const mask = getSectorMask(sector);
+      const stars = (mask & 1 ? 1 : 0) + (mask & 4 ? 1 : 0) + (mask & 16 ? 1 : 0);
+      const isCompleted = isSectorCompleted(sector);
 
       all.totalStars += stars;
       if (isCompleted) all.completedCount += 1;
 
-      let g = (sector.group_name && sector.group_name.trim()) || 'General';
-      if (g.toUpperCase() === 'ALL' || g.toUpperCase() === '__ALL__') g = 'General';
+      const g = normalizeGroupName(sector.group_name);
       if (!groups[g]) {
         groups[g] = { count: 0, totalStars: 0, maxStars: 0, completedCount: 0 };
       }
       groups[g].count += 1;
       groups[g].totalStars += stars;
-      groups[g].maxStars += 4;
+      groups[g].maxStars += 3;
       if (isCompleted) groups[g].completedCount += 1;
     });
 
     return { allStats: all, groupStats: groups };
   }, [islands]);
 
-  // Filtered islands based on selected group
-  const displayedIslands = useMemo(() => {
-    if (selectedGroup === null) return islands;
-    return islands.filter((sector) => {
-      let g = (sector.group_name && sector.group_name.trim()) || 'General';
-      if (g.toUpperCase() === 'ALL' || g.toUpperCase() === '__ALL__') g = 'General';
-      return g === selectedGroup;
+  // Check whether a group is 100% completed (all stories in the group have 3 stars)
+  const isGroupCompleted = useCallback(
+    (groupName: string): boolean => {
+      const stat = groupStats[groupName];
+      return Boolean(stat && stat.count > 0 && stat.completedCount === stat.count);
+    },
+    [groupStats]
+  );
+
+  // Extract unique groups from islands, sorting active groups first and completed groups to the end
+  const availableGroups = useMemo(() => {
+    const groupSet = new Set<string>();
+    islands.forEach((sector) => {
+      groupSet.add(normalizeGroupName(sector.group_name));
     });
-  }, [islands, selectedGroup]);
+    return Array.from(groupSet).sort((a, b) => {
+      const aDone = isGroupCompleted(a);
+      const bDone = isGroupCompleted(b);
+      if (aDone !== bDone) return aDone ? 1 : -1;
+      if (a === 'General') return -1;
+      if (b === 'General') return 1;
+      return a.localeCompare(b);
+    });
+  }, [islands, isGroupCompleted]);
 
-  // Global Expand / Collapse All control
-  const allAreCollapsed = displayedIslands.length > 0 && displayedIslands.every((sector) => collapsedCardIds.has(sector.id));
-  const handleToggleCollapseAll = () => {
-    if (allAreCollapsed) {
-      setCollapsedCardIds(new Set());
-    } else {
-      setCollapsedCardIds(new Set(displayedIslands.map((s) => s.id)));
-    }
-  };
+  // Filtered islands based on selected group and showCompletedCards toggle (default hides 3-star completed cards)
+  const displayedIslands = useMemo(() => {
+    const byGroup = selectedGroup === null
+      ? islands
+      : islands.filter((sector) => normalizeGroupName(sector.group_name) === selectedGroup);
+    if (showCompletedCards) return byGroup;
+    return byGroup.filter((sector) => !isSectorCompleted(sector));
+  }, [islands, selectedGroup, showCompletedCards]);
 
-  // Overall Progress calculations: total stars and max stars
+  // Overall Progress calculations: total stars and max stars (Story Map has 3 stages: Reading & 2 Word Matching modes)
   const totalStars = useMemo(() => {
     return islands.reduce((acc, sector) => {
-      const stage = sector.unlocked_stage ?? 1;
-      let mask = sector.completed_stages_mask || 0;
-      if (mask === 0 && stage > 1) {
-        if (stage === 2) mask = 1;
-        else if (stage === 3) mask = 3;
-        else if (stage === 4) mask = 7;
-        else if (stage >= 5) mask = 15;
-      }
-      const stars = (mask & 1 ? 1 : 0) + (mask & 2 ? 1 : 0) + (mask & 4 ? 1 : 0) + (mask & 8 ? 1 : 0);
+      const mask = getSectorMask(sector);
+      const stars = (mask & 1 ? 1 : 0) + (mask & 4 ? 1 : 0) + (mask & 16 ? 1 : 0);
       return acc + stars;
     }, 0);
   }, [islands]);
 
-  const maxStars = islands.length * 4;
+  const maxStars = islands.length * 3;
 
   const currentGroupStat = selectedGroup !== null ? (groupStats[selectedGroup] || { count: 0, totalStars: 0, maxStars: 0, completedCount: 0 }) : allStats;
 
-  // Active playing sector calculation (the first sector in progress or active)
+  // Active playing sector calculation (the first unlocked sector that is not yet 4-star completed)
   const activeSectorId = useMemo(() => {
     const activeSector = displayedIslands.find(
-      (sector) => (sector.unlocked_stage ?? 1) > 0 && (sector.unlocked_stage ?? 1) <= 4
+      (sector) => (sector.unlocked_stage ?? 1) > 0 && !isSectorCompleted(sector)
     );
     if (activeSector) return activeSector.id;
     const unlocked = displayedIslands.filter((sector) => (sector.unlocked_stage ?? 1) > 0);
@@ -258,7 +280,7 @@ export const AdventureMap: React.FC<AdventureMapProps> = ({
               role="button"
               tabIndex={0}
               onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setIsBuddyModalOpen(true); }}
-              title="点击更换探险伙伴角色"
+              title="Change Buddy"
               className="group relative flex items-center gap-3 bg-gradient-to-br from-slate-900/90 to-cyan-950/40 hover:from-cyan-950/60 hover:to-blue-950/60 border border-cyan-500/30 hover:border-cyan-400 p-2 pr-3.5 rounded-2xl cursor-pointer shadow-lg transition-all hover:scale-[1.02] active:scale-[0.98]"
             >
               {/* Unclipped Full Buddy Display Platform */}
@@ -281,7 +303,7 @@ export const AdventureMap: React.FC<AdventureMapProps> = ({
                 </div>
                 <div className="text-xs text-cyan-400 font-bold font-mono mt-0.5 flex items-center gap-1.5">
                   <span>{currentBuddy.name}</span>
-                  <span className="text-[10px] text-cyan-300/80 group-hover:text-cyan-200 underline">更改 ➔</span>
+                  <span className="text-[10px] text-cyan-300/80 group-hover:text-cyan-200 underline">Change ➔</span>
                 </div>
               </div>
             </div>
@@ -291,10 +313,10 @@ export const AdventureMap: React.FC<AdventureMapProps> = ({
               type="button"
               onClick={onLogout}
               className="px-3 py-2 text-xs rounded-xl font-bold transition-all cursor-pointer bg-slate-900/60 hover:bg-slate-800 border border-slate-700 text-slate-300 hover:text-white flex items-center gap-1.5 font-mono shadow-sm shrink-0"
-              title="切换玩家档案"
+              title="Switch User"
             >
               <span>👤</span>
-              <span className="hidden sm:inline">切换档案</span>
+              <span className="hidden sm:inline">Switch</span>
             </button>
 
             {/* Word Bank & Exploration Lab Button */}
@@ -308,10 +330,10 @@ export const AdventureMap: React.FC<AdventureMapProps> = ({
                 }
               }}
               className="px-3.5 py-2 text-xs rounded-xl font-black transition-all cursor-pointer bg-gradient-to-r from-cyan-600/30 to-indigo-600/30 hover:from-cyan-600/50 hover:to-indigo-600/50 border border-cyan-400/50 text-cyan-300 hover:text-white flex items-center gap-1.5 font-mono shadow-md active:scale-95 shrink-0"
-              title="打开单词宝库与章节关卡 (学单词、看句选义、听音拼写)"
+              title="Word Challenge"
             >
               <span className="text-sm">📚</span>
-              <span>单词宝库</span>
+              <span>Word Quest</span>
             </button>
 
             {/* Song Adventure Map Button */}
@@ -320,10 +342,10 @@ export const AdventureMap: React.FC<AdventureMapProps> = ({
                 type="button"
                 onClick={onOpenSongs}
                 className="px-3.5 py-2 text-xs rounded-xl font-black transition-all cursor-pointer bg-gradient-to-r from-purple-600/30 to-pink-600/30 hover:from-purple-600/50 hover:to-pink-600/50 border border-purple-400/50 text-purple-300 hover:text-white flex items-center gap-1.5 font-mono shadow-md active:scale-95 shrink-0"
-                title="进入歌曲乐园探险 (原声儿歌学唱与律动)"
+                title="Song Quest"
               >
                 <span className="text-sm">🎵</span>
-                <span>歌曲乐园</span>
+                <span>Song Quest</span>
               </button>
             )}
           </div>
@@ -334,7 +356,7 @@ export const AdventureMap: React.FC<AdventureMapProps> = ({
             <div className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 shadow-sm font-mono">
               <span className="text-base leading-none">⭐</span>
               <div>
-                <div className="text-[10px] uppercase text-amber-400/70 font-black tracking-wider leading-none">可用星星</div>
+                <div className="text-[10px] uppercase text-amber-400/70 font-black tracking-wider leading-none">Available Stars</div>
                 <div className="text-sm font-black text-amber-300 tabular-nums">
                   {currentUser.stars !== undefined ? Math.max(0, currentUser.stars - (currentUser.spent_stars || 0)) : totalStars}
                 </div>
@@ -345,7 +367,7 @@ export const AdventureMap: React.FC<AdventureMapProps> = ({
             <div className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-cyan-500/10 border border-cyan-500/30 text-cyan-200 shadow-sm font-mono">
               <span className="text-base leading-none">🌟</span>
               <div>
-                <div className="text-[10px] uppercase text-cyan-400/70 font-black tracking-wider leading-none">探险总星数</div>
+                <div className="text-[10px] uppercase text-cyan-400/70 font-black tracking-wider leading-none">Total Stars</div>
                 <div className="text-sm font-black text-cyan-300 tabular-nums">
                   {totalStars} <span className="text-xs text-cyan-500/60 font-normal">/ {maxStars}</span>
                 </div>
@@ -378,7 +400,7 @@ export const AdventureMap: React.FC<AdventureMapProps> = ({
             <button
               onClick={onLogout}
               className="p-2 text-xs border border-rose-500/30 text-rose-400 hover:bg-rose-500/10 rounded-xl transition-all cursor-pointer font-bold flex items-center gap-1 font-mono shadow-sm"
-              title="退出登录"
+              title="Exit"
             >
               🚪
             </button>
@@ -390,16 +412,63 @@ export const AdventureMap: React.FC<AdventureMapProps> = ({
 
       {/* Sector Map Main Content */}
       <div className="w-full max-w-6xl mx-auto">
-        {/* Header Summary */}
-        <div className="flex flex-wrap justify-between items-end mb-6 gap-4 border-b theme-border pb-4">
-          <div>
-            <h1 className="text-2xl sm:text-3xl font-extrabold tracking-wider text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 via-sky-300 to-indigo-400 uppercase font-mono">
-              Story Adventure Map 🗺️
+        {/* Compact Header & Filter Bar */}
+        <div className="flex flex-wrap items-center justify-between mb-4 gap-3 border-b theme-border pb-3">
+          <div className="flex items-center gap-3 flex-wrap">
+            <h1 className="text-lg sm:text-xl font-extrabold tracking-wider text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 via-sky-300 to-indigo-400 uppercase font-mono">
+              🗺️ Story Adventure
             </h1>
-            <p className="text-xs theme-text-muted font-mono mt-1">
-              Pick a story to start reading and playing!
-            </p>
+
+            {islands.length > 0 && (
+              <>
+                <select
+                  value={selectedGroup === null ? '__ALL__' : selectedGroup}
+                  onChange={(e) => handleSelectGroup(e.target.value === '__ALL__' ? null : e.target.value)}
+                  className="bg-slate-900/90 border border-slate-700 hover:border-cyan-400/60 focus:border-cyan-400 text-cyan-300 text-xs font-mono font-bold px-2.5 py-1.5 rounded-xl outline-none cursor-pointer transition-all"
+                  title="Select Story Group"
+                >
+                  <option value="__ALL__">
+                    🌐 All Stories ({allStats.count})
+                  </option>
+                  {availableGroups.map((group) => {
+                    const stat = groupStats[group] || { count: 0, totalStars: 0, maxStars: 0, completedCount: 0 };
+                    const isClearedGroup = isGroupCompleted(group);
+                    return (
+                      <option key={group} value={group}>
+                        {isClearedGroup ? '🏆' : '📂'} {group} ({stat.count}){stat.totalStars > 0 ? ` · ⭐${stat.totalStars}` : ''}
+                      </option>
+                    );
+                  })}
+                </select>
+
+                <div className="text-xs font-mono theme-text-muted flex items-center gap-2.5 flex-wrap">
+                  <span>
+                    🏆 <strong className="text-emerald-400 font-bold">{currentGroupStat.completedCount}/{currentGroupStat.count}</strong>
+                  </span>
+                  <span>
+                    🌟 <strong className="text-amber-400 font-bold">{currentGroupStat.totalStars}/{currentGroupStat.maxStars}</strong>
+                  </span>
+
+                  <button
+                    type="button"
+                    onClick={handleToggleShowCompleted}
+                    className={`px-2 py-1 rounded-lg border text-[11px] font-mono font-bold transition-all cursor-pointer flex items-center gap-1.5 shadow-sm ${
+                      showCompletedCards
+                        ? 'bg-emerald-500/20 border-emerald-500/60 text-emerald-300 hover:bg-emerald-500/30'
+                        : 'theme-border bg-black/20 dark:bg-white/10 text-slate-300 hover:bg-cyan-500/20 hover:text-cyan-300'
+                    }`}
+                    title={showCompletedCards ? "Hide completed stories" : "Show completed stories"}
+                  >
+                    <span className={`w-1.5 h-1.5 rounded-full ${showCompletedCards ? 'bg-emerald-400' : 'bg-slate-500'}`} />
+                    <span>
+                      Completed ({currentGroupStat.completedCount}): {showCompletedCards ? 'ON' : 'OFF'}
+                    </span>
+                  </button>
+                </div>
+              </>
+            )}
           </div>
+
           <OfflineSyncBadge
             currentUserId={currentUser.id}
             variant="map"
@@ -407,88 +476,6 @@ export const AdventureMap: React.FC<AdventureMapProps> = ({
             onFontScaleChange={onFontScaleChange}
           />
         </div>
-
-        {/* Story Group Selector Tabs & Summary */}
-        {islands.length > 0 && (
-          <div className="mb-6 space-y-3">
-            <div className="flex items-center justify-between flex-wrap gap-2">
-              <div className="flex items-center gap-2 text-xs font-bold font-mono tracking-wider theme-text-muted">
-                <span>📁 STORY GROUPS:</span>
-                <span className="text-cyan-400 font-extrabold">
-                  {selectedGroup === null ? `ALL STORIES (${islands.length})` : `${selectedGroup} (${currentGroupStat.count})`}
-                </span>
-              </div>
-              <div className="text-xs font-mono theme-text-muted flex items-center gap-3 flex-wrap">
-                <span>
-                  🏆 Completed: <strong className="text-emerald-400 font-bold">{currentGroupStat.completedCount} / {currentGroupStat.count}</strong>
-                </span>
-                <span>
-                  🌟 Group Stars: <strong className="text-amber-400 font-bold">{currentGroupStat.totalStars} / {currentGroupStat.maxStars}</strong>
-                </span>
-                <button
-                  type="button"
-                  onClick={handleToggleCollapseAll}
-                  className="px-2.5 py-1 rounded-lg border theme-border bg-black/20 dark:bg-white/10 text-[0.7rem] text-cyan-400 font-mono font-bold hover:bg-cyan-500/20 transition-all cursor-pointer flex items-center gap-1.5 shadow-sm"
-                  title={allAreCollapsed ? "Expand all cards" : "Collapse all cards"}
-                >
-                  <span>{allAreCollapsed ? '📂' : '📁'}</span>
-                  <span>{allAreCollapsed ? 'EXPAND ALL (展开全部)' : 'COLLAPSE ALL (折叠全部)'}</span>
-                </button>
-              </div>
-            </div>
-
-            {/* Scrollable / Wrap Tab Pills */}
-            <div className="flex flex-wrap items-center gap-2 bg-black/10 dark:bg-white/5 p-2 rounded-xl border theme-border">
-              {/* ALL Tab */}
-              <button
-                type="button"
-                onClick={() => handleSelectGroup(null)}
-                className={`px-3.5 py-1.5 rounded-lg text-xs font-mono font-bold transition-all cursor-pointer flex items-center gap-2 border story-group-tab-pill ${
-                  selectedGroup === null
-                    ? 'bg-cyan-500 text-slate-950 border-cyan-400 shadow-md shadow-cyan-500/20 scale-[1.02]'
-                    : 'bg-black/20 dark:bg-white/10 theme-border theme-text-muted hover:theme-text hover:border-cyan-500/40'
-                }`}
-              >
-                <span>🌐 全部故事 (ALL)</span>
-                <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-extrabold ${
-                  selectedGroup === null ? 'bg-slate-950/40 text-cyan-200' : 'bg-black/30 text-slate-400'
-                }`}>
-                  {allStats.count}
-                </span>
-              </button>
-
-              {/* Group Tabs */}
-              {availableGroups.map((group) => {
-                const stat = groupStats[group] || { count: 0, totalStars: 0, maxStars: 0 };
-                const isSelected = selectedGroup === group;
-                return (
-                  <button
-                    key={group}
-                    type="button"
-                    onClick={() => handleSelectGroup(group)}
-                    className={`px-3.5 py-1.5 rounded-lg text-xs font-mono font-bold transition-all cursor-pointer flex items-center gap-2 border story-group-tab-pill ${
-                      isSelected
-                        ? 'bg-cyan-500 text-slate-950 border-cyan-400 shadow-md shadow-cyan-500/20 scale-[1.02]'
-                        : 'bg-black/20 dark:bg-white/10 theme-border theme-text-muted hover:theme-text hover:border-cyan-500/40'
-                    }`}
-                  >
-                    <span>📂 {group}</span>
-                    <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-extrabold ${
-                      isSelected ? 'bg-slate-950/40 text-cyan-200' : 'bg-black/30 text-slate-400'
-                    }`}>
-                      {stat.count}
-                    </span>
-                    {stat.totalStars > 0 && (
-                      <span className={`text-[10px] ${isSelected ? 'text-slate-950 font-black' : 'text-amber-400 font-bold'}`}>
-                        ⭐{stat.totalStars}
-                      </span>
-                    )}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        )}
 
         {islands.length === 0 ? (
           <div className="theme-card p-12 rounded-xl text-center border theme-border shadow-md">
@@ -499,14 +486,24 @@ export const AdventureMap: React.FC<AdventureMapProps> = ({
         ) : displayedIslands.length === 0 ? (
           <div className="theme-card p-12 rounded-xl text-center border theme-border shadow-md">
             <p className="text-sm theme-text-muted italic mb-4">
-              No stories found in group "{selectedGroup}".
+              {!showCompletedCards && currentGroupStat.completedCount > 0
+                ? `🎉 Awesome! All ${currentGroupStat.completedCount} stories in this category are completed!`
+                : `No stories found in group "${selectedGroup}".`}
             </p>
             <button
               type="button"
-              onClick={() => handleSelectGroup(null)}
+              onClick={() => {
+                if (!showCompletedCards && currentGroupStat.completedCount > 0) {
+                  handleToggleShowCompleted();
+                } else {
+                  handleSelectGroup(null);
+                }
+              }}
               className="px-4 py-2 bg-cyan-500 text-slate-950 font-bold text-xs rounded-lg uppercase tracking-wider font-mono hover:bg-cyan-400 cursor-pointer shadow-md"
             >
-              View All Stories (查看全部故事)
+              {!showCompletedCards && currentGroupStat.completedCount > 0
+                ? `👁️ Show Completed Stories (${currentGroupStat.completedCount})`
+                : 'View All Stories'}
             </button>
           </div>
         ) : (
@@ -515,20 +512,19 @@ export const AdventureMap: React.FC<AdventureMapProps> = ({
               const unlockedStage = sector.unlocked_stage ?? (index === 0 ? 1 : 0);
               const isLocked = unlockedStage === 0;
               const isActive = !isLocked && sector.id === activeSectorId;
-              let completedMask = sector.completed_stages_mask || 0;
-              if (completedMask === 0 && unlockedStage > 1) {
-                if (unlockedStage === 2) completedMask = 1;
-                else if (unlockedStage === 3) completedMask = 3;
-                else if (unlockedStage === 4) completedMask = 7;
-                else if (unlockedStage >= 5) completedMask = 15;
-              }
-              const starsCount = (completedMask & 1 ? 1 : 0) + (completedMask & 2 ? 1 : 0) + (completedMask & 4 ? 1 : 0) + (completedMask & 8 ? 1 : 0);
-              const isCollapsed = collapsedCardIds.has(sector.id);
+              const completedMask = getSectorMask(sector);
+              const isCleared1 = (completedMask & 1) !== 0;
+              const isCleared2 = (completedMask & 4) !== 0;
+              const isCleared3 = (completedMask & 16) !== 0;
+              const starsCount = (isCleared1 ? 1 : 0) + (isCleared2 ? 1 : 0) + (isCleared3 ? 1 : 0);
+              const isStoryFullyCleared = isSectorCompleted(sector);
 
               // Determine card styling based on state specs
-              let cardStyle = "relative group rounded-xl p-6 transition-all duration-300 border backdrop-blur-md flex flex-col justify-between story-card-collapsible ";
+              let cardStyle = "relative group rounded-xl p-6 transition-all duration-300 border backdrop-blur-md flex flex-col justify-between ";
               if (isLocked) {
                 cardStyle += "opacity-60 theme-card border-slate-700 cursor-not-allowed";
+              } else if (isStoryFullyCleared) {
+                cardStyle += "theme-card border-emerald-500/40 hover:border-emerald-400/70";
               } else if (isActive) {
                 cardStyle += "theme-card border-cyan-500/80 shadow-lg shadow-cyan-500/20 hover:border-cyan-400";
               } else {
@@ -540,13 +536,7 @@ export const AdventureMap: React.FC<AdventureMapProps> = ({
                   key={sector.id}
                   className={cardStyle}
                   onClick={() => {
-                    if (isCollapsed) {
-                      setCollapsedCardIds((prev) => {
-                        const next = new Set(prev);
-                        next.delete(sector.id);
-                        return next;
-                      });
-                    } else if (!isLocked) {
+                    if (!isLocked) {
                       onStartGame(sector, 'story');
                     }
                   }}
@@ -564,18 +554,22 @@ export const AdventureMap: React.FC<AdventureMapProps> = ({
                           </span>
                         </div>
                         <h2
-                          className="text-base font-bold theme-text group-hover:text-cyan-500 transition-colors mt-0.5 line-clamp-2 leading-snug"
+                          className="text-base font-bold theme-text group-hover:text-cyan-500 transition-colors mt-0.5 truncate leading-snug"
                           title={sector.story_title || sector.name}
                         >
                           {sector.story_title || sector.name}
                         </h2>
                       </div>
 
-                      {/* Status Badges & Collapse Toggle Chevron */}
+                      {/* Status Badges */}
                       <div className="flex items-center gap-1.5 shrink-0">
                         {isLocked ? (
                           <span className="bg-slate-900/80 text-slate-400 border border-slate-800 font-mono text-xs px-2.5 py-1 rounded-full font-semibold flex items-center gap-1">
                             🔒 LOCKED
+                          </span>
+                        ) : isStoryFullyCleared ? (
+                          <span className="bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 font-mono text-xs px-2.5 py-1 rounded-full font-bold flex items-center gap-1">
+                            🎓 Cleared
                           </span>
                         ) : isActive ? (
                           <span className="bg-cyan-500/20 text-cyan-400 animate-pulse font-mono border border-cyan-500/40 text-xs px-2.5 py-1 rounded-full font-bold flex items-center gap-1">
@@ -586,15 +580,6 @@ export const AdventureMap: React.FC<AdventureMapProps> = ({
                             UNLOCKED
                           </span>
                         )}
-
-                        <button
-                          type="button"
-                          onClick={(e) => toggleCardCollapse(e, sector.id)}
-                          className="w-7 h-7 rounded-lg border theme-border bg-black/10 dark:bg-white/10 hover:bg-cyan-500/20 hover:border-cyan-500/40 text-slate-400 hover:text-cyan-300 transition-all flex items-center justify-center cursor-pointer text-xs font-bold font-mono"
-                          title={isCollapsed ? "展开关卡 (Expand Stages)" : "折叠关卡 (Collapse Stages)"}
-                        >
-                          {isCollapsed ? '▼' : '▲'}
-                        </button>
                       </div>
                     </div>
 
@@ -605,7 +590,7 @@ export const AdventureMap: React.FC<AdventureMapProps> = ({
                         <div className="flex items-center gap-1 font-bold">
                           <span className="theme-text-muted mr-1 font-bold">STARS:</span>
                           <span className="tracking-widest">
-                            {starsCount === 4 ? '⭐⭐⭐⭐' : starsCount === 3 ? '⭐⭐⭐☆' : starsCount === 2 ? '⭐⭐☆☆' : starsCount === 1 ? '⭐☆☆☆' : '☆☆☆☆'}
+                            {starsCount === 3 ? '⭐⭐⭐' : starsCount === 2 ? '⭐⭐☆' : starsCount === 1 ? '⭐☆☆' : '☆☆☆'}
                           </span>
                         </div>
 
@@ -616,149 +601,77 @@ export const AdventureMap: React.FC<AdventureMapProps> = ({
                       </div>
                     )}
 
-                    {/* Collapsed / Folded View vs Expanded Stage Buttons */}
-                    {isCollapsed ? (
-                      <div className="mt-2 flex flex-col gap-2">
-                        <button
-                          type="button"
-                          onClick={(e) => toggleCardCollapse(e, sector.id)}
-                          className="w-full flex justify-between items-center px-4 py-2.5 rounded-lg border theme-border bg-black/10 dark:bg-white/5 hover:bg-cyan-500/10 hover:border-cyan-500/40 text-xs font-mono font-bold text-cyan-400 transition-all cursor-pointer"
-                        >
-                          <span className="flex items-center gap-1.5">
-                            <span>▼ 关卡已折叠 (Stages Folded)</span>
-                          </span>
-                          <span className="text-[0.65rem] px-2 py-0.5 rounded bg-cyan-950/60 border border-cyan-500/30 text-cyan-300">
-                            点击展开 4 个关卡 (Expand) ▾
-                          </span>
-                        </button>
-                      </div>
-                    ) : (
-                      /* Full Stage Buttons - Direct Access Unlocked */
-                      (() => {
-                        let completedMask = sector.completed_stages_mask || 0;
-                        if (completedMask === 0 && unlockedStage > 1) {
-                          if (unlockedStage === 2) completedMask = 1;
-                          else if (unlockedStage === 3) completedMask = 3;
-                          else if (unlockedStage === 4) completedMask = 7;
-                          else if (unlockedStage >= 5) completedMask = 15;
-                        }
+                    {/* Full Stage Buttons - Direct Access Unlocked (3 Tasks) */}
+                    <div className="flex flex-col gap-2.5">
+                      {/* Stage 1 Button: Reading & Typing */}
+                      <button
+                        type="button"
+                        disabled={isLocked}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (!isLocked) onStartGame(sector, 'story');
+                        }}
+                        aria-label={`Stage 01: Reading and Typing for ${sector.name}`}
+                        className={`w-full flex justify-between items-center h-10 px-3 rounded-lg border text-xs transition-colors cursor-pointer font-mono stage-stagger-1 focus-visible:ring-2 focus-visible:ring-cyan-400 focus-visible:outline-none ${
+                          isLocked
+                            ? 'bg-slate-900/40 border-slate-800/60 text-slate-600 cursor-not-allowed'
+                            : isCleared1
+                            ? 'bg-emerald-500/10 border-emerald-500/40 text-emerald-600 dark:text-emerald-300 font-bold hover:bg-emerald-500/20'
+                            : 'bg-cyan-500/20 border-cyan-500/80 text-cyan-600 dark:text-cyan-200 font-bold shadow-sm shadow-cyan-500/20 hover:bg-cyan-500/30'
+                        }`}
+                      >
+                        <span className="truncate whitespace-nowrap">01 // Reading & Typing 📖</span>
+                        <span className="shrink-0 ml-2 text-[0.65rem] uppercase font-bold px-2 py-0.5 rounded bg-black/10 dark:bg-white/10 border theme-border tabular-nums">
+                          {isLocked ? 'Locked 🔒' : isCleared1 ? 'Done ⭐' : 'Play ▶'}
+                        </span>
+                      </button>
 
-                        const isCleared1 = (completedMask & 1) !== 0;
-                        const isCleared2 = (completedMask & 2) !== 0;
-                        const isCleared3 = (completedMask & 4) !== 0;
-                        const isCleared4 = (completedMask & 8) !== 0;
+                      {/* Stage 2 Button: Read Aloud */}
+                      <button
+                        type="button"
+                        disabled={isLocked}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (!isLocked) onStartGame(sector, 'translation', 'reading');
+                        }}
+                        aria-label={`Stage 02: Read Aloud for ${sector.name}`}
+                        className={`w-full flex justify-between items-center h-10 px-3 rounded-lg border text-xs transition-colors cursor-pointer font-mono stage-stagger-2 focus-visible:ring-2 focus-visible:ring-cyan-400 focus-visible:outline-none ${
+                          isLocked
+                            ? 'bg-slate-900/40 border-slate-800/60 text-slate-600 cursor-not-allowed'
+                            : isCleared2
+                            ? 'bg-emerald-500/10 border-emerald-500/40 text-emerald-600 dark:text-emerald-300 font-bold hover:bg-emerald-500/20'
+                            : 'bg-cyan-500/20 border-cyan-500/80 text-cyan-600 dark:text-cyan-200 font-bold shadow-sm shadow-cyan-500/20 hover:bg-cyan-500/30'
+                        }`}
+                      >
+                        <span className="truncate whitespace-nowrap">02 // Read Aloud 🎙️</span>
+                        <span className="shrink-0 ml-2 text-[0.65rem] uppercase font-bold px-2 py-0.5 rounded bg-black/10 dark:bg-white/10 border theme-border tabular-nums">
+                          {isLocked ? 'Locked 🔒' : isCleared2 ? 'Done ⭐' : 'Play ▶'}
+                        </span>
+                      </button>
 
-                        return (
-                          <div className="flex flex-col gap-2.5">
-                            {/* Stage 1 Button */}
-                            <button
-                              type="button"
-                              disabled={isLocked}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                if (!isLocked) onStartGame(sector, 'story');
-                              }}
-                              aria-label={`Stage 01: Reading and Typing for ${sector.name}`}
-                              className={`w-full flex justify-between items-center p-3 rounded-lg border text-xs transition-colors cursor-pointer font-mono stage-stagger-1 focus-visible:ring-2 focus-visible:ring-cyan-400 focus-visible:outline-none ${
-                                isLocked
-                                  ? 'bg-slate-900/40 border-slate-800/60 text-slate-600 cursor-not-allowed'
-                                  : isCleared1
-                                  ? 'bg-emerald-500/10 border-emerald-500/40 text-emerald-600 dark:text-emerald-300 font-bold hover:bg-emerald-500/20'
-                                  : 'bg-cyan-500/20 border-cyan-500/80 text-cyan-600 dark:text-cyan-200 font-bold shadow-sm shadow-cyan-500/20 hover:bg-cyan-500/30'
-                              }`}
-                            >
-                              <span>01 // Reading & Typing 📖</span>
-                              <span className="text-[0.65rem] uppercase font-bold px-2 py-0.5 rounded bg-black/10 dark:bg-white/10 border theme-border tabular-nums">
-                                {isLocked ? 'Locked 🔒' : isCleared1 ? 'Done ⭐' : 'Play ▶'}
-                              </span>
-                            </button>
-
-                            {/* Stage 2 Button */}
-                            <button
-                              type="button"
-                              disabled={isLocked}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                if (isLocked) return;
-                                if (isTabletOrIPad) {
-                                  setDesktopOnlyPrompt('【02 // Story Chase 打字追逐大冒险】需要电脑实体键盘进行高速打字练习，iPad 暂不支持进入。请在电脑浏览器上打开本关卡，或在 iPad 上体验【01 绘本阅读】与【03 朗读匹配】！');
-                                  return;
-                                }
-                                onStartGame(sector, 'listening');
-                              }}
-                              aria-label={`Stage 02: Story Chase for ${sector.name}`}
-                              className={`w-full flex justify-between items-center p-3 rounded-lg border text-xs transition-colors cursor-pointer font-mono stage-stagger-2 focus-visible:ring-2 focus-visible:ring-cyan-400 focus-visible:outline-none ${
-                                isLocked
-                                  ? 'bg-slate-900/40 border-slate-800/60 text-slate-600 cursor-not-allowed'
-                                  : isTabletOrIPad
-                                  ? 'bg-amber-500/10 border-amber-500/30 text-amber-400 hover:bg-amber-500/20'
-                                  : isCleared2
-                                  ? 'bg-emerald-500/10 border-emerald-500/40 text-emerald-600 dark:text-emerald-300 font-bold hover:bg-emerald-500/20'
-                                  : 'bg-cyan-500/20 border-cyan-500/80 text-cyan-600 dark:text-cyan-200 font-bold shadow-sm shadow-cyan-500/20 hover:bg-cyan-500/30'
-                              }`}
-                            >
-                              <span>02 // Story Chase 🏃💨</span>
-                              <span className="text-[0.65rem] uppercase font-bold px-2 py-0.5 rounded bg-black/10 dark:bg-white/10 border theme-border tabular-nums">
-                                {isLocked ? 'Locked 🔒' : isTabletOrIPad ? '💻 仅支持电脑' : isCleared2 ? 'Done ⭐' : 'Play ▶'}
-                              </span>
-                            </button>
-
-                            {/* Stage 3 Button */}
-                            <button
-                              type="button"
-                              disabled={isLocked}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                if (!isLocked) onStartGame(sector, 'translation');
-                              }}
-                              aria-label={`Stage 03: Word Matching for ${sector.name}`}
-                              className={`w-full flex justify-between items-center p-3 rounded-lg border text-xs transition-colors cursor-pointer font-mono stage-stagger-3 focus-visible:ring-2 focus-visible:ring-cyan-400 focus-visible:outline-none ${
-                                isLocked
-                                  ? 'bg-slate-900/40 border-slate-800/60 text-slate-600 cursor-not-allowed'
-                                  : isCleared3
-                                  ? 'bg-emerald-500/10 border-emerald-500/40 text-emerald-600 dark:text-emerald-300 font-bold hover:bg-emerald-500/20'
-                                  : 'bg-cyan-500/20 border-cyan-500/80 text-cyan-600 dark:text-cyan-200 font-bold shadow-sm shadow-cyan-500/20 hover:bg-cyan-500/30'
-                              }`}
-                            >
-                              <span>03 // Word Matching 🔤</span>
-                              <span className="text-[0.65rem] uppercase font-bold px-2 py-0.5 rounded bg-black/10 dark:bg-white/10 border theme-border tabular-nums">
-                                {isLocked ? 'Locked 🔒' : isCleared3 ? 'Done ⭐' : 'Play ▶'}
-                              </span>
-                            </button>
-
-                            {/* Stage 4 Button */}
-                            <button
-                              type="button"
-                              disabled={isLocked}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                if (isLocked) return;
-                                if (isTabletOrIPad) {
-                                  setDesktopOnlyPrompt('【04 // Space Defender 太空防卫大作战】需要电脑实体键盘方向键与按键配合防卫太空战机，iPad 暂不支持进入。请在电脑浏览器上打开本关卡，或在 iPad 上体验【01 绘本阅读】与【03 朗读匹配】！');
-                                  return;
-                                }
-                                onStartGame(sector, 'falling');
-                              }}
-                              aria-label={`Stage 04: Space Defender for ${sector.name}`}
-                              className={`w-full flex justify-between items-center p-3 rounded-lg border text-xs transition-colors cursor-pointer font-mono stage-stagger-4 focus-visible:ring-2 focus-visible:ring-cyan-400 focus-visible:outline-none ${
-                                isLocked
-                                  ? 'bg-slate-900/40 border-slate-800/60 text-slate-600 cursor-not-allowed'
-                                  : isTabletOrIPad
-                                  ? 'bg-amber-500/10 border-amber-500/30 text-amber-400 hover:bg-amber-500/20'
-                                  : isCleared4
-                                  ? 'bg-emerald-500/10 border-emerald-500/40 text-emerald-600 dark:text-emerald-300 font-bold hover:bg-emerald-500/20'
-                                  : 'bg-cyan-500/20 border-cyan-500/80 text-cyan-600 dark:text-cyan-200 font-bold shadow-sm shadow-cyan-500/20 hover:bg-cyan-500/30'
-                              }`}
-                            >
-                              <span>04 // Space Defender 👾</span>
-                              <span className="text-[0.65rem] uppercase font-bold px-2 py-0.5 rounded bg-black/10 dark:bg-white/10 border theme-border tabular-nums">
-                                {isLocked ? 'Locked 🔒' : isTabletOrIPad ? '💻 仅支持电脑' : isCleared4 ? 'Done ⭐' : 'Play ▶'}
-                              </span>
-                            </button>
-                          </div>
-                        );
-                      })()
-                    )}
+                      {/* Stage 3 Button: Challenge */}
+                      <button
+                        type="button"
+                        disabled={isLocked}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (!isLocked) onStartGame(sector, 'translation', 'testing');
+                        }}
+                        aria-label={`Stage 03: Challenge for ${sector.name}`}
+                        className={`w-full flex justify-between items-center h-10 px-3 rounded-lg border text-xs transition-colors cursor-pointer font-mono stage-stagger-3 focus-visible:ring-2 focus-visible:ring-cyan-400 focus-visible:outline-none ${
+                          isLocked
+                            ? 'bg-slate-900/40 border-slate-800/60 text-slate-600 cursor-not-allowed'
+                            : isCleared3
+                            ? 'bg-emerald-500/10 border-emerald-500/40 text-emerald-600 dark:text-emerald-300 font-bold hover:bg-emerald-500/20'
+                            : 'bg-purple-500/20 border-purple-500/80 text-purple-600 dark:text-purple-200 font-bold shadow-sm shadow-purple-500/20 hover:bg-purple-500/30'
+                        }`}
+                      >
+                        <span className="truncate whitespace-nowrap">03 // Challenge 🎯</span>
+                        <span className="shrink-0 ml-2 text-[0.65rem] uppercase font-bold px-2 py-0.5 rounded bg-black/10 dark:bg-white/10 border theme-border tabular-nums">
+                          {isLocked ? 'Locked 🔒' : isCleared3 ? 'Done ⭐' : 'Play ▶'}
+                        </span>
+                      </button>
+                    </div>
                   </div>
                 </div>
               );
@@ -775,31 +688,6 @@ export const AdventureMap: React.FC<AdventureMapProps> = ({
           loading={savingBuddy}
         />
 
-        {/* Desktop-Only Device Restriction Guidance Modal */}
-        {desktopOnlyPrompt && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-fade-in">
-            <div className="bg-[#0F172A] border border-cyan-500/40 rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-2xl text-center flex flex-col items-center gap-5 relative">
-              <div className="w-16 h-16 rounded-2xl bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-3xl shadow-inner">
-                💻
-              </div>
-              <div className="space-y-2">
-                <h3 className="text-lg font-black text-cyan-300 font-mono tracking-wide">
-                  仅支持在电脑端游玩 (Desktop Only)
-                </h3>
-                <p className="text-xs text-slate-300 font-mono leading-relaxed text-left bg-slate-900/90 p-4 rounded-xl border border-slate-800">
-                  {desktopOnlyPrompt}
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setDesktopOnlyPrompt(null)}
-                className="w-full py-3 rounded-xl bg-gradient-to-r from-cyan-500 to-teal-400 hover:opacity-95 text-slate-950 font-mono font-bold text-xs uppercase tracking-wider shadow-lg cursor-pointer transition-all active:scale-98 focus-visible:ring-2 focus-visible:ring-cyan-400 focus-visible:outline-none"
-              >
-                我知道了 (OK)
-              </button>
-            </div>
-          </div>
-        )}
       </div>
     </div>
   );

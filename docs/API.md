@@ -24,6 +24,8 @@
 | 方法 | 路径 | 主要输入 | 说明 |
 |---|---|---|---|
 | POST | `/api/users/login` | `{ username, avatar? }` | 按用户名创建或取得档案，并初始化故事进度 |
+| POST | `/api/users/admin-login` | `{ username, password }` | 管理员认证登入口（默认账号密码 admin:admin），验证成功返回管理员档案 |
+| POST | `/api/users/change-password` | `{ user_id, old_password, new_password }` | 修改用户/管理员密码，校验原密码并更新密码 |
 | GET | `/api/users` | 无 | 按金币和 ID 返回用户列表 |
 | POST | `/api/users/add-coins` | `{ user_id, coins }` | 增量修改金币 |
 | POST | `/api/users/update-avatar` | `{ user_id, avatar }` | 修改 Buddy/头像 |
@@ -44,12 +46,17 @@
 
 保留分组名 `ALL` 和 `__ALL__` 不能保存为故事分组。故事写入接受的 JSON 结构见 [DATA_MODEL.md](DATA_MODEL.md)。
 
-### AI 绘本导入
+### AI 绘本导入与问答生成
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
 | GET | `/api/islands/ai-models` | 代理/汇总可用 Agent CLI 与模型 |
-| POST | `/api/islands/import-ai-story` | 接收最多 10 张图片及 `group_name`、`question_count`、`model`、`cli`、提示词；返回结构化草稿 |
+| POST | `/api/islands/import-ai-story` | 接收最多 10 张图片及 `group_name`、`model`、`cli`、提示词；返回故事草稿（包含标题、主题、生词纯词列表、分页段落句子；绘本导入阶段不再直接生成问答） |
+| POST | `/api/islands/:id/generate-questions` | 为指定故事（或传入 `story_title` 与 `story_text`）调用 AI Agent 独立生成阅读理解问答列表（`question`, `hint`, `answer`） |
+| POST | `/api/islands/generate-questions` | 故事新建模式下，根据输入的标题与正文直接调用 AI 生成问答列表 |
+| POST | `/api/islands/:id/ai-generate-story` | 提取关联生词并调用 AI Agent 一键构思生成完整绘本故事、中英逐句对照与问答，支持 `auto_save: true` 自动写库 |
+| POST | `/api/islands/ai-generate-story` | 输入目标单词列表，直接调用 AI Agent 一键构思生成故事数据与逐页逐句对照 |
+| PUT | `/api/islands/:id/questions` | 独立更新并持久化指定故事关卡的阅读理解问答列表（写入 `islands.story_questions`） |
 
 后端上传限制为每个文件 5 MB。图片解析成功不等于已保存故事；前端仍需调用故事写入接口。
 
@@ -59,7 +66,7 @@
 |---|---|---|---|
 | GET | `/api/progress` | `user_id?` | 返回单个或全部用户的星星统计 |
 | GET | `/api/progress/stars` | `user_id?` | 星星统计别名 |
-| POST | `/api/progress/update-stage` | `{ user_id, island_id, stage? , completed_stage? }` | 更新开放阶段和完成位图并重算星星 |
+| POST | `/api/progress/update-stage` | `{ user_id, island_id, stage?, completed_stage?, stage1_answers? }` | 更新开放阶段、完成位图及 Stage 1 作答答案，并重算星星 |
 | POST | `/api/progress/log-error` | `{ user_id, word_id }` | 错词次数加一 |
 | POST | `/api/progress/update-translation-stats` | `{ user_id, island_id, stats }` | 保存 Word Matching 统计 |
 | GET | `/api/progress/get-translation-stats` | `user_id`, `island_id` | 读取 Word Matching 统计 |
@@ -115,10 +122,12 @@
 | 方法 | 路径 | 主要输入 | 说明 |
 |---|---|---|---|
 | GET | `/api/word-books` | Query: `userId?` | 获取词单列表（含单词数量、已关联用户 ID 列表 `assigned_user_ids`；普通学员过滤仅可见授权章节或公开章节，管理员可见全部） |
-| POST | `/api/word-books` | `{ category?, title, description?, tags?, sort_order?, user_ids? }` | 创建新词单章节，支持指定书本系列分类与初始归属学员 |
+| POST | `/api/word-books` | `{ category?, title, description?, tags?, sort_order?, user_ids?, island_id? }` | 创建新词单章节，支持指定书本系列分类与初始归属学员 |
+| POST | `/api/word-books/sync-stories` | 无 | 幂等将所有故事关卡的生词全量同步为单词宝库词单及单词条目 |
 | GET | `/api/word-books/:id` | 路径 ID | 获取指定词单详情 |
 | PUT | `/api/word-books/:id` | `{ category?, title?, description?, tags?, sort_order?, user_ids? }` | 更新词单元数据及归属学员权限 |
 | DELETE | `/api/word-books/:id` | 路径 ID | 删除词单及其所有单词、学员学习进度与学员权限关联 |
+| POST | `/api/word-books/:id/progress` | `{ userId, stage: 1 \| 2 \| 3 }` | 记录词单章节下 3 个关卡的完成进度与位掩码（Stage 1: 学单词 bit 1, Stage 2: 看句选义 bit 2, Stage 3: 听音拼写 bit 4）。首次通关该关卡奖励 1 颗星星 (`users.stars += 1`) 与 50 EXP (`users.coins += 50`) |
 | GET | `/api/word-books/:id/access` | 路径 ID | 获取该词单章节的归属学员 ID 列表 `{ book_id, user_ids: number[] }` |
 | PUT | `/api/word-books/:id/access` | `{ user_ids: number[] }` | 更新词单章节的归属学员权限列表（空数组表示向全体公开） |
 | GET | `/api/word-books/:id/words` | 路径 ID, Query: `userId?` | 获取该词单下所有单词及生动趣味扩展详情 |
@@ -128,8 +137,13 @@
 | POST | `/api/vocabulary-words/batch-move` | `{ word_ids: number[], target_book_id: number }` | 批量调整单词所属章节，自动迁移到目标章节并保留学员发音/拼写进度 |
 | POST | `/api/vocabulary-words/batch-delete` | `{ word_ids: number[] }` | 批量删除单词及其学员练习进度 |
 | GET | `/api/word-books/:id/offline-package` | 路径 ID | 离线包下载端点（包含词单元数据与全量单词，前端存入 IndexedDB 供 PWA 离线使用） |
-| POST | `/api/vocabulary-words/:id/progress` | `{ userId, mode, passed }` | 上报学员在特定模式（`reading` / `listening` / `spelling`）下的答题结果与掌握度 |
+| POST | `/api/vocabulary-words/:id/progress` | `{ userId, mode, passed, clientId?, answer?, durationMs? }` | 上报学员答题结果；支持 `clientId` 幂等去重与流水日志记录，更新单模式掌握与加权不熟悉度 `weak_score`，连续 3 次答对自动达成攻坚掌握 |
+| GET | `/api/users/:userId/vocabulary-stats` | Query: `mode?`, `bookId?`, `sort?` | 查询学员在单词宝库下的客观作答全量指标（答对/答错数、错误率、连对数、掌握数）与加权薄弱生词排行，供管理后台与透视看板使用 |
+| GET | `/api/users/:userId/vocabulary-stats/practice-words` | Query: `bookId?`, `mode?`, `limit?` | 抽取学员薄弱生词（按 `weak_score` 降序优先推荐），用于学员端“⭐ 攻坚星词本”与 1 键发起定向专练 |
 | POST | `/api/word-books/enrich-words` | `{ words: string[], model?, cli? }` | 调用内部 AI Agent 对生词列表进行儿童化扩展（音标、生动例句、反义词、同义词、词根、趣味词源） |
+| GET | `/api/grammar/progress/:userId` | 路径 ID | 获取学员所有语法专项的通关进度、最高得分及最新作答快照 |
+| POST | `/api/grammar/submit` | `{ userId, category, quizId, score, totalQuestions, correctCount, userAnswers, wrongDetails }` | 提交语法批改记录写库；满 80% 首次奖励 50 金币+1 颗星星，重做奖励 10 金币；返回更新后用户金币与星星 |
+| GET | `/api/grammar/history/:userId/:quizId` | 路径 ID | 获取指定学员在该语法专项下的历次作答成绩记录列表（倒序） |
 
 ## 3. AI service API
 
@@ -140,6 +154,7 @@
 | GET | `/models?cli=agy\|codex` | 返回指定 CLI 的模型列表和默认模型 |
 | POST | `/parse` | 解析绘本图片并返回 `APIResponse` |
 | POST | `/enrich-vocabulary` | 对单词列表进行批量儿童化趣味扩展，返回结构化 JSON（释义、音标、趣味例句、反义词、同义词、词根拆解、趣味词源故事） |
+| POST | `/generate-story-from-vocab` | 输入生词列表及风格、页数与难度，调用 Agent CLI 一键构思创作连贯儿童绘本故事、中英逐句对应对照（看中文说英文专用）、插画提示词与阅读理解题 |
 
 `/parse` 表单字段：
 

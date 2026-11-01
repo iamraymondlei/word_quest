@@ -69,7 +69,7 @@ export const SongAdventureMap: React.FC<SongAdventureMapProps> = ({
       setSongs(readySongs);
     } catch (err: any) {
       console.error('Failed to load songs:', err);
-      setError(err.message || '加载歌曲库失败，请稍后重试');
+      setError(err.message || 'Failed to load songs');
     } finally {
       setLoading(false);
     }
@@ -127,20 +127,20 @@ export const SongAdventureMap: React.FC<SongAdventureMapProps> = ({
                 type="button"
                 onClick={onBackToStories}
                 className="px-3.5 py-2 text-xs rounded-xl font-black transition-all cursor-pointer bg-gradient-to-r from-cyan-600/30 to-indigo-600/30 hover:from-cyan-600/50 hover:to-indigo-600/50 border border-cyan-400/50 text-cyan-300 hover:text-white flex items-center gap-1.5 font-mono shadow-md active:scale-95 shrink-0"
-                title="返回故事主探险地图 (Story Adventure Map)"
+                title="Story Map"
               >
                 <span>🗺️</span>
-                <span>故事地图</span>
+                <span>Story Map</span>
               </button>
 
               <button
                 type="button"
                 onClick={onOpenWordBank}
                 className="px-3.5 py-2 text-xs rounded-xl font-black transition-all cursor-pointer bg-gradient-to-r from-emerald-600/30 to-teal-600/30 hover:from-emerald-600/50 hover:to-teal-600/50 border border-emerald-400/50 text-emerald-300 hover:text-white flex items-center gap-1.5 font-mono shadow-md active:scale-95 shrink-0"
-                title="打开单词宝库与章节关卡 (Vocab Adventure Map)"
+                title="Word Challenge"
               >
                 <span>📚</span>
-                <span>单词宝库</span>
+                <span>Word Quest</span>
               </button>
             </div>
           </div>
@@ -151,7 +151,7 @@ export const SongAdventureMap: React.FC<SongAdventureMapProps> = ({
             <div className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 shadow-sm font-mono">
               <span className="text-base leading-none">⭐</span>
               <div>
-                <div className="text-[10px] uppercase text-amber-400/70 font-black tracking-wider leading-none">可用星星</div>
+                <div className="text-[10px] uppercase text-amber-400/70 font-black tracking-wider leading-none">Available Stars</div>
                 <div className="text-sm font-black text-amber-300 tabular-nums">
                   {currentUser.stars !== undefined ? Math.max(0, currentUser.stars - (currentUser.spent_stars || 0)) : 0}
                 </div>
@@ -163,9 +163,9 @@ export const SongAdventureMap: React.FC<SongAdventureMapProps> = ({
             <div className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-purple-500/10 border border-purple-500/30 text-purple-200 shadow-sm font-mono">
               <span className="text-base leading-none">🎵</span>
               <div>
-                <div className="text-[10px] uppercase text-purple-400/70 font-black tracking-wider leading-none">原声好歌</div>
+                <div className="text-[10px] uppercase text-purple-400/70 font-black tracking-wider leading-none">Songs</div>
                 <div className="text-sm font-black text-purple-300 tabular-nums">
-                  {songs.length} <span className="text-xs text-purple-400/70 font-normal">首 ({totalWords} 核心词)</span>
+                  {songs.length} <span className="text-xs text-purple-400/70 font-normal">Songs ({totalWords} Words)</span>
                 </div>
               </div>
             </div>
@@ -197,7 +197,7 @@ export const SongAdventureMap: React.FC<SongAdventureMapProps> = ({
               <button
                 onClick={onLogout}
                 className="p-2 text-xs border border-rose-500/30 text-rose-400 hover:bg-rose-500/10 rounded-xl transition-all cursor-pointer font-bold flex items-center gap-1 font-mono shadow-sm"
-                title="退出登录"
+                title="Exit"
               >
                 🚪
               </button>
@@ -209,59 +209,53 @@ export const SongAdventureMap: React.FC<SongAdventureMapProps> = ({
 
       {/* Main Content Area */}
       <div className="w-full max-w-6xl mx-auto">
-        {/* Header Summary */}
-        <div className="flex flex-wrap justify-between items-end mb-6 gap-4 border-b theme-border pb-4">
-          <div>
-            <h1 className="text-2xl sm:text-3xl font-extrabold tracking-wider text-transparent bg-clip-text bg-gradient-to-r from-purple-400 via-pink-300 to-cyan-400 uppercase font-mono">
-              Song Adventure Map 🎵 歌曲乐园探险
+        {/* Compact Header & Search Bar */}
+        <div className="flex flex-wrap items-center justify-between mb-4 gap-3 border-b theme-border pb-3">
+          <div className="flex items-center gap-3 flex-wrap flex-1">
+            <h1 className="text-lg sm:text-xl font-extrabold tracking-wider text-transparent bg-clip-text bg-gradient-to-r from-purple-400 via-pink-300 to-cyan-400 uppercase font-mono shrink-0">
+              🎵 Song Lab
             </h1>
-            <p className="text-xs theme-text-muted font-mono mt-1">
-              以原声儿歌为载体，在纯正原声与欢快律动中逐句精听、点亮地道核心词汇！
-            </p>
+
+            {songs.length > 0 && (
+              <>
+                <div className="relative flex-1 min-w-[180px] max-w-xs">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs">🔍</span>
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="Search songs or artists..."
+                    className="w-full pl-8 pr-7 py-1.5 text-xs font-mono rounded-xl bg-slate-900/80 border border-slate-700/80 text-white placeholder-slate-500 outline-none focus:border-purple-400 transition-all shadow-inner"
+                  />
+                  {searchQuery && (
+                    <button
+                      type="button"
+                      onClick={() => setSearchQuery('')}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white text-xs"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
+                <span className="text-xs font-mono theme-text-muted">
+                  <strong className="text-purple-300 font-bold">{filteredSongs.length}</strong> songs
+                </span>
+              </>
+            )}
           </div>
-          <div className="flex items-center gap-3">
-            <OfflineSyncBadge
-              currentUserId={currentUser.id}
-              variant="map"
-              fontScale={fontScale}
-              onFontScaleChange={onFontScaleChange}
-            />
-          </div>
+
+          <OfflineSyncBadge
+            currentUserId={currentUser.id}
+            variant="map"
+            fontScale={fontScale}
+            onFontScaleChange={onFontScaleChange}
+          />
         </div>
-
-        {/* Search & Filter Bar */}
-        {songs.length > 0 && (
-          <div className="mb-6 flex items-center justify-between gap-4 flex-wrap">
-            <div className="relative flex-1 min-w-[240px] max-w-md">
-              <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 text-xs">🔍</span>
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="搜索歌曲名称、歌手..."
-                className="w-full pl-9 pr-4 py-2 text-xs font-mono rounded-xl bg-slate-900/80 border border-slate-700/80 text-white placeholder-slate-500 outline-none focus:border-purple-400 transition-all shadow-inner"
-              />
-              {searchQuery && (
-                <button
-                  type="button"
-                  onClick={() => setSearchQuery('')}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white text-xs"
-                >
-                  ✕
-                </button>
-              )}
-            </div>
-
-            <div className="text-xs font-mono theme-text-muted flex items-center gap-2">
-              <span>共找到 <strong className="text-purple-300 font-bold">{filteredSongs.length}</strong> 首原声歌曲</span>
-            </div>
-          </div>
-        )}
 
         {/* Song Cards Content */}
         {loading ? (
           <div className="py-24 text-center text-slate-500 animate-pulse text-sm">
-            🛰️ 正在载入原声音乐能量包...
+            🛰️ Loading songs...
           </div>
         ) : error ? (
           <div className="theme-card p-12 rounded-2xl text-center border border-rose-500/30 space-y-4">
@@ -272,19 +266,19 @@ export const SongAdventureMap: React.FC<SongAdventureMapProps> = ({
               onClick={loadSongs}
               className="px-4 py-2 bg-purple-500 text-slate-950 font-bold text-xs rounded-xl shadow-md cursor-pointer hover:bg-purple-400 transition-all"
             >
-              🔄 重新尝试连接
+              🔄 Retry Connection
             </button>
           </div>
         ) : filteredSongs.length === 0 ? (
           <div className="theme-card p-12 rounded-2xl text-center border theme-border space-y-4">
             <div className="text-5xl">🎵</div>
             <h3 className="text-slate-200 font-bold text-base">
-              {searchQuery ? '没有找到符合搜索条件的歌曲' : '当前暂无已开放的原声歌曲'}
+              {searchQuery ? 'No songs found' : 'No songs available yet'}
             </h3>
             <p className="text-xs text-slate-400 max-w-md mx-auto">
               {searchQuery
-                ? '可以尝试更换关键词搜索。'
-                : '请联系家长在后台【原声歌曲管理】中添加歌曲并分配给当前学员。'}
+                ? 'Try a different search keyword.'
+                : 'Please ask parents to add songs in the Parent Portal.'}
             </p>
             {searchQuery ? (
               <button
@@ -292,7 +286,7 @@ export const SongAdventureMap: React.FC<SongAdventureMapProps> = ({
                 onClick={() => setSearchQuery('')}
                 className="px-4 py-2 bg-purple-500 text-slate-950 font-bold text-xs rounded-xl shadow-md cursor-pointer hover:bg-purple-400 transition-all"
               >
-                清除搜索条件
+                Clear Search
               </button>
             ) : (
               <button
@@ -300,7 +294,7 @@ export const SongAdventureMap: React.FC<SongAdventureMapProps> = ({
                 onClick={onBackToStories}
                 className="px-4 py-2 bg-cyan-500 text-slate-950 font-bold text-xs rounded-xl shadow-md cursor-pointer hover:bg-cyan-400 transition-all"
               >
-                ← 返回故事地图
+                ← Back to Story Map
               </button>
             )}
           </div>
@@ -368,12 +362,12 @@ export const SongAdventureMap: React.FC<SongAdventureMapProps> = ({
                     <div className="flex flex-wrap items-center gap-2 pt-1 text-[11px] font-mono">
                       <span className="px-2.5 py-1 rounded-lg bg-slate-950/60 border border-slate-800 text-slate-300 flex items-center gap-1">
                         <span className="text-cyan-400">🎶</span>
-                        <span>{segmentCount} 句原声歌词</span>
+                        <span>{segmentCount} Lyrics</span>
                       </span>
                       {wordCount > 0 && (
                         <span className="px-2.5 py-1 rounded-lg bg-slate-950/60 border border-slate-800 text-slate-300 flex items-center gap-1">
                           <span className="text-amber-400">✨</span>
-                          <span>{wordCount} 个核心生词</span>
+                          <span>{wordCount} Key Words</span>
                         </span>
                       )}
                     </div>
@@ -386,7 +380,7 @@ export const SongAdventureMap: React.FC<SongAdventureMapProps> = ({
                       className="w-full py-2.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 group-hover:from-purple-500 group-hover:to-cyan-500 text-white font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2 shadow-[0_0_15px_rgba(168,85,247,0.25)] group-hover:shadow-[0_0_20px_rgba(6,182,212,0.4)] transition-all cursor-pointer"
                     >
                       <span className="text-sm">▶</span>
-                      <span>开始学唱 · 进入歌曲</span>
+                      <span>Play & Learn ▶</span>
                     </button>
                   </div>
                 </div>

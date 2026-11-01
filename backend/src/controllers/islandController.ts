@@ -103,23 +103,27 @@ export const createOrUpdateIsland = async (req: Request, res: Response) => {
     connection = await pool.getConnection();
     await connection.beginTransaction();
 
+    const hasQuestionsParam = story_questions !== undefined;
+    const questionsJson = hasQuestionsParam ? JSON.stringify(story_questions || []) : null;
+
     await connection.query(
       `INSERT INTO islands (name, group_name, story_title, story_passage, story_passage_json, story_questions) 
-       VALUES (?, COALESCE(?, 'General'), ?, ?, ?, ?) 
+       VALUES (?, COALESCE(?, 'General'), ?, ?, ?, COALESCE(?, '[]'))
        ON DUPLICATE KEY UPDATE 
          group_name = COALESCE(?, group_name),
          story_title = VALUES(story_title), 
          story_passage = VALUES(story_passage), 
          story_passage_json = VALUES(story_passage_json),
-         story_questions = VALUES(story_questions)`,
+         story_questions = COALESCE(?, story_questions)`,
       [
         name, 
         groupParam,
         story_title || '', 
         story_passage || '', 
         story_passage_json ? JSON.stringify(story_passage_json) : null,
-        JSON.stringify(story_questions || []),
-        groupParam
+        questionsJson,
+        groupParam,
+        questionsJson
       ]
     );
 
@@ -130,26 +134,38 @@ export const createOrUpdateIsland = async (req: Request, res: Response) => {
       await connection.query('INSERT IGNORE INTO story_groups (name) VALUES (?)', [groupParam]);
     }
 
-    // If there are words provided in the request body, insert or update them
-    if (words && Array.isArray(words)) {
-      for (const w of words) {
-        const lowercaseWord = (w.word || '').toLowerCase().trim();
-        if (!lowercaseWord) continue;
+    // If words are explicitly provided in the request body, insert or update them
+    if (words !== undefined && Array.isArray(words)) {
+      const activeWords = words
+        .map((w: any) => (w.word || '').toLowerCase().trim())
+        .filter(Boolean);
+
+      if (activeWords.length > 0) {
         await connection.query(
-          `INSERT INTO words (island_id, word, translation, sentence, sentence_translation)
-           VALUES (?, ?, ?, ?, ?)
-           ON DUPLICATE KEY UPDATE 
-             translation = VALUES(translation), 
-             sentence = VALUES(sentence), 
-             sentence_translation = VALUES(sentence_translation)`,
-          [
-            islandId,
-            lowercaseWord,
-            w.translation || '',
-            w.sentence || '',
-            w.sentence_translation || ''
-          ]
+          'DELETE FROM words WHERE island_id = ? AND word NOT IN (?)',
+          [islandId, activeWords]
         );
+        for (const w of words) {
+          const lowercaseWord = (w.word || '').toLowerCase().trim();
+          if (!lowercaseWord) continue;
+          await connection.query(
+            `INSERT INTO words (island_id, word, translation, sentence, sentence_translation)
+             VALUES (?, ?, ?, ?, ?)
+             ON DUPLICATE KEY UPDATE
+               translation = VALUES(translation),
+               sentence = VALUES(sentence),
+               sentence_translation = VALUES(sentence_translation)`,
+            [
+              islandId,
+              lowercaseWord,
+              w.translation || '',
+              w.sentence || '',
+              w.sentence_translation || ''
+            ]
+          );
+        }
+      } else {
+        await connection.query('DELETE FROM words WHERE island_id = ?', [islandId]);
       }
     }
 
@@ -165,12 +181,33 @@ export const createOrUpdateIsland = async (req: Request, res: Response) => {
 
     await connection.commit();
 
+    // Automatically synchronize this island's core words to word_books (Phase 1 & Phase 3)
+    let syncedBookId: number | null = null;
+    try {
+      const { syncIslandToWordBook } = await import('./wordBookController');
+      const syncResult = await syncIslandToWordBook(pool, islandId, words);
+      if (syncResult && syncResult.bookId) {
+        syncedBookId = syncResult.bookId;
+      }
+    } catch (syncErr: any) {
+      console.warn(`[Sync] Warning: Failed to sync island ${islandId} to word_books:`, syncErr.message);
+    }
+
     // Fetch the fully updated island data to return
     const [updatedRows]: any = await pool.query('SELECT * FROM islands WHERE id = ?', [islandId]);
     const island = updatedRows[0];
 
     const [accessRows]: any = await pool.query('SELECT user_id FROM user_island_access WHERE island_id = ?', [islandId]);
     const assigned_user_ids = accessRows.map((r: any) => r.user_id);
+
+    // Ensure word_book_id is populated
+    let word_book_id = syncedBookId;
+    if (!word_book_id) {
+      const [bookRows]: any = await pool.query('SELECT id FROM word_books WHERE island_id = ? LIMIT 1', [islandId]);
+      if (bookRows.length > 0) {
+        word_book_id = bookRows[0].id;
+      }
+    }
     
     // Format JSON fields back for frontend convenience
     res.json({
@@ -178,7 +215,8 @@ export const createOrUpdateIsland = async (req: Request, res: Response) => {
       group_name: island.group_name || 'General',
       story_passage_json: typeof island.story_passage_json === 'string' ? JSON.parse(island.story_passage_json) : island.story_passage_json,
       story_questions: typeof island.story_questions === 'string' ? JSON.parse(island.story_questions) : island.story_questions,
-      assigned_user_ids
+      assigned_user_ids,
+      word_book_id
     });
   } catch (err: any) {
     if (connection) {
@@ -291,17 +329,11 @@ export const getIslands = async (req: Request, res: Response) => {
 
     const islandIds = islands.map((island: any) => island.id);
 
-    // 一次性查询所有单词
-    const [allWords]: any = await pool.query(
-      'SELECT * FROM words WHERE island_id IN (?) ORDER BY id ASC',
-      [islandIds]
-    );
-
-    // 一次性查询用户的通关状态与各关卡完成 bitmask
-    let progressMap: Record<number, { unlocked_stage: number; completed_stages_mask: number }> = {};
+    // 一次性查询所有用户的通关状态与各关卡完成 bitmask
+    let progressMap: Record<number, { unlocked_stage: number; completed_stages_mask: number; stage1_answers?: string[] }> = {};
     if (userId) {
       const [progRows]: any = await pool.query(
-        'SELECT island_id, unlocked_stage, completed_stages_mask FROM user_island_progress WHERE user_id = ? AND island_id IN (?)',
+        'SELECT island_id, unlocked_stage, completed_stages_mask, stage1_answers_json FROM user_island_progress WHERE user_id = ? AND island_id IN (?)',
         [userId, islandIds]
       );
       for (const row of progRows) {
@@ -313,9 +345,22 @@ export const getIslands = async (req: Request, res: Response) => {
           else if (rawUnlocked === 4) mask = 7;
           else if (rawUnlocked >= 5) mask = 15;
         }
+        if ((mask & 4) !== 0) {
+          mask |= 16;
+        }
+        mask = mask & 31;
+        let parsedAnswers: string[] = [];
+        if (row.stage1_answers_json) {
+          try {
+            parsedAnswers = typeof row.stage1_answers_json === 'string'
+              ? JSON.parse(row.stage1_answers_json)
+              : row.stage1_answers_json;
+          } catch (e) {}
+        }
         progressMap[row.island_id] = {
           unlocked_stage: rawUnlocked,
-          completed_stages_mask: mask
+          completed_stages_mask: mask,
+          stage1_answers: parsedAnswers
         };
       }
     }
@@ -333,21 +378,62 @@ export const getIslands = async (req: Request, res: Response) => {
       accessMap[row.island_id].push(row.user_id);
     }
 
+    // 一次性查询所有岛屿关联的单词宝库词单 (word_books)
+    const [bookRows]: any = await pool.query(
+      'SELECT id, island_id FROM word_books WHERE island_id IN (?)',
+      [islandIds]
+    );
+    const bookMap: Record<number, number> = {};
+    for (const b of bookRows) {
+      if (b.island_id) {
+        bookMap[b.island_id] = b.id;
+      }
+    }
+
+    // 优先从统一单词宝库 (vocabulary_words) 查询生词
+    const [vocabWords]: any = await pool.query(
+      `SELECT vw.id, vw.word, vw.translation, vw.phonetic, vw.fun_sentences_json, vw.antonyms, vw.synonyms, vw.root_affixes, vw.etymology, b.island_id
+       FROM vocabulary_words vw
+       JOIN word_books b ON vw.book_id = b.id
+       WHERE b.island_id IN (?)
+       ORDER BY vw.id ASC`,
+      [islandIds]
+    );
+
     // 内存中建立映射
     const wordsByIslandId: Record<number, any[]> = {};
     for (const id of islandIds) {
       wordsByIslandId[id] = [];
     }
-    for (const w of allWords) {
-      if (wordsByIslandId[w.island_id]) {
-        wordsByIslandId[w.island_id].push({
-          id: w.id,
-          word: w.word,
-          translation: w.translation,
-          sentence: w.sentence,
-          sentence_translation: w.sentence_translation
-        });
+
+    for (const vw of vocabWords) {
+      let sentence = '';
+      let sentence_translation = '';
+      let parsedFunSentences: any[] = [];
+      if (vw.fun_sentences_json) {
+        let parsed = vw.fun_sentences_json;
+        if (typeof parsed === 'string') {
+          try { parsed = JSON.parse(parsed); } catch (e) {}
+        }
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          parsedFunSentences = parsed;
+          sentence = parsed[0].en || '';
+          sentence_translation = parsed[0].zh || '';
+        }
       }
+      wordsByIslandId[vw.island_id].push({
+        id: vw.id,
+        word: vw.word,
+        translation: vw.translation,
+        phonetic: vw.phonetic || null,
+        sentence,
+        sentence_translation,
+        fun_sentences: parsedFunSentences,
+        antonyms: vw.antonyms || '',
+        synonyms: vw.synonyms || '',
+        root_affixes: vw.root_affixes || '',
+        etymology: vw.etymology || ''
+      });
     }
 
     const result = islands.map((island: any) => {
@@ -363,14 +449,17 @@ export const getIslands = async (req: Request, res: Response) => {
         story_passage_json: typeof island.story_passage_json === 'string' ? JSON.parse(island.story_passage_json) : island.story_passage_json,
         story_questions: typeof island.story_questions === 'string' ? JSON.parse(island.story_questions) : island.story_questions,
         words: wordsByIslandId[island.id],
+        word_book_id: bookMap[island.id] || null,
         unlocked_stage: unlockedStage,
         completed_stages_mask: completedMask,
+        stage1_answers: prog?.stage1_answers || [],
         assigned_user_ids: accessMap[island.id] || []
       };
     });
 
     res.json(result);
   } catch (err: any) {
+    console.error('getIslands error detail:', err);
     res.status(500).json({ error: err.message });
   }
 };
@@ -461,6 +550,15 @@ export const uploadIslandWords = async (req: Request, res: Response) => {
     }
 
     await connection.commit();
+
+    // Sync to word_books (Phase 1 & Phase 3)
+    try {
+      const { syncIslandToWordBook } = await import('./wordBookController');
+      await syncIslandToWordBook(pool, islandId, records);
+    } catch (syncErr: any) {
+      console.warn(`[Sync] Warning: Failed to sync island ${islandId} to word_books:`, syncErr.message);
+    }
+
     res.json({ success: true, message: `Successfully imported ${records.length} words to ${island_name}` });
   } catch (err: any) {
     if (connection) {
@@ -486,12 +584,20 @@ export const exportErrors = async (req: Request, res: Response) => {
 
   try {
     const [rows]: any = await pool.query(
-      `SELECT w.word, w.translation, uwp.error_count 
-       FROM user_word_progress uwp
-       JOIN words w ON uwp.word_id = w.id
-       WHERE uwp.user_id = ? AND uwp.error_count > 0
-       ORDER BY uwp.error_count DESC`,
-      [userId]
+      `SELECT word, translation, SUM(error_count) as error_count FROM (
+         SELECT w.word, w.translation, uwp.error_count
+         FROM user_word_progress uwp
+         JOIN words w ON uwp.word_id = w.id
+         WHERE uwp.user_id = ? AND uwp.error_count > 0
+         UNION ALL
+         SELECT vw.word, vw.translation, s.error_count
+         FROM user_vocabulary_mode_stats s
+         JOIN vocabulary_words vw ON s.vocab_id = vw.id
+         WHERE s.user_id = ? AND s.error_count > 0
+       ) combined
+       GROUP BY word, translation
+       ORDER BY error_count DESC`,
+      [userId, userId]
     );
 
     // 生成错词 CSV
@@ -724,16 +830,16 @@ export const getAIModels = async (req: Request, res: Response) => {
       success: true,
       cli: 'agy',
       models: [
-        { id: 'gemini-3.7-flash-high', name: 'Gemini 3.7 Flash (High)', description: 'High capability, recommended (Default)' },
-        { id: 'gemini-3.7-flash-medium', name: 'Gemini 3.7 Flash (Medium)', description: 'Medium reasoning effort' },
-        { id: 'gemini-3.7-flash-low', name: 'Gemini 3.7 Flash (Low)', description: 'Fastest low reasoning' },
+        { id: 'gemini-3.8-flash-high', name: 'Gemini 3.8 Flash (High)', description: 'High capability, recommended (Default)' },
+        { id: 'gemini-3.8-flash-medium', name: 'Gemini 3.8 Flash (Medium)', description: 'Medium reasoning effort' },
+        { id: 'gemini-3.8-flash-low', name: 'Gemini 3.8 Flash (Low)', description: 'Fastest low reasoning' },
         { id: 'gemini-3.6-flash-high', name: 'Gemini 3.6 Flash (High)', description: 'High performance' },
         { id: 'gemini-3.6-flash-medium', name: 'Gemini 3.6 Flash (Medium)', description: 'Balanced performance' },
         { id: 'gemini-3.6-flash-low', name: 'Gemini 3.6 Flash (Low)', description: 'Lightweight' },
         { id: 'gemini-3.5-flash-high', name: 'Gemini 3.5 Flash (High)', description: 'Standard fast' },
         { id: 'gemini-3.1-pro-high', name: 'Gemini 3.1 Pro (High)', description: 'Strongest capability' },
       ],
-      default_model: 'gemini-3.7-flash-high',
+      default_model: 'gemini-3.8-flash-high',
     });
   }
 };
@@ -772,22 +878,38 @@ export const importAIStory = async (req: Request, res: Response) => {
       formData.append('images', blob, file.originalname);
     }
 
-    const dynamicTimeoutMs = Math.max(360000, (files?.length || 1) * 70000); // 6 to 12 minutes
+    const dynamicTimeoutMs = Math.max(720000, (files?.length || 1) * 120000); // 12 to 20 minutes
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), dynamicTimeoutMs);
+
+    let dispatcher: any;
+    try {
+      // @ts-ignore
+      const undici = require('undici');
+      if (undici && undici.Agent) {
+        dispatcher = new undici.Agent({
+          headersTimeout: 20 * 60 * 1000,
+          bodyTimeout: 20 * 60 * 1000,
+          connectTimeout: 60 * 1000
+        });
+      }
+    } catch {
+      // Ignore if undici is not directly loaded
+    }
 
     let response: any;
     try {
       response = await fetch(`${aiAgentUrl}/parse`, {
         method: 'POST',
         body: formData,
-        signal: controller.signal
-      });
+        signal: controller.signal,
+        ...(dispatcher ? { dispatcher } : {})
+      } as any);
       clearTimeout(timeoutId);
     } catch (err: any) {
       clearTimeout(timeoutId);
-      if (err.name === 'AbortError') {
-        throw new Error('AI 解析服务请求超时，请稍后重试');
+      if (err.name === 'AbortError' || (err.message && err.message.toLowerCase().includes('timeout'))) {
+        throw new Error('AI 解析服务请求超时，请稍后重试或尝试切换至更快速的 Flash 模型');
       }
       throw err;
     }
@@ -830,6 +952,335 @@ export const importAIStory = async (req: Request, res: Response) => {
   }
 };
 
+/**
+ * POST /api/islands/:id/ai-generate-story
+ * POST /api/islands/ai-generate-story
+ * Body: {
+ *   words?: string[],
+ *   title?: string,
+ *   category?: string,
+ *   theme_style?: string,
+ *   target_level?: string,
+ *   page_count?: number,
+ *   question_count?: number,
+ *   model?: string,
+ *   cli?: 'agy' | 'codex',
+ *   auto_save?: boolean
+ * }
+ */
+export const generateStoryFromVocab = async (req: Request, res: Response) => {
+  const islandId = req.params.id || req.body.island_id;
+  const rawWords = req.body.words;
+  const rawTitle = typeof req.body.title === 'string' ? req.body.title.trim() : '';
+  const rawCategory = typeof req.body.category === 'string' ? req.body.category.trim() : '';
+  const themeStyle = req.body.theme_style || 'animal_tale';
+  const targetLevel = req.body.target_level || 'RAZ C-E';
+  let pageCount = parseInt(req.body.page_count || '4', 10);
+  if (isNaN(pageCount) || pageCount < 2 || pageCount > 10) pageCount = 4;
+  let questionCount = parseInt(req.body.question_count || '4', 10);
+  if (isNaN(questionCount) || questionCount < 1 || questionCount > 10) questionCount = 4;
+  const model = req.body.model || '';
+  const cli = req.body.cli || 'agy';
+  const autoSave = req.body.auto_save !== false;
+
+  let connection;
+  try {
+    let island: any = null;
+    let targetWords: string[] = [];
+
+    if (Array.isArray(rawWords) && rawWords.length > 0) {
+      targetWords = rawWords.map((w: any) => String(w).trim()).filter(Boolean);
+    }
+
+    if (islandId) {
+      const [rows]: any = await pool.query(
+        'SELECT id, name, group_name, story_title, story_passage FROM islands WHERE id = ?',
+        [islandId]
+      );
+      if (!rows || rows.length === 0) {
+        return res.status(404).json({ error: '关卡不存在' });
+      }
+      island = rows[0];
+
+      if (targetWords.length === 0) {
+        // First check words table
+        const [wordRows]: any = await pool.query(
+          'SELECT word FROM words WHERE island_id = ? ORDER BY id ASC',
+          [islandId]
+        );
+        if (wordRows && wordRows.length > 0) {
+          targetWords = wordRows.map((r: any) => String(r.word).trim()).filter(Boolean);
+        }
+
+        // If still empty, check vocabulary_words via word_books
+        if (targetWords.length === 0) {
+          const [vwRows]: any = await pool.query(
+            'SELECT vw.word FROM vocabulary_words vw JOIN word_books wb ON vw.book_id = wb.id WHERE wb.island_id = ? ORDER BY vw.id ASC',
+            [islandId]
+          );
+          if (vwRows && vwRows.length > 0) {
+            targetWords = vwRows.map((r: any) => String(r.word).trim()).filter(Boolean);
+          }
+        }
+      }
+    }
+
+    if (targetWords.length === 0) {
+      return res.status(400).json({
+        error: '该关卡暂无生词，无法生成绘本故事。请先录入单词或在请求中传入单词列表。'
+      });
+    }
+
+    const aiAgentUrl = getAiAgentUrl();
+    const dynamicTimeoutMs = 240000; // 4 minutes
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), dynamicTimeoutMs);
+
+    let dispatcher: any;
+    try {
+      // @ts-ignore
+      const undici = require('undici');
+      if (undici && undici.Agent) {
+        dispatcher = new undici.Agent({
+          headersTimeout: 20 * 60 * 1000,
+          bodyTimeout: 20 * 60 * 1000,
+          connectTimeout: 60 * 1000
+        });
+      }
+    } catch {}
+
+    const payload = {
+      words: targetWords,
+      title: rawTitle || island?.story_title || island?.name || 'My Fun Story',
+      category: rawCategory || island?.group_name || 'General',
+      theme_style: themeStyle,
+      target_level: targetLevel,
+      page_count: pageCount,
+      question_count: questionCount,
+      model,
+      cli
+    };
+
+    let response: any;
+    try {
+      response = await fetch(`${aiAgentUrl}/generate-story-from-vocab`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+        signal: controller.signal,
+        ...(dispatcher ? { dispatcher } : {})
+      } as any);
+      clearTimeout(timeoutId);
+    } catch (err: any) {
+      clearTimeout(timeoutId);
+      if (err.name === 'AbortError' || (err.message && err.message.toLowerCase().includes('timeout'))) {
+        throw new Error('AI 故事生成服务请求超时，请重试或切换至快速模型');
+      }
+      throw err;
+    }
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      return res.status(response.status).json({ error: `AI Agent returned error: ${errorText}` });
+    }
+
+    const responseData: any = await response.json();
+    if (!responseData.success) {
+      return res.status(400).json({ error: responseData.error || 'AI 故事生成失败' });
+    }
+
+    const aiData = responseData.data;
+    if (!aiData) {
+      return res.status(400).json({ error: 'AI Agent 返回了空数据' });
+    }
+
+    // Build story_passage_json array
+    const storyPassageJson: Array<{
+      paragraph_num: number;
+      sentence_num: number;
+      sentence_text: string;
+      translation: string;
+      illustration_url: string | null;
+      illustration_prompt: string;
+    }> = [];
+
+    (aiData.pages || []).forEach((p: any) => {
+      const pageNum = Number(p.page) || 1;
+      const prompt = p.illustration_prompt || '';
+      (p.sentences || []).forEach((s: any, idx: number) => {
+        storyPassageJson.push({
+          paragraph_num: pageNum,
+          sentence_num: idx + 1,
+          sentence_text: (s.en || '').trim(),
+          translation: (s.zh || '').trim(),
+          illustration_url: null,
+          illustration_prompt: prompt
+        });
+      });
+    });
+
+    const finalPassage = aiData.passage || (aiData.pages || []).map((p: any) => (p.sentences || []).map((s: any) => s.en).join(' ')).join('\n\n');
+    const finalQuestions = aiData.questions || [];
+    const finalTitle = aiData.title || rawTitle || island?.name || 'New Picture Book';
+
+    if (autoSave && islandId) {
+      connection = await pool.getConnection();
+      await connection.beginTransaction();
+
+      await connection.query(
+        'UPDATE islands SET story_title = ?, story_passage = ?, story_passage_json = ?, story_questions = ? WHERE id = ?',
+        [finalTitle, finalPassage, JSON.stringify(storyPassageJson), JSON.stringify(finalQuestions), islandId]
+      );
+
+      await connection.commit();
+    }
+
+    return res.json({
+      success: true,
+      message: autoSave && islandId ? '绘本故事已成功生成并自动保存至关卡！' : '绘本故事生成成功！',
+      data: {
+        island_id: islandId ? Number(islandId) : null,
+        title: finalTitle,
+        theme: aiData.theme,
+        passage: finalPassage,
+        pages: aiData.pages,
+        story_passage_json: storyPassageJson,
+        story_questions: finalQuestions,
+        target_words_covered: aiData.target_words_covered || []
+      }
+    });
+
+  } catch (err: any) {
+    if (connection) await connection.rollback();
+    console.error('generateStoryFromVocab error:', err);
+    return res.status(500).json({ error: err.message || '生成故事失败' });
+  } finally {
+    if (connection) connection.release();
+  }
+};
+
+/**
+ * POST /api/islands/:id/generate-questions
+ * POST /api/islands/generate-questions
+ * Body: { story_title?: string, story_text?: string, question_count?: number, model?: string, cli?: 'agy' | 'codex' }
+ * Uses the story text from DB or request body, and calls ai_agent /generate-questions
+ */
+export const generateStoryQuestions = async (req: Request, res: Response) => {
+  const islandId = req.params.id || req.body.island_id;
+  let questionCount = parseInt(req.body.question_count || '5', 10);
+  if (isNaN(questionCount) || questionCount < 1 || questionCount > 15) {
+    questionCount = 5;
+  }
+  const model = req.body.model || '';
+  const cli = req.body.cli || 'agy';
+
+  let storyTitle = typeof req.body.story_title === 'string' ? req.body.story_title.trim() : '';
+  let storyText = typeof req.body.story_text === 'string' ? req.body.story_text.trim() : '';
+
+  try {
+    if (islandId) {
+      const [rows]: any = await pool.query(
+        'SELECT id, name, story_title, story_passage, story_passage_json FROM islands WHERE id = ?',
+        [islandId]
+      );
+      if (rows && rows.length > 0) {
+        const island = rows[0];
+        if (!storyTitle) {
+          storyTitle = (island.story_title && island.story_title.trim()) || island.name;
+        }
+        if (!storyText) {
+          if (island.story_passage_json) {
+            try {
+              const parsedJson = typeof island.story_passage_json === 'string'
+                ? JSON.parse(island.story_passage_json)
+                : island.story_passage_json;
+              if (Array.isArray(parsedJson) && parsedJson.length > 0) {
+                const sentences = parsedJson.map((s: any) => s.sentence_text || s.en || '').filter(Boolean);
+                if (sentences.length > 0) {
+                  storyText = sentences.join(' ');
+                }
+              }
+            } catch (e) {}
+          }
+          if (!storyText && island.story_passage) {
+            storyText = island.story_passage.trim();
+          }
+        }
+      }
+    }
+
+    if (!storyText) {
+      return res.status(400).json({ error: '该绘本故事暂无正文文本，请先输入或保存故事内容。' });
+    }
+
+    const aiAgentUrl = getAiAgentUrl();
+    const response = await fetch(`${aiAgentUrl}/generate-questions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        story_title: storyTitle || 'Picture Book Story',
+        story_text: storyText,
+        question_count: questionCount,
+        model,
+        cli
+      })
+    });
+
+    if (!response.ok) {
+      const errText = await response.text();
+      return res.status(response.status).json({ error: `AI 服务返回错误: ${errText}` });
+    }
+
+    const data: any = await response.json();
+    if (!data.success) {
+      return res.status(400).json({ error: data.error || 'AI 生成问题失败' });
+    }
+
+    return res.json({
+      success: true,
+      island_id: islandId ? Number(islandId) : null,
+      story_title: storyTitle,
+      questions: data.data || []
+    });
+  } catch (err: any) {
+    console.error('generateStoryQuestions error:', err);
+    return res.status(500).json({ error: err.message || '生成问题失败' });
+  }
+};
+
+/**
+ * PUT /api/islands/:id/questions
+ * Body: { questions: Array<{ question: string, hint: string, answer: string }> }
+ * Saves updated comprehension questions for this island
+ */
+export const updateStoryQuestions = async (req: Request, res: Response) => {
+  const islandId = req.params.id;
+  const { questions } = req.body;
+
+  if (!Array.isArray(questions)) {
+    return res.status(400).json({ error: 'questions must be an array' });
+  }
+
+  try {
+    const questionsJson = JSON.stringify(questions);
+    const [result]: any = await pool.query(
+      'UPDATE islands SET story_questions = ? WHERE id = ?',
+      [questionsJson, islandId]
+    );
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ error: 'Story sector not found.' });
+    }
+    return res.json({
+      success: true,
+      island_id: Number(islandId),
+      questions
+    });
+  } catch (err: any) {
+    console.error('updateStoryQuestions error:', err);
+    return res.status(500).json({ error: err.message || 'Failed to update questions' });
+  }
+};
+
 export const deleteIsland = async (req: Request, res: Response) => {
   const { id } = req.params;
   let connection;
@@ -856,6 +1307,9 @@ export const deleteIsland = async (req: Request, res: Response) => {
       await connection.query('DELETE FROM user_word_progress WHERE word_id IN (?)', [wordIds]);
       await connection.query('DELETE FROM words WHERE island_id = ?', [id]);
     }
+
+    // Clean up associated word_books (cascades to vocabulary_words and access)
+    await connection.query('DELETE FROM word_books WHERE island_id = ?', [id]);
 
     // Delete island
     await connection.query('DELETE FROM islands WHERE id = ?', [id]);

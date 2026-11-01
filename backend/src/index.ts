@@ -16,7 +16,25 @@ import illustrationRoutes from './routes/illustrationRoutes';
 import roadmapRoutes from './routes/roadmapRoutes';
 import songRoutes from './routes/songRoutes';
 import wordBookRoutes from './routes/wordBookRoutes';
+import grammarRoutes from './routes/grammarRoutes';
 import { DEFAULT_GAME_SETTINGS } from './controllers/settingController';
+
+// Configure global undici dispatcher to avoid default 300s socket timeout for long-running AI requests
+try {
+  // @ts-ignore
+  const { setGlobalDispatcher, Agent } = require('undici');
+  if (setGlobalDispatcher && Agent) {
+    setGlobalDispatcher(
+      new Agent({
+        headersTimeout: 20 * 60 * 1000, // 20 minutes
+        bodyTimeout: 20 * 60 * 1000,
+        connectTimeout: 60 * 1000
+      })
+    );
+  }
+} catch {
+  // Fallback if undici is not available
+}
 
 const app = express();
 const PORT = process.env.BACKEND_PORT || process.env.PORT || 8010;
@@ -36,7 +54,7 @@ export async function initializeDatabaseSchema() {
   try {
     console.log('Running automatic database migrations...');
     
-    // 1. Ensure is_admin column exists in users table
+    // 1. Ensure is_admin and password columns exist in users table
     const [cols]: any = await pool.query(
       "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'is_admin'"
     );
@@ -44,6 +62,15 @@ export async function initializeDatabaseSchema() {
       await pool.query('ALTER TABLE users ADD COLUMN is_admin TINYINT(1) DEFAULT 0');
       console.log('Migration: Added is_admin column to users table');
     }
+
+    const [pwdCols]: any = await pool.query(
+      "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'password'"
+    );
+    if (pwdCols.length === 0) {
+      await pool.query("ALTER TABLE users ADD COLUMN password VARCHAR(255) DEFAULT 'admin'");
+      console.log('Migration: Added password column to users table');
+    }
+    await pool.query("UPDATE users SET password = 'admin' WHERE (username = 'Admin' OR is_admin = 1) AND (password IS NULL OR password = '')");
 
     // 2. Ensure user_island_access table exists
     await pool.query(`
@@ -78,6 +105,59 @@ export async function initializeDatabaseSchema() {
     if (maskCols.length === 0) {
       await pool.query('ALTER TABLE user_island_progress ADD COLUMN completed_stages_mask INT DEFAULT 0');
       console.log('Migration: Added completed_stages_mask column to user_island_progress table');
+    }
+
+    // 5.1 Ensure stage1_answers_json column exists in user_island_progress table
+    const [answersCols]: any = await pool.query(
+      "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'user_island_progress' AND COLUMN_NAME = 'stage1_answers_json'"
+    );
+    if (answersCols.length === 0) {
+      await pool.query('ALTER TABLE user_island_progress ADD COLUMN stage1_answers_json TEXT NULL');
+      console.log('Migration: Added stage1_answers_json column to user_island_progress table');
+    }
+
+    // 5.2 Backfill stage1_answers_json for historical records where Stage 1 is completed but answers are missing
+    try {
+      const [needsBackfill]: any = await pool.query(`
+        SELECT uip.user_id, uip.island_id, uip.unlocked_stage, uip.completed_stages_mask, i.story_questions
+        FROM user_island_progress uip
+        JOIN islands i ON uip.island_id = i.id
+        WHERE (uip.stage1_answers_json IS NULL OR uip.stage1_answers_json = '')
+          AND (
+            (uip.completed_stages_mask & 1) != 0
+            OR (uip.completed_stages_mask = 0 AND uip.unlocked_stage > 1)
+          )
+      `);
+
+      for (const row of needsBackfill) {
+        let answers: string[] = [];
+        let parsedQuestions: any = [];
+        if (row.story_questions) {
+          try {
+            parsedQuestions = typeof row.story_questions === 'string' ? JSON.parse(row.story_questions) : row.story_questions;
+          } catch (e) {}
+        }
+
+        if (Array.isArray(parsedQuestions) && parsedQuestions.length > 0) {
+          answers = parsedQuestions.map((q: any) => q.answer || '');
+        } else {
+          // Fallback to words sentences
+          const [islandWords]: any = await pool.query('SELECT sentence FROM words WHERE island_id = ? ORDER BY id ASC LIMIT 3', [row.island_id]);
+          answers = islandWords.map((w: any) => w.sentence || '');
+        }
+
+        if (answers.length > 0) {
+          await pool.query(
+            'UPDATE user_island_progress SET stage1_answers_json = ? WHERE user_id = ? AND island_id = ?',
+            [JSON.stringify(answers), row.user_id, row.island_id]
+          );
+        }
+      }
+      if (needsBackfill.length > 0) {
+        console.log(`Migration: Backfilled stage1_answers_json for ${needsBackfill.length} historical completed record(s)`);
+      }
+    } catch (bfErr: any) {
+      console.warn('Migration: Non-fatal error backfilling stage1_answers_json:', bfErr.message);
     }
 
     // 6. Ensure group_name column exists in islands table
@@ -132,6 +212,13 @@ export async function initializeDatabaseSchema() {
       await pool.query(
         `INSERT IGNORE INTO game_settings (setting_key, setting_value) VALUES (?, ?)`,
         [key, JSON.stringify(val)]
+      );
+    }
+    // Upgrade legacy ai_prompt_template to the simplified vocabulary extraction prompt
+    if (DEFAULT_GAME_SETTINGS.ai_prompt_template) {
+      await pool.query(
+        `UPDATE game_settings SET setting_value = ? WHERE setting_key = 'ai_prompt_template' AND (setting_value LIKE '%question_count%' OR setting_value LIKE '%clear and accurate Chinese translation%')`,
+        [JSON.stringify(DEFAULT_GAME_SETTINGS.ai_prompt_template)]
       );
     }
     console.log('Migration: Ensured game_settings table and default seeds');
@@ -214,20 +301,36 @@ export async function initializeDatabaseSchema() {
       CREATE TABLE IF NOT EXISTS word_books (
         id INT AUTO_INCREMENT PRIMARY KEY,
         category VARCHAR(100) NOT NULL DEFAULT 'General',
+        island_id INT NULL,
         title VARCHAR(200) NOT NULL,
         description TEXT NULL,
         tags VARCHAR(255) NULL,
         sort_order INT DEFAULT 0,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-        INDEX idx_word_books_category (category)
+        INDEX idx_word_books_category (category),
+        INDEX idx_word_books_island (island_id)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     `);
 
-    // Ensure category column exists in existing word_books
+    // Ensure category and island_id columns exist in existing word_books
     try {
       await pool.query("ALTER TABLE word_books ADD COLUMN category VARCHAR(100) NOT NULL DEFAULT 'General' AFTER id, ADD INDEX idx_word_books_category (category)");
       console.log('Migration: Added category column to word_books');
+    } catch (e: any) {
+      if (!e.message.includes('Duplicate column') && !e.message.includes('already exists')) {
+        // column already exists
+      }
+    }
+
+    try {
+      const [islandCols]: any = await pool.query(
+        "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'word_books' AND COLUMN_NAME = 'island_id'"
+      );
+      if (islandCols.length === 0) {
+        await pool.query('ALTER TABLE word_books ADD COLUMN island_id INT NULL AFTER category, ADD INDEX idx_word_books_island (island_id)');
+        console.log('Migration: Added island_id column to word_books');
+      }
     } catch (e: any) {
       if (!e.message.includes('Duplicate column') && !e.message.includes('already exists')) {
         // column already exists
@@ -278,6 +381,58 @@ export async function initializeDatabaseSchema() {
         PRIMARY KEY (user_id, book_id),
         FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
         FOREIGN KEY (book_id) REFERENCES word_books(id) ON DELETE CASCADE
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `);
+
+    // 13.1 Ensure user_word_book_progress table exists (Word Book stage progress & stars)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS user_word_book_progress (
+        user_id INT NOT NULL,
+        book_id INT NOT NULL,
+        completed_stages_mask INT NOT NULL DEFAULT 0,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        PRIMARY KEY (user_id, book_id),
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+        FOREIGN KEY (book_id) REFERENCES word_books(id) ON DELETE CASCADE
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `);
+
+    // 14. Ensure vocabulary_attempts and user_vocabulary_mode_stats tables exist (Task 12.1)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS vocabulary_attempts (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        client_id VARCHAR(64) NOT NULL,
+        user_id INT NOT NULL,
+        vocab_id INT NOT NULL,
+        mode VARCHAR(32) NOT NULL,
+        is_correct TINYINT(1) NOT NULL,
+        answer VARCHAR(255) NULL,
+        duration_ms INT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE KEY uk_user_client (user_id, client_id),
+        INDEX idx_user_vocab (user_id, vocab_id),
+        INDEX idx_user_mode_time (user_id, mode, created_at),
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+        FOREIGN KEY (vocab_id) REFERENCES vocabulary_words(id) ON DELETE CASCADE
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `);
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS user_vocabulary_mode_stats (
+        user_id INT NOT NULL,
+        vocab_id INT NOT NULL,
+        mode VARCHAR(32) NOT NULL,
+        correct_count INT DEFAULT 0,
+        error_count INT DEFAULT 0,
+        streak INT DEFAULT 0,
+        mastered TINYINT(1) DEFAULT 0,
+        last_result TINYINT(1) NULL,
+        last_practiced_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        PRIMARY KEY (user_id, vocab_id, mode),
+        INDEX idx_user_mode (user_id, mode),
+        INDEX idx_user_mode_score (user_id, mode, error_count, streak),
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+        FOREIGN KEY (vocab_id) REFERENCES vocabulary_words(id) ON DELETE CASCADE
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     `);
 
@@ -395,6 +550,81 @@ export async function initializeDatabaseSchema() {
     }
     console.log('Migration: Ensured word_books and vocabulary_words tables');
 
+    // 15. Initial migration: sync story islands into word_books
+    try {
+      const [existingIslandBooks]: any = await pool.query(
+        'SELECT id FROM word_books WHERE island_id IS NOT NULL LIMIT 1'
+      );
+      if (!existingIslandBooks || existingIslandBooks.length === 0) {
+        const { syncAllIslandsToWordBooks } = await import('./controllers/wordBookController');
+        const syncRes = await syncAllIslandsToWordBooks(pool);
+        console.log(`Migration: Initial sync: created ${syncRes.totalBooks} picture book word books (${syncRes.totalWords} words) into Word Bank`);
+      } else {
+        // Ensure any newly added islands without word books get synced
+        const [islandsWithoutBooks]: any = await pool.query(
+          `SELECT i.id FROM islands i
+           LEFT JOIN word_books b ON b.island_id = i.id
+           WHERE b.id IS NULL`
+        );
+        if (islandsWithoutBooks && islandsWithoutBooks.length > 0) {
+          const { syncIslandToWordBook } = await import('./controllers/wordBookController');
+          for (const isl of islandsWithoutBooks) {
+            await syncIslandToWordBook(pool, isl.id);
+          }
+          console.log(`Migration: Ensured word books for ${islandsWithoutBooks.length} story islands`);
+        }
+      }
+    } catch (syncErr: any) {
+      console.warn('Migration: Picture book to Word Bank sync warning:', syncErr.message);
+    }
+
+    // 16. Align word_books category with story groups (Phase 4)
+    try {
+      await pool.query(`
+        UPDATE word_books b
+        JOIN islands i ON b.island_id = i.id
+        SET b.category = COALESCE(NULLIF(TRIM(i.group_name), ''), 'General')
+        WHERE b.island_id IS NOT NULL
+      `);
+      console.log('Migration: Aligned picture book word_books category with story_groups');
+    } catch (alignErr: any) {
+      console.warn('Migration: Word books category alignment warning:', alignErr.message);
+    }
+
+    // 17. Sync Word Matching 朗读跟读 (bit 4) to 挑战测试 (bit 16) if completed
+    try {
+      const [updateResult]: any = await pool.query(`
+        UPDATE user_island_progress
+        SET completed_stages_mask = completed_stages_mask | 16
+        WHERE (completed_stages_mask & 4) != 0 AND (completed_stages_mask & 16) = 0
+      `);
+      if (updateResult.affectedRows > 0) {
+        console.log(`Migration: Backfilled 挑战测试 (bit 16) for ${updateResult.affectedRows} record(s) where 朗读跟读 (bit 4) was completed`);
+      }
+    } catch (syncErr: any) {
+      console.warn('Migration: Word matching challenge bit sync warning:', syncErr.message);
+    }
+
+    // 17. Ensure user_grammar_quiz_records table exists
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS user_grammar_quiz_records (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        user_id INT NOT NULL,
+        category VARCHAR(50) NOT NULL DEFAULT 'present_simple',
+        quiz_id VARCHAR(50) NOT NULL,
+        score INT NOT NULL,
+        total_questions INT NOT NULL,
+        correct_count INT NOT NULL,
+        coins_awarded INT NOT NULL DEFAULT 0,
+        stars_awarded INT NOT NULL DEFAULT 0,
+        user_answers JSON NULL,
+        wrong_details JSON NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_user_quiz (user_id, quiz_id, created_at),
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `);
+
     // Recalculate historical stars based on completed subtasks
     const { recalculateAllUsersStars } = await import('./controllers/progressController');
     await recalculateAllUsersStars();
@@ -441,6 +671,7 @@ app.use('/api/versions', versionRoutes);
 app.use('/api/illustrations', illustrationRoutes);
 app.use('/api/roadmap', roadmapRoutes);
 app.use('/api/songs', songRoutes);
+app.use('/api/grammar', grammarRoutes);
 app.use('/api', wordBookRoutes);
 
 import multer from 'multer';

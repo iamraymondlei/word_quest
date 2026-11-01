@@ -12,10 +12,10 @@ class VocabularyItem(BaseModel):
     """A vocabulary word with pronunciation and Chinese meaning."""
 
     word: str = Field(..., description="英文单词")
-    phonetic: str = Field(..., description="音标")
-    meaning: str = Field(..., description="中文释义")
-    example_sentence: str = Field(..., description="绘本中的例句")
-    example_translation: str = Field(..., description="例句的中文翻译")
+    phonetic: str = Field("", description="音标")
+    meaning: str = Field("", description="中文释义")
+    example_sentence: str = Field("", description="绘本中的例句")
+    example_translation: str = Field("", description="例句的中文翻译")
 
 
 class SentencePair(BaseModel):
@@ -163,8 +163,8 @@ DEFAULT_SYSTEM_PROMPT = """\
 You are an English education expert specializing in analyzing English picture books \
 for elementary school students.
 
-Your target audience: Chinese elementary school students who can read \
-RAZ (Reading A-Z) Level E books.
+Your target audience: Chinese elementary school students who are reading \
+RAZ (Reading A-Z) Level B–E books.
 
 TASK:
 Analyze the provided picture book page images and return a structured JSON object matching the requested schema.
@@ -173,33 +173,23 @@ RULES:
 1. **title**: Extract the title of the picture book. If not visible, infer from content.
 2. **theme**: Write a concise Chinese summary (2-3 sentences) describing what the story \
 is about and its educational value.
-3. **vocabulary**: Extract a comprehensive list of approximately 18-25 core practice vocabulary words (target ~20 words) from the story for typing and spelling practice. \
-   - Prioritize key narrative words, verbs, adjectives, and nouns suitable for RAZ Level E learning. \
-   - If the story has fewer than 20 rare words, include all meaningful action verbs, descriptive adjectives, and thematic nouns from the story sentences so the list reaches ~20 words. \
+3. **vocabulary**: Extract a list of core practice vocabulary words (target ~18-25 words) from the story for typing and spelling practice (e.g. key nouns, verbs, adjectives). \
    - Ensure all extracted vocabulary words actually appear in the story text. \
-   - For each word provide: \
-     - "word": the English word (lowercase) \
-     - "phonetic": IPA phonetic transcription (e.g. /luːn/) \
-     - "meaning": clear and accurate Chinese translation \
-     - "example_sentence": an original sentence from the story containing this word \
-     - "example_translation": the Chinese translation of the example sentence
+   - Output ONLY the list of lowercase English words (e.g. ["pouch", "wallaby", "baby", "bilby"]). \
+   - Do NOT provide definitions, phonetics, translations, or example sentences during book import (these will be enriched later in the vocabulary editor).
 4. **pages**: For each image (in order):
    - "illustration_box": Locate the main story illustration or photograph on this page and output its bounding box as [ymin, xmin, ymax, xmax] normalized integers from 0 to 1000. Exclude standalone text blocks, page numbers, and margins. If the page is text-only without any story picture, set to null.
    - "sentences": Extract ONLY the core narrative/story text. \
 DO NOT extract exercise questions, quizzes, captions, metadata, or activity questions (such as 'Activity 1', 'Questions:', or book reflection prompts) that are not part of the main story content. \
 Split into individual sentences. For each sentence provide:
      - "en": the original English sentence exactly as written
-     - "zh": natural, child-friendly Chinese translation
-5. **questions**: Generate exactly {question_count} comprehension questions in English. \
-Each question should:
-   - Test understanding of the story (who, what, when, where, why, how)
-   - Be appropriate for the target reading level
-   - Include a "hint" (a clue to help the student find the answer)
-   - Include an "answer" (a complete English sentence)
-
+     - "zh": a faithful, word-for-word / phrase-for-phrase aligned Chinese translation designed for "Read Chinese & Speak English" (看中文说英文) recall practice:
+       - **Every English word or phrase MUST have a clear corresponding Chinese meaning in the translation.** Do NOT omit, merge, or paraphrase away any words.
+       - Explicitly translate all pronouns (he/she/it/they/my/our/this/that), articles/quantifiers when meaningful (a/one, some, many, every), adjectives (e.g. little, big, good), adverbs (e.g. too, very, now, again, up, down, away), prepositions (e.g. in, on, into, with, for), and modal/auxiliary nuances (e.g. can, will, want to, have to).
+       - Avoid free/idiomatic translations that drop English words or add extra concepts not in the original sentence, so the student can reliably reconstruct every single English word just by looking at the Chinese sentence.
 IMPORTANT:
 - Page numbers start from 1 and correspond to the order of images provided.
-- Keep translations natural and age-appropriate for children.
+- Keep sentence translations faithful and complete: prioritize 1-to-1 word/phrase cueing over literary paraphrasing, while keeping the Chinese understandable for children.
 - If a page has no story text, still include it with an empty sentences array.
 - Strictly ignore page numbers, header/footer titles, or post-reading activity questions when building the "pages" content.
 """
@@ -215,6 +205,65 @@ class StoryParseRequest(BaseModel):
     cli: str = Field(default="agy", description="指定 Agent CLI 引擎 ('agy' 或 'codex')")
     custom_prompt: str | None = Field(default=None, description="自定义解析提示词")
     prompt: str | None = Field(default=None, description="自定义解析提示词别名")
+
+
+class GenerateQuestionsRequest(BaseModel):
+    """Request schema for generating comprehension questions for a story."""
+
+    story_title: str = Field(..., description="绘本标题")
+    story_text: str = Field(..., description="绘本正文全文")
+    question_count: int = Field(default=5, ge=1, le=15, description="生成的阅读理解题目数量")
+    model: str | None = Field(default=None, description="指定模型名称")
+    cli: str = Field(default="agy", description="指定 Agent CLI 引擎 ('agy' 或 'codex')")
+
+
+class GenerateQuestionsResponse(BaseModel):
+    """Response schema for generated comprehension questions."""
+
+    success: bool
+    data: list[QuestionItem] = Field(default_factory=list)
+    error: str | None = None
+
+
+class StoryPageItem(BaseModel):
+    """A single page of a generated picture book story."""
+
+    page: int = Field(..., description="页码（从 1 开始）")
+    illustration_prompt: str = Field("", description="用于生成绘本插图的英文提示词")
+    sentences: list[SentencePair] = Field(default_factory=list, description="该页句子列表")
+
+
+class GeneratedStoryData(BaseModel):
+    """Structured data of an AI-synthesized picture book story."""
+
+    title: str = Field(..., description="绘本标题")
+    theme: str = Field(..., description="主题与教育价值概述（中文）")
+    passage: str = Field(..., description="完整故事英文正文")
+    pages: list[StoryPageItem] = Field(default_factory=list, description="逐页结构")
+    questions: list[QuestionItem] = Field(default_factory=list, description="阅读理解提问")
+    target_words_covered: list[str] = Field(default_factory=list, description="故事中成功融入的目标生词")
+
+
+class GenerateStoryFromVocabRequest(BaseModel):
+    """Request schema for synthesizing a complete story from target vocabulary words."""
+
+    words: list[str] = Field(..., min_length=1, max_length=60, description="目标核心生词列表")
+    title: str | None = Field(default=None, description="期望绘本标题或关卡名称（可选）")
+    category: str | None = Field(default="General", description="关卡分类")
+    theme_style: str | None = Field(default="animal_tale", description="故事风格：animal_tale, daily_life, adventure, detective, humor")
+    target_level: str | None = Field(default="RAZ C-E", description="目标阅读难度")
+    page_count: int = Field(default=4, ge=2, le=10, description="生成页数（2-10页）")
+    question_count: int = Field(default=4, ge=1, le=10, description="阅读理解题目数量")
+    model: str | None = Field(default=None, description="指定模型名称")
+    cli: str = Field(default="agy", description="指定 Agent CLI 引擎 ('agy' 或 'codex')")
+
+
+class GenerateStoryFromVocabResponse(BaseModel):
+    """Response envelope for AI-generated picture book story."""
+
+    success: bool = True
+    data: GeneratedStoryData | None = None
+    error: str | None = None
 
 
 # ── API response wrapper ─────────────────────────────────────────────

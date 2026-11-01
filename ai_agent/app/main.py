@@ -15,7 +15,19 @@ from fastapi.staticfiles import StaticFiles
 from PIL import Image, UnidentifiedImageError
 
 from app.config import settings
-from app.schemas import APIResponse, BilingualizeBatchRequest, BilingualizeBatchResponse, SongTranslationRequest, TranslationResponse, VocabularyEnrichRequest, VocabularyEnrichResponse
+from app.schemas import (
+    APIResponse,
+    BilingualizeBatchRequest,
+    BilingualizeBatchResponse,
+    GenerateQuestionsRequest,
+    GenerateQuestionsResponse,
+    GenerateStoryFromVocabRequest,
+    GenerateStoryFromVocabResponse,
+    SongTranslationRequest,
+    TranslationResponse,
+    VocabularyEnrichRequest,
+    VocabularyEnrichResponse,
+)
 from app.services.gemini_parser import GeminiParser, get_available_models, get_cli_config
 
 logger = logging.getLogger(__name__)
@@ -105,7 +117,7 @@ async def list_models(cli: str = "agy"):
         "success": True,
         "cli": normalized_cli,
         "models": cfg.get("models", []),
-        "default_model": cfg.get("default_model", "gemini-3.7-flash-high" if cli == "agy" else "gpt-5.6-sol"),
+        "default_model": cfg.get("default_model", "gemini-3.8-flash-high" if cli == "agy" else "gpt-5.6-sol"),
     }
 
 
@@ -165,6 +177,58 @@ async def bilingualize_roots_etymology(request: BilingualizeBatchRequest):
         return BilingualizeBatchResponse(success=True, data=results)
     except ValueError as exc:
         logger.error("Bilingualize roots & etymology failed: %s", exc)
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@app.post("/generate-questions", response_model=GenerateQuestionsResponse)
+async def generate_questions(request: GenerateQuestionsRequest):
+    """Generate comprehension questions for a story using AI Agent CLI."""
+    if parser is None:
+        raise HTTPException(status_code=503, detail="Story parser is not initialized.")
+    if not request.story_text or not request.story_text.strip():
+        raise HTTPException(status_code=400, detail="故事正文内容不能为空。")
+    cli = request.cli.lower().strip()
+    if cli not in {"agy", "codex"}:
+        raise HTTPException(status_code=400, detail="cli must be 'agy' or 'codex'.")
+    try:
+        questions = await parser.generate_comprehension_questions(
+            story_title=request.story_title,
+            story_text=request.story_text,
+            question_count=request.question_count,
+            model=request.model,
+            cli=cli,
+        )
+        return GenerateQuestionsResponse(success=True, data=questions)
+    except ValueError as exc:
+        logger.error("Question generation failed: %s", exc)
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@app.post("/generate-story-from-vocab", response_model=GenerateStoryFromVocabResponse)
+async def generate_story_from_vocab(request: GenerateStoryFromVocabRequest):
+    """Synthesize a complete picture book story and comprehension questions from target words."""
+    if parser is None:
+        raise HTTPException(status_code=503, detail="Story parser is not initialized.")
+    if not request.words or len(request.words) == 0:
+        raise HTTPException(status_code=400, detail="目标生词列表不能为空。")
+    cli = request.cli.lower().strip()
+    if cli not in {"agy", "codex"}:
+        raise HTTPException(status_code=400, detail="cli must be 'agy' or 'codex'.")
+    try:
+        story_data = await parser.generate_story_from_vocab(
+            words=request.words,
+            title=request.title,
+            category=request.category,
+            theme_style=request.theme_style,
+            target_level=request.target_level,
+            page_count=request.page_count,
+            question_count=request.question_count,
+            model=request.model,
+            cli=cli,
+        )
+        return GenerateStoryFromVocabResponse(success=True, data=story_data)
+    except ValueError as exc:
+        logger.error("Story synthesis failed: %s", exc)
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
 

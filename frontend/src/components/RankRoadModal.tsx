@@ -99,7 +99,7 @@ export const RankRoadModal: React.FC<RankRoadModalProps> = ({
                   <span>CAREER RANK & PROGRESSION ROAD</span>
                 </div>
                 <h2 className="text-lg sm:text-xl font-black tracking-tight text-white flex items-center gap-2">
-                  <span>学员星际探险军衔晋升谱系</span>
+                  <span>Career Rank Roadmap</span>
                 </h2>
               </div>
             </div>
@@ -109,7 +109,7 @@ export const RankRoadModal: React.FC<RankRoadModalProps> = ({
               type="button"
               onClick={onClose}
               className="w-9 h-9 rounded-xl bg-slate-900/90 hover:bg-rose-950/80 border border-slate-700 hover:border-rose-500/50 text-slate-400 hover:text-rose-300 flex items-center justify-center font-bold text-sm transition-all cursor-pointer shadow-sm active:scale-90"
-              title="按 ESC 或点击关闭"
+              title="Close"
             >
               ✕
             </button>
@@ -138,17 +138,17 @@ export const RankRoadModal: React.FC<RankRoadModalProps> = ({
                     className={`text-xs font-black px-2.5 py-0.5 rounded-lg border font-mono flex items-center gap-1 ${currentProgress.theme.badgeBg} ${currentProgress.theme.badgeBorder} ${currentProgress.theme.badgeText} ${currentProgress.theme.badgeGlow}`}
                   >
                     <span>{currentProgress.badge}</span>
-                    <span>{currentProgress.tierName} Lv.{currentProgress.level}</span>
+                    <span>{currentProgress.shortTitle}</span>
                   </span>
                   {currentProgress.tierId === 'T2' && (
                     <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-950/90 text-emerald-300 border border-emerald-500/50">
-                      👑 全站首位破茧晋阶先锋
+                      👑 Pioneer Tier-2 Explorer
                     </span>
                   )}
                 </div>
 
                 <div className="flex items-center gap-3 mt-1 text-xs text-slate-400">
-                  <span>累计探险经验: <strong className="text-amber-300 font-mono font-black">{formatExpNumber(currentProgress.currentExp)}</strong> EXP</span>
+                  <span>Total EXP: <strong className="text-amber-300 font-mono font-black">{formatExpNumber(currentProgress.currentExp)}</strong> EXP</span>
                 </div>
               </div>
             </div>
@@ -156,7 +156,7 @@ export const RankRoadModal: React.FC<RankRoadModalProps> = ({
             {/* Level Progress Bar Capsule */}
             <div className="w-full md:w-80 flex flex-col gap-1.5 shrink-0 bg-slate-900/90 p-2.5 rounded-xl border border-slate-800">
               <div className="flex items-center justify-between text-xs">
-                <span className="text-slate-400 font-bold">阶内升级进度:</span>
+                <span className="text-slate-400 font-bold">Level Progress:</span>
                 <span className="font-black text-cyan-300 tabular-nums font-mono">
                   {formatExpNumber(currentProgress.expInLevel)} / {formatExpNumber(currentProgress.levelSpan)} EXP
                   <span className="text-slate-500 ml-1">({currentProgress.progressPercent}%)</span>
@@ -175,8 +175,8 @@ export const RankRoadModal: React.FC<RankRoadModalProps> = ({
                 <span>Lv.{currentProgress.level} ({formatCompactExp(currentProgress.levelMinExp)})</span>
                 <span className="text-amber-400/90 font-bold">
                   {currentProgress.isMaxLevel
-                    ? '🌟 极境满星'
-                    : `距升下级还需 ${formatExpNumber(currentProgress.remainingExpToNextLevel)} EXP`}
+                    ? '🌟 Max Rank'
+                    : `${formatExpNumber(currentProgress.remainingExpToNextLevel)} EXP to next level`}
                 </span>
                 <span>Lv.{Math.min(5, currentProgress.level + 1)} ({formatCompactExp(currentProgress.levelMaxExp)})</span>
               </div>
@@ -205,10 +205,10 @@ export const RankRoadModal: React.FC<RankRoadModalProps> = ({
                 <span className="text-base group-hover:scale-110 transition-transform">{tier.badge}</span>
                 <div className="flex flex-col text-left leading-none">
                   <div className="flex items-center gap-1.5">
-                    <span>{tier.name}</span>
+                    <span>{tier.nameEn}</span>
                     {isUserCurrentTier && (
                       <span className="text-[9px] px-1.5 py-0.2 rounded-full bg-cyan-500 text-slate-950 font-black">
-                        当前
+                        Current
                       </span>
                     )}
                     {isTierPassed && !isUserCurrentTier && (
@@ -235,7 +235,7 @@ export const RankRoadModal: React.FC<RankRoadModalProps> = ({
               <div>
                 <div className="flex items-center gap-2 flex-wrap">
                   <h3 className={`text-base sm:text-lg font-black ${selectedTier.theme.accentText}`}>
-                    第 {selectedTier.order} 职阶 · {selectedTier.name} ({selectedTier.nameEn})
+                    Tier {selectedTier.order} · {selectedTier.nameEn}
                   </h3>
                   <span className="text-xs font-mono text-slate-400">
                     [{formatExpNumber(selectedTier.minExp)} ~ {formatExpNumber(selectedTier.maxExp)} EXP]
@@ -248,7 +248,7 @@ export const RankRoadModal: React.FC<RankRoadModalProps> = ({
             </div>
 
             <div className="sm:text-right shrink-0 bg-slate-950/80 p-2.5 rounded-xl border border-slate-800 text-xs">
-              <div className="text-[10px] text-slate-400 uppercase tracking-wider mb-1 font-bold">职阶特权 & 解锁奖励:</div>
+              <div className="text-[10px] text-slate-400 uppercase tracking-wider mb-1 font-bold">Tier Perks & Rewards:</div>
               <div className={`font-bold text-xs ${selectedTier.theme.accentText}`}>
                 {selectedTier.perkSummary}
               </div>
@@ -258,8 +258,8 @@ export const RankRoadModal: React.FC<RankRoadModalProps> = ({
           {/* 5-Level Detailed Ladder Cards */}
           <div className="space-y-3">
             <div className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center justify-between px-1">
-              <span>职阶等级晋升阶梯 (5 LEVELS)</span>
-              <span>经验跨度 & 里程碑奖励</span>
+              <span>Rank Levels (5 Levels)</span>
+              <span>EXP & Milestone Rewards</span>
             </div>
 
             {selectedTier.levels.map((lvl) => {
@@ -300,24 +300,24 @@ export const RankRoadModal: React.FC<RankRoadModalProps> = ({
                             ? 'text-slate-200'
                             : 'text-slate-400'
                         }`}>
-                          {selectedTier.badge} {lvl.title}
+                          {selectedTier.badge} {selectedTier.nameEn} Lv.{lvl.level}
                         </span>
 
                         {isUserAtThisLevel && (
                           <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-cyan-500 text-slate-950 animate-pulse font-mono shadow-sm">
-                            📍 当前所处等级 (YOU ARE HERE)
+                            📍 Current Level (You Are Here)
                           </span>
                         )}
 
                         {isLevelCompleted && !isUserAtThisLevel && (
                           <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-950/80 text-emerald-400 border border-emerald-500/30">
-                            ✓ 已达成通关
+                            ✓ Completed
                           </span>
                         )}
 
                         {!isLevelCompleted && !isUserAtThisLevel && (
                           <span className="text-[10px] font-mono text-slate-500 bg-slate-900 px-2 py-0.5 rounded border border-slate-800">
-                            🔒 待探索
+                            🔒 Locked
                           </span>
                         )}
                       </div>
@@ -329,7 +329,7 @@ export const RankRoadModal: React.FC<RankRoadModalProps> = ({
                       {/* Peer Learners Marker */}
                       {peersHere.length > 0 && (
                         <div className="mt-2.5 flex items-center gap-2 flex-wrap">
-                          <span className="text-[10px] font-bold text-slate-400">本级探险家:</span>
+                          <span className="text-[10px] font-bold text-slate-400">Explorers:</span>
                           {peersHere.map((p, pIdx) => (
                             <span
                               key={pIdx}
@@ -357,7 +357,7 @@ export const RankRoadModal: React.FC<RankRoadModalProps> = ({
                           {formatExpNumber(lvl.minExp)} ~ {formatExpNumber(lvl.maxExp)} EXP
                         </div>
                         <div className="text-[10px] text-slate-500 font-mono mt-0.5">
-                          本级跨度: +{formatExpNumber(lvl.span)} EXP
+                          Span: +{formatExpNumber(lvl.span)} EXP
                         </div>
                       </div>
 
@@ -378,7 +378,7 @@ export const RankRoadModal: React.FC<RankRoadModalProps> = ({
         {/* ── 4. FOOTER & PRINCIPLES ── */}
         <div className="p-4 sm:px-6 bg-slate-900/90 border-t border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
           <div className="text-slate-400 font-mono text-[11px] leading-relaxed">
-            💡 <strong className="text-cyan-300">成长法则</strong>：完成绘本阅读、追逐战、单词匹配、太空战机与词汇宝库练习均可获得丰厚探险经验（EXP）。历史累计经验永久保留，稳步晋升更高军衔！
+            💡 <strong className="text-cyan-300">Rules</strong>: Read stories, play games, and practice vocabulary to earn EXP and unlock higher ranks!
           </div>
 
           <button
@@ -386,7 +386,7 @@ export const RankRoadModal: React.FC<RankRoadModalProps> = ({
             onClick={onClose}
             className="w-full sm:w-auto px-6 py-2.5 rounded-xl bg-gradient-to-r from-cyan-500 to-indigo-600 hover:from-cyan-400 hover:to-indigo-500 text-slate-950 font-black text-xs uppercase tracking-wider transition-all shadow-md shadow-cyan-500/20 cursor-pointer active:scale-95 shrink-0"
           >
-            开启探险 (LET'S QUEST)
+            Let's Quest!
           </button>
         </div>
       </div>

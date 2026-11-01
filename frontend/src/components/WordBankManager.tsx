@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { apiService } from '../utils/apiService';
-import { parseBilingual } from '../utils/bilingual';
+import { parseBilingual, playBilingualSpeech } from '../utils/bilingual';
 
 export interface SentenceItem {
   en: string;
@@ -83,6 +83,12 @@ export const WordBankManager: React.FC<WordBankManagerProps> = ({
 
   // Directory search filter
   const [directorySearch, setDirectorySearch] = useState<string>('');
+
+  // Directory view mode ('compact' = clean single-line rows with detail modal, 'expanded' = full multi-column)
+  const [directoryViewMode, setDirectoryViewMode] = useState<'compact' | 'expanded'>('compact');
+
+  // Word Detail Modal state
+  const [detailWord, setDetailWord] = useState<VocabularyWord | null>(null);
 
   // Import inputs
   const [rawWordsInput, setRawWordsInput] = useState<string>('');
@@ -759,6 +765,43 @@ export const WordBankManager: React.FC<WordBankManagerProps> = ({
     );
   }, [words, directorySearch]);
 
+  // Word Detail modal navigation helpers
+  const detailWordIndex = useMemo(() => {
+    if (!detailWord) return -1;
+    return filteredWords.findIndex((w) => (w.id ? w.id === detailWord.id : w.word === detailWord.word));
+  }, [detailWord, filteredWords]);
+
+  const handlePrevDetailWord = () => {
+    if (detailWordIndex > 0) {
+      setDetailWord(filteredWords[detailWordIndex - 1]);
+    }
+  };
+
+  const handleNextDetailWord = () => {
+    if (detailWordIndex >= 0 && detailWordIndex < filteredWords.length - 1) {
+      setDetailWord(filteredWords[detailWordIndex + 1]);
+    }
+  };
+
+  useEffect(() => {
+    if (!detailWord) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setDetailWord(null);
+      } else if (e.key === 'ArrowLeft') {
+        if (detailWordIndex > 0) {
+          setDetailWord(filteredWords[detailWordIndex - 1]);
+        }
+      } else if (e.key === 'ArrowRight') {
+        if (detailWordIndex >= 0 && detailWordIndex < filteredWords.length - 1) {
+          setDetailWord(filteredWords[detailWordIndex + 1]);
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [detailWord, detailWordIndex, filteredWords]);
+
   // Directory selection helpers
   const isAllDirectorySelected = useMemo(() => {
     if (filteredWords.length === 0) return false;
@@ -1154,14 +1197,46 @@ export const WordBankManager: React.FC<WordBankManagerProps> = ({
                 </div>
 
                 {activeTab === 'directory' && (
-                  <div className="w-full sm:w-64">
-                    <input
-                      type="text"
-                      placeholder="搜索本章单词或中文释义..."
-                      value={directorySearch}
-                      onChange={(e) => setDirectorySearch(e.target.value)}
-                      className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-1.5 text-xs text-white placeholder-slate-500 outline-none focus:border-cyan-400 transition-all font-mono"
-                    />
+                  <div className="flex items-center gap-2.5 flex-wrap w-full sm:w-auto">
+                    {/* View Mode Toggle: Compact (default) vs Expanded */}
+                    <div className="flex items-center bg-slate-950 border border-slate-800 rounded-xl p-0.5 shadow-inner">
+                      <button
+                        type="button"
+                        onClick={() => setDirectoryViewMode('compact')}
+                        className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                          directoryViewMode === 'compact'
+                            ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shadow-sm font-black'
+                            : 'text-slate-400 hover:text-white'
+                        }`}
+                        title="紧凑视图：极简行高，点击打开词条详细窗口"
+                      >
+                        <span>☰</span>
+                        <span>紧凑视图</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setDirectoryViewMode('expanded')}
+                        className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                          directoryViewMode === 'expanded'
+                            ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shadow-sm font-black'
+                            : 'text-slate-400 hover:text-white'
+                        }`}
+                        title="完整多列展开显示"
+                      >
+                        <span>☷</span>
+                        <span>完整展开</span>
+                      </button>
+                    </div>
+
+                    <div className="w-full sm:w-60">
+                      <input
+                        type="text"
+                        placeholder="搜索本章单词或中文释义..."
+                        value={directorySearch}
+                        onChange={(e) => setDirectorySearch(e.target.value)}
+                        className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-1.5 text-xs text-white placeholder-slate-500 outline-none focus:border-cyan-400 transition-all font-mono"
+                      />
+                    </div>
                   </div>
                 )}
               </div>
@@ -1531,7 +1606,7 @@ export const WordBankManager: React.FC<WordBankManagerProps> = ({
                       <table className="w-full text-left text-xs border-collapse">
                         <thead className="bg-slate-950 text-slate-400 font-mono border-b border-slate-800">
                           <tr>
-                            <th className="p-3.5 w-10 text-center">
+                            <th className="p-3 w-10 text-center">
                               <input
                                 type="checkbox"
                                 checked={isAllDirectorySelected}
@@ -1540,13 +1615,19 @@ export const WordBankManager: React.FC<WordBankManagerProps> = ({
                                 title="全选/反选本页单词"
                               />
                             </th>
-                            <th className="p-3.5">单词</th>
-                            <th className="p-3.5">音标</th>
-                            <th className="p-3.5">核心释义</th>
-                            <th className="p-3.5 min-w-[280px]">生动例句</th>
-                            <th className="p-3.5">词根 / 反义词</th>
-                            <th className="p-3.5 max-w-xs">词源趣谈</th>
-                            <th className="p-3.5 text-right">操作</th>
+                            <th className="p-3">单词</th>
+                            {directoryViewMode === 'expanded' && <th className="p-3">音标</th>}
+                            <th className="p-3">核心释义</th>
+                            {directoryViewMode === 'expanded' ? (
+                              <>
+                                <th className="p-3 min-w-[280px]">生动例句</th>
+                                <th className="p-3">词根 / 反义词</th>
+                                <th className="p-3 max-w-xs">词源趣谈</th>
+                              </>
+                            ) : (
+                              <th className="p-3">词条档案 / 知识要点</th>
+                            )}
+                            <th className="p-3 text-right">操作</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-800/60 bg-slate-900/30">
@@ -1559,7 +1640,7 @@ export const WordBankManager: React.FC<WordBankManagerProps> = ({
                                   isSelected ? 'bg-cyan-950/30 hover:bg-cyan-950/40' : 'hover:bg-slate-800/30'
                                 }`}
                               >
-                                <td className="p-3.5 text-center">
+                                <td className="p-3 text-center">
                                   <input
                                     type="checkbox"
                                     checked={isSelected}
@@ -1568,60 +1649,182 @@ export const WordBankManager: React.FC<WordBankManagerProps> = ({
                                     title="勾选此单词"
                                   />
                                 </td>
-                                <td className="p-3.5 font-mono font-black text-cyan-400 text-sm">{w.word}</td>
-                                <td className="p-3.5 text-slate-400 font-mono">{w.phonetic || '—'}</td>
-                                <td className="p-3.5 font-bold text-slate-200">{w.translation}</td>
-                                <td className="p-3.5 text-slate-300">
-                                  {w.fun_sentences?.[0] ? (
-                                    <div className="space-y-1">
-                                      <div className="text-slate-100 font-medium">{w.fun_sentences[0].en}</div>
-                                      <div className="text-slate-400 text-[11px]">{w.fun_sentences[0].zh}</div>
+
+                                {/* Word & Phonetic */}
+                                <td className="p-3 font-mono">
+                                  <div className="flex items-center gap-2">
+                                    <button
+                                      type="button"
+                                      onClick={() => setDetailWord(w)}
+                                      className="font-black text-cyan-400 hover:text-cyan-300 text-sm hover:underline cursor-pointer text-left"
+                                      title="点击查看详细词条档案"
+                                    >
+                                      {w.word}
+                                    </button>
+                                    {w.phonetic && (
+                                      <span className="text-slate-400 text-xs font-normal">
+                                        [{w.phonetic}]
+                                      </span>
+                                    )}
+                                    <button
+                                      type="button"
+                                      onClick={() => playBilingualSpeech(w.word, 'en')}
+                                      className="text-slate-500 hover:text-cyan-400 text-xs cursor-pointer transition-colors"
+                                      title="朗读单词发音 🔊"
+                                    >
+                                      🔊
+                                    </button>
+                                  </div>
+                                </td>
+
+                                {/* Expanded Phonetic Column */}
+                                {directoryViewMode === 'expanded' && (
+                                  <td className="p-3 text-slate-400 font-mono">{w.phonetic || '—'}</td>
+                                )}
+
+                                {/* Translation */}
+                                <td className="p-3 font-bold text-slate-200">
+                                  <div className={directoryViewMode === 'compact' ? 'max-w-xs truncate' : ''} title={w.translation}>
+                                    {w.translation}
+                                  </div>
+                                </td>
+
+                                {/* Expanded Mode: Full bulky text */}
+                                {directoryViewMode === 'expanded' ? (
+                                  <>
+                                    <td className="p-3 text-slate-300">
+                                      {w.fun_sentences?.[0] ? (
+                                        <div className="space-y-1">
+                                          <div className="text-slate-100 font-medium">{w.fun_sentences[0].en}</div>
+                                          <div className="text-slate-400 text-[11px]">{w.fun_sentences[0].zh}</div>
+                                        </div>
+                                      ) : (
+                                        <span className="text-slate-600">—</span>
+                                      )}
+                                    </td>
+                                    <td className="p-3 space-y-1">
+                                      {(() => {
+                                        const roots = parseBilingual(w.root_affixes);
+                                        if (!roots.en && !roots.zh && !w.antonyms) {
+                                          return <span className="text-slate-600">—</span>;
+                                        }
+                                        return (
+                                          <>
+                                            {(roots.en || roots.zh) && (
+                                              <div className="text-purple-300 text-[11px] font-medium space-y-0.5">
+                                                {roots.en && <div>🧩 {roots.en}</div>}
+                                                {roots.zh && <div className="text-purple-400/80 pl-4">{roots.zh}</div>}
+                                              </div>
+                                            )}
+                                            {w.antonyms && (
+                                              <div className="text-rose-300 text-[11px] font-medium">
+                                                ⚖️ 反: {w.antonyms}
+                                              </div>
+                                            )}
+                                          </>
+                                        );
+                                      })()}
+                                    </td>
+                                    <td className="p-3 text-slate-400 text-[11px] max-w-xs leading-relaxed">
+                                      {(() => {
+                                        const etym = parseBilingual(w.etymology);
+                                        if (!etym.en && !etym.zh) return <span className="text-slate-600">—</span>;
+                                        return (
+                                          <div className="space-y-0.5">
+                                            {etym.en && <div className="text-slate-200">{etym.en}</div>}
+                                            {etym.zh && <div className="text-amber-300/80 text-[10px]">{etym.zh}</div>}
+                                          </div>
+                                        );
+                                      })()}
+                                    </td>
+                                  </>
+                                ) : (
+                                  /* Compact Mode: Clean badges */
+                                  <td className="p-3">
+                                    <div className="flex items-center gap-1.5 flex-wrap">
+                                      {w.fun_sentences && w.fun_sentences.length > 0 ? (
+                                        <button
+                                          type="button"
+                                          onClick={() => setDetailWord(w)}
+                                          className="px-2 py-0.5 rounded-md bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 text-[11px] font-mono font-medium transition-all cursor-pointer flex items-center gap-1 hover:scale-105 active:scale-95"
+                                          title="点击查看生动例句"
+                                        >
+                                          <span>💬</span>
+                                          <span>例句 ({w.fun_sentences.length})</span>
+                                        </button>
+                                      ) : null}
+
+                                      {(() => {
+                                        const roots = parseBilingual(w.root_affixes);
+                                        if (roots.en || roots.zh) {
+                                          return (
+                                            <button
+                                              type="button"
+                                              onClick={() => setDetailWord(w)}
+                                              className="px-2 py-0.5 rounded-md bg-purple-500/10 hover:bg-purple-500/20 text-purple-300 border border-purple-500/30 text-[11px] font-mono font-medium transition-all cursor-pointer flex items-center gap-1 hover:scale-105 active:scale-95"
+                                              title="点击查看词根词缀剖析"
+                                            >
+                                              <span>🧩</span>
+                                              <span>词根</span>
+                                            </button>
+                                          );
+                                        }
+                                        return null;
+                                      })()}
+
+                                      {w.antonyms ? (
+                                        <button
+                                          type="button"
+                                          onClick={() => setDetailWord(w)}
+                                          className="px-2 py-0.5 rounded-md bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 border border-rose-500/30 text-[11px] font-mono font-medium transition-all cursor-pointer flex items-center gap-1 hover:scale-105 active:scale-95"
+                                          title={`反义词: ${w.antonyms}`}
+                                        >
+                                          <span>⚖️</span>
+                                          <span>反义</span>
+                                        </button>
+                                      ) : null}
+
+                                      {(() => {
+                                        const etym = parseBilingual(w.etymology);
+                                        if (etym.en || etym.zh) {
+                                          return (
+                                            <button
+                                              type="button"
+                                              onClick={() => setDetailWord(w)}
+                                              className="px-2 py-0.5 rounded-md bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 text-[11px] font-mono font-medium transition-all cursor-pointer flex items-center gap-1 hover:scale-105 active:scale-95"
+                                              title="点击查看词源趣谈"
+                                            >
+                                              <span>📜</span>
+                                              <span>词源</span>
+                                            </button>
+                                          );
+                                        }
+                                        return null;
+                                      })()}
+
+                                      {!w.fun_sentences?.length && !w.root_affixes && !w.antonyms && !w.etymology && (
+                                        <span className="text-slate-600 text-xs">—</span>
+                                      )}
                                     </div>
-                                  ) : (
-                                    <span className="text-slate-600">—</span>
-                                  )}
-                                </td>
-                                <td className="p-3.5 space-y-1">
-                                  {(() => {
-                                    const roots = parseBilingual(w.root_affixes);
-                                    if (!roots.en && !roots.zh && !w.antonyms) {
-                                      return <span className="text-slate-600">—</span>;
-                                    }
-                                    return (
-                                      <>
-                                        {(roots.en || roots.zh) && (
-                                          <div className="text-purple-300 text-[11px] font-medium space-y-0.5">
-                                            {roots.en && <div>🧩 {roots.en}</div>}
-                                            {roots.zh && <div className="text-purple-400/80 pl-4">{roots.zh}</div>}
-                                          </div>
-                                        )}
-                                        {w.antonyms && (
-                                          <div className="text-rose-300 text-[11px] font-medium">
-                                            ⚖️ 反: {w.antonyms}
-                                          </div>
-                                        )}
-                                      </>
-                                    );
-                                  })()}
-                                </td>
-                                <td className="p-3.5 text-slate-400 text-[11px] max-w-xs leading-relaxed">
-                                  {(() => {
-                                    const etym = parseBilingual(w.etymology);
-                                    if (!etym.en && !etym.zh) return <span className="text-slate-600">—</span>;
-                                    return (
-                                      <div className="space-y-0.5">
-                                        {etym.en && <div className="text-slate-200">{etym.en}</div>}
-                                        {etym.zh && <div className="text-amber-300/80 text-[10px]">{etym.zh}</div>}
-                                      </div>
-                                    );
-                                  })()}
-                                </td>
-                                <td className="p-3.5 text-right whitespace-nowrap">
+                                  </td>
+                                )}
+
+                                {/* Actions */}
+                                <td className="p-3 text-right whitespace-nowrap">
                                   <div className="flex items-center justify-end gap-1.5">
                                     <button
                                       type="button"
+                                      onClick={() => setDetailWord(w)}
+                                      className="text-cyan-400 hover:text-cyan-300 bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/30 text-xs font-bold px-2.5 py-1 rounded-lg transition-all cursor-pointer flex items-center gap-1"
+                                      title="查看词条详细档案"
+                                    >
+                                      <span>🔍</span>
+                                      <span>详情</span>
+                                    </button>
+                                    <button
+                                      type="button"
                                       onClick={(e) => w.id && openMoveSingleWordModal(w.id, e)}
-                                      className="text-cyan-400 hover:text-cyan-300 text-xs font-bold px-2.5 py-1 rounded-lg hover:bg-cyan-500/10 transition-all cursor-pointer flex items-center gap-1"
+                                      className="text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 text-xs font-bold px-2.5 py-1 rounded-lg transition-all cursor-pointer flex items-center gap-1"
                                       title="调整此单词所属章节"
                                     >
                                       <span>📁</span>
@@ -1630,7 +1833,7 @@ export const WordBankManager: React.FC<WordBankManagerProps> = ({
                                     <button
                                       type="button"
                                       onClick={() => w.id && handleDeleteWord(w.id, w.word)}
-                                      className="text-rose-400 hover:text-rose-300 text-xs font-bold px-2.5 py-1 rounded-lg hover:bg-rose-500/10 transition-all cursor-pointer"
+                                      className="text-rose-400 hover:text-rose-300 hover:bg-rose-500/10 text-xs font-bold px-2.5 py-1 rounded-lg transition-all cursor-pointer"
                                     >
                                       删除
                                     </button>
@@ -1960,6 +2163,264 @@ export const WordBankManager: React.FC<WordBankManagerProps> = ({
                   {isMovingWords ? '正在移动...' : '确认移动'}
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ───────────────────────────────────────────────────────────
+          MODAL: 词条深度档案详情弹窗 (Word Detail Modal)
+          ─────────────────────────────────────────────────────────── */}
+      {detailWord && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/85 backdrop-blur-sm p-3 sm:p-5 font-sans animate-fade-in"
+          onClick={() => setDetailWord(null)}
+        >
+          <div
+            className="bg-slate-900 border border-cyan-500/40 rounded-2xl w-full max-w-2xl overflow-hidden shadow-2xl flex flex-col max-h-[90vh] animate-in fade-in zoom-in-95"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Top glowing bar */}
+            <div className="h-1 bg-gradient-to-r from-cyan-400 via-purple-500 to-amber-400 shrink-0" />
+
+            {/* Modal Header */}
+            <div className="p-4 sm:p-5 border-b border-slate-800 bg-slate-950/70 flex items-start justify-between gap-3 shrink-0">
+              <div className="flex items-start gap-3 min-w-0">
+                <div className="w-11 h-11 rounded-xl bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-xl shrink-0 mt-0.5">
+                  📖
+                </div>
+                <div className="min-w-0">
+                  <div className="flex items-baseline gap-2.5 flex-wrap">
+                    <span className="text-2xl sm:text-3xl font-black font-mono text-cyan-400 tracking-wide">
+                      {detailWord.word}
+                    </span>
+                    {detailWord.phonetic && (
+                      <span className="text-xs sm:text-sm font-mono text-slate-400">
+                        [{detailWord.phonetic}]
+                      </span>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => playBilingualSpeech(detailWord.word, 'en')}
+                      className="px-2 py-0.5 rounded-lg bg-cyan-500/15 hover:bg-cyan-500/25 text-cyan-300 border border-cyan-500/40 text-xs font-bold font-mono transition-all flex items-center gap-1 cursor-pointer active:scale-95"
+                      title="播放单词发音 🔊"
+                    >
+                      <span>🔊 读音</span>
+                    </button>
+                  </div>
+                  <div className="text-sm sm:text-base font-bold text-slate-100 mt-1 flex items-center gap-2 flex-wrap">
+                    <span>{detailWord.translation}</span>
+                    <button
+                      type="button"
+                      onClick={() => playBilingualSpeech(detailWord.translation, 'yue')}
+                      className="px-2 py-0.5 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/40 text-[10px] font-bold transition-all flex items-center gap-1 cursor-pointer active:scale-95"
+                      title="粤语朗读核心释义 🔊"
+                    >
+                      <span>🗣️ 粤语</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setDetailWord(null)}
+                className="text-slate-400 hover:text-white w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 flex items-center justify-center transition-colors cursor-pointer shrink-0"
+                title="关闭 (Esc)"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Modal Scrollable Body */}
+            <div className="p-4 sm:p-6 overflow-y-auto space-y-4 text-xs sm:text-sm leading-relaxed scrollbar-thin">
+              {/* 1. 生动趣味例句 */}
+              <div className="bg-slate-950/60 border border-slate-800/90 rounded-xl p-4 space-y-2.5">
+                <div className="flex items-center justify-between border-b border-slate-800/80 pb-2">
+                  <span className="font-bold text-cyan-300 font-mono flex items-center gap-1.5 uppercase text-xs tracking-wider">
+                    <span>💬</span> 生动趣味例句 (Context Sentences)
+                  </span>
+                  <span className="text-slate-500 text-[11px] font-mono">
+                    {detailWord.fun_sentences?.length || 0} 条例句
+                  </span>
+                </div>
+                {detailWord.fun_sentences && detailWord.fun_sentences.length > 0 ? (
+                  <div className="space-y-2.5 pt-1">
+                    {detailWord.fun_sentences.map((sent, idx) => (
+                      <div key={idx} className="bg-slate-900/80 border border-slate-800 rounded-lg p-3 space-y-1.5">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="text-slate-100 font-medium text-sm leading-snug">
+                            {sent.en}
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => playBilingualSpeech(sent.en, 'en')}
+                            className="shrink-0 text-slate-400 hover:text-cyan-300 text-xs px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 transition-colors cursor-pointer flex items-center gap-1 font-mono"
+                            title="朗读英文例句 🔊"
+                          >
+                            <span>🔊</span> <span>EN</span>
+                          </button>
+                        </div>
+                        {sent.zh && (
+                          <div className="text-slate-400 text-xs flex items-center justify-between gap-2 pt-0.5">
+                            <span>{sent.zh}</span>
+                            <button
+                              type="button"
+                              onClick={() => playBilingualSpeech(sent.zh, 'yue')}
+                              className="shrink-0 text-slate-400 hover:text-amber-300 text-[10px] px-1.5 py-0.5 rounded hover:bg-slate-800 transition-colors cursor-pointer flex items-center gap-0.5 font-mono"
+                              title="粤语朗读翻译 🔊"
+                            >
+                              <span>🗣️</span> <span>Yue</span>
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-slate-500 text-xs italic py-2">暂无生动例句数据</div>
+                )}
+              </div>
+
+              {/* 2. 词根词缀与反义词 */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {/* 词根词缀 */}
+                <div className="bg-slate-950/60 border border-slate-800/90 rounded-xl p-4 space-y-2">
+                  <div className="flex items-center justify-between border-b border-slate-800/80 pb-2">
+                    <span className="font-bold text-purple-300 font-mono flex items-center gap-1.5 uppercase text-xs tracking-wider">
+                      <span>🧩</span> 词根词缀剖析 (Roots & Affixes)
+                    </span>
+                  </div>
+                  {(() => {
+                    const roots = parseBilingual(detailWord.root_affixes);
+                    if (!roots.en && !roots.zh) {
+                      return <div className="text-slate-500 text-xs italic py-2">暂无词根词缀剖析</div>;
+                    }
+                    return (
+                      <div className="space-y-2 pt-1">
+                        {roots.en && (
+                          <div className="flex items-start justify-between gap-2 bg-purple-950/30 border border-purple-500/20 rounded-lg p-2.5">
+                            <span className="text-purple-200 font-medium text-xs leading-relaxed">{roots.en}</span>
+                            <button
+                              type="button"
+                              onClick={() => playBilingualSpeech(roots.en, 'en')}
+                              className="shrink-0 text-purple-300 hover:text-white text-[10px] px-1.5 py-0.5 rounded bg-purple-900/40 transition-colors cursor-pointer"
+                              title="朗读英语剖析 🔊"
+                            >
+                              🔊
+                            </button>
+                          </div>
+                        )}
+                        {roots.zh && (
+                          <div className="text-purple-300/80 text-xs pl-1">
+                            {roots.zh}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
+                </div>
+
+                {/* 反义词 / 近义词 */}
+                <div className="bg-slate-950/60 border border-slate-800/90 rounded-xl p-4 space-y-2">
+                  <div className="flex items-center justify-between border-b border-slate-800/80 pb-2">
+                    <span className="font-bold text-rose-300 font-mono flex items-center gap-1.5 uppercase text-xs tracking-wider">
+                      <span>⚖️</span> 反义词 / 近义词 (Antonyms)
+                    </span>
+                  </div>
+                  <div className="space-y-2 pt-1">
+                    {detailWord.antonyms ? (
+                      <div className="bg-rose-950/30 border border-rose-500/20 rounded-lg p-2.5">
+                        <span className="text-rose-400 font-bold mr-1.5">⚖️ 反义词:</span>
+                        <span className="text-rose-200 font-medium">{detailWord.antonyms}</span>
+                      </div>
+                    ) : (
+                      <div className="text-slate-500 text-xs italic py-1">暂无反义词</div>
+                    )}
+                    {detailWord.synonyms && (
+                      <div className="bg-emerald-950/30 border border-emerald-500/20 rounded-lg p-2.5">
+                        <span className="text-emerald-400 font-bold mr-1.5">🔗 近义词:</span>
+                        <span className="text-emerald-200 font-medium">{detailWord.synonyms}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* 3. 词源趣谈 */}
+              <div className="bg-slate-950/60 border border-slate-800/90 rounded-xl p-4 space-y-2">
+                <div className="flex items-center justify-between border-b border-slate-800/80 pb-2">
+                  <span className="font-bold text-amber-300 font-mono flex items-center gap-1.5 uppercase text-xs tracking-wider">
+                    <span>📜</span> 词源趣谈与故事 (Etymology Story)
+                  </span>
+                </div>
+                {(() => {
+                  const etym = parseBilingual(detailWord.etymology);
+                  if (!etym.en && !etym.zh) {
+                    return <div className="text-slate-500 text-xs italic py-2">暂无词源趣谈数据</div>;
+                  }
+                  return (
+                    <div className="space-y-2 pt-1">
+                      {etym.en && (
+                        <div className="flex items-start justify-between gap-2 bg-amber-950/20 border-l-2 border-amber-400 p-2.5 rounded-r-lg text-xs leading-relaxed text-slate-200">
+                          <span>{etym.en}</span>
+                          <button
+                            type="button"
+                            onClick={() => playBilingualSpeech(etym.en, 'en')}
+                            className="shrink-0 text-amber-300 hover:text-white text-[10px] px-1.5 py-0.5 rounded bg-amber-900/40 transition-colors cursor-pointer"
+                            title="朗读英语词源 🔊"
+                          >
+                            🔊
+                          </button>
+                        </div>
+                      )}
+                      {etym.zh && (
+                        <div className="text-amber-300/90 text-xs pl-2">
+                          {etym.zh}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+              </div>
+            </div>
+
+            {/* Modal Footer with Previous / Next Word Navigation */}
+            <div className="p-3.5 sm:p-4 border-t border-slate-800 bg-slate-950/90 flex flex-wrap items-center justify-between gap-2 shrink-0">
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  disabled={detailWordIndex <= 0}
+                  onClick={handlePrevDetailWord}
+                  className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 disabled:opacity-30 disabled:cursor-not-allowed text-xs font-mono font-bold text-slate-200 transition-all flex items-center gap-1 cursor-pointer"
+                  title="查看上一个单词 (快捷键: 左方向键 ←)"
+                >
+                  <span>◀ 上一词</span>
+                </button>
+                <span className="text-xs font-mono text-slate-400 px-1 font-bold">
+                  {detailWordIndex >= 0 ? `${detailWordIndex + 1} / ${filteredWords.length}` : ''}
+                </span>
+                <button
+                  type="button"
+                  disabled={detailWordIndex < 0 || detailWordIndex >= filteredWords.length - 1}
+                  onClick={handleNextDetailWord}
+                  className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 disabled:opacity-30 disabled:cursor-not-allowed text-xs font-mono font-bold text-slate-200 transition-all flex items-center gap-1 cursor-pointer"
+                  title="查看下一个单词 (快捷键: 右方向键 →)"
+                >
+                  <span>下一词 ▶</span>
+                </button>
+                <span className="text-[11px] font-mono text-slate-500 hidden sm:inline ml-1">
+                  (支持方向键 ← → 翻页)
+                </span>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setDetailWord(null)}
+                className="px-5 py-1.5 rounded-lg bg-cyan-500 hover:bg-cyan-400 text-slate-950 text-xs font-mono font-black transition-all cursor-pointer shadow-md"
+              >
+                关闭
+              </button>
             </div>
           </div>
         </div>

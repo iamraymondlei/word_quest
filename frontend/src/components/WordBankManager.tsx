@@ -845,20 +845,20 @@ export const WordBankManager: React.FC<WordBankManagerProps> = ({
   };
 
   return (
-    <div className="flex flex-col gap-6 text-slate-200 font-sans pb-12">
+    <div className={`flex flex-col text-slate-200 font-sans ${isStoryMode ? 'gap-3 pb-4' : 'gap-5 pb-8'}`}>
       {/* ───────────────────────────────────────────────────────────
           Top Navigation: Story-Focused Context Banner OR Two-Tier Cascade
           ─────────────────────────────────────────────────────────── */}
       {isStoryMode ? (
-        <div className="bg-[#131B2E] border border-cyan-500/30 rounded-2xl p-4 shadow-xl flex items-center justify-between gap-4 flex-wrap">
-          <div className="flex items-center gap-3 flex-wrap">
+        <div className="bg-[#131B2E] border border-cyan-500/30 rounded-xl px-3.5 py-2 shadow-lg flex items-center justify-between gap-3 flex-wrap">
+          <div className="flex items-center gap-2.5 flex-wrap">
             {onBack && (
               <button
                 type="button"
                 onClick={onBack}
-                className="px-4 py-2 bg-gradient-to-r from-cyan-950 to-slate-900 hover:from-cyan-900 hover:to-slate-800 border border-cyan-500/40 text-cyan-300 hover:text-cyan-200 text-xs font-mono font-bold rounded-xl transition-all cursor-pointer flex items-center gap-2 shadow-sm active:scale-95 shrink-0"
+                className="px-3 py-1.5 bg-gradient-to-r from-cyan-950 to-slate-900 hover:from-cyan-900 hover:to-slate-800 border border-cyan-500/40 text-cyan-300 hover:text-cyan-200 text-xs font-mono font-bold rounded-lg transition-all cursor-pointer flex items-center gap-1.5 shadow-sm active:scale-95 shrink-0"
               >
-                <span>←</span> <span>返回故事关卡库 (Back to Stories)</span>
+                <span>←</span> <span>返回故事关卡库 (Back)</span>
               </button>
             )}
 
@@ -1096,9 +1096,9 @@ export const WordBankManager: React.FC<WordBankManagerProps> = ({
       )}
 
       {/* Main Full-Width Studio Workbench */}
-      <main className="w-full flex flex-col gap-6">
+      <main className="w-full flex flex-col gap-3">
         {selectedBook ? (
-          <div className="bg-slate-900/90 border border-slate-800/80 rounded-2xl p-5 sm:p-7 shadow-2xl flex flex-col gap-6 relative overflow-hidden w-full">
+          <div className={`bg-slate-900/90 border border-slate-800/80 rounded-2xl ${isStoryMode ? 'p-3.5 sm:p-4 gap-3.5' : 'p-5 sm:p-7 gap-6'} shadow-2xl flex flex-col relative overflow-hidden w-full`}>
             {/* Top Accent Gradient Line */}
             <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-cyan-400 via-indigo-500 to-amber-400" />
 
@@ -1245,9 +1245,9 @@ export const WordBankManager: React.FC<WordBankManagerProps> = ({
                   TAB 1: 生词批量导入与 AI 赋能工作台 (Studio / Workspace)
                   ─────────────────────────────────────────────────────────── */}
               {activeTab === 'import' && (
-                <div className="flex flex-col gap-6">
+                <div className={`flex flex-col ${isStoryMode ? 'gap-3.5' : 'gap-6'}`}>
                   {/* Raw Words Studio Input Card */}
-                  <div className="bg-slate-950/70 p-5 sm:p-6 rounded-2xl border border-slate-800/90 shadow-inner flex flex-col gap-4">
+                  <div className={`bg-slate-950/70 ${isStoryMode ? 'p-3.5 sm:p-4 gap-3' : 'p-5 sm:p-6 gap-4'} rounded-2xl border border-slate-800/90 shadow-inner flex flex-col`}>
                     <div className="flex flex-wrap items-center justify-between gap-3">
                       <div className="flex items-center gap-2">
                         <span className="text-amber-400 font-bold text-xs uppercase tracking-wider flex items-center gap-1.5">
@@ -1302,7 +1302,7 @@ export const WordBankManager: React.FC<WordBankManagerProps> = ({
                       value={rawWordsInput}
                       onChange={(e) => setRawWordsInput(e.target.value)}
                       placeholder="粘贴多个英文单词，以逗号、换行或分号分隔。例如：friendly, generous, helpful, living room, loyal..."
-                      className="w-full bg-slate-900/90 border border-slate-700/80 rounded-xl p-4 text-sm font-mono text-white placeholder-slate-600 outline-none focus:border-cyan-400 focus:shadow-[0_0_20px_rgba(6,182,212,0.15)] h-32 resize-y transition-all leading-relaxed"
+                      className={`w-full bg-slate-900/90 border border-slate-700/80 rounded-xl p-3 sm:p-4 text-sm font-mono text-white placeholder-slate-600 outline-none focus:border-cyan-400 focus:shadow-[0_0_20px_rgba(6,182,212,0.15)] ${isStoryMode ? 'h-20 sm:h-24' : 'h-28 sm:h-32'} resize-y transition-all leading-relaxed`}
                     />
 
                     {/* Live Progress Bar for Progressive Batch Enrichment */}
@@ -1602,9 +1602,9 @@ export const WordBankManager: React.FC<WordBankManagerProps> = ({
                       </p>
                     </div>
                   ) : (
-                    <div className="overflow-x-auto border border-slate-800/90 rounded-2xl shadow-xl">
+                    <div className="overflow-x-auto max-h-[calc(100vh-270px)] min-h-[260px] overflow-y-auto border border-slate-800/90 rounded-2xl shadow-xl">
                       <table className="w-full text-left text-xs border-collapse">
-                        <thead className="bg-slate-950 text-slate-400 font-mono border-b border-slate-800">
+                        <thead className="bg-slate-950 text-slate-400 font-mono border-b border-slate-800 sticky top-0 z-10 shadow-sm">
                           <tr>
                             <th className="p-3 w-10 text-center">
                               <input

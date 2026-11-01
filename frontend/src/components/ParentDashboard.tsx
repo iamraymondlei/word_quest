@@ -226,6 +226,7 @@ export const ParentDashboard: React.FC<Props> = ({ onBack, onLogout }) => {
   }, [activeTab]);
 
   const [isEditingStory, setIsEditingStory] = useState<boolean>(false);
+  const [storyEditorTab, setStoryEditorTab] = useState<'content' | 'basic' | 'illustrations' | 'vocab_questions'>('content');
   const [isChangePasswordOpen, setIsChangePasswordOpen] = useState<boolean>(false);
   const [isEditingWords, setIsEditingWords] = useState<boolean>(false);
   const [editingWordsBookId, setEditingWordsBookId] = useState<number | null>(null);
@@ -430,6 +431,7 @@ export const ParentDashboard: React.FC<Props> = ({ onBack, onLogout }) => {
     const existingWords = island.words || [];
     setWordsList(existingWords);
     setManualUserIds(island.assigned_user_ids || []);
+    setStoryEditorTab('content');
     setIsEditingStory(true);
     setUploadStatus(null);
   };
@@ -438,6 +440,7 @@ export const ParentDashboard: React.FC<Props> = ({ onBack, onLogout }) => {
     setIsEditingWords(false);
     setSelectedIslandId('');
     clearIslandFormFields();
+    setStoryEditorTab('content');
     setIsEditingStory(true);
     setUploadStatus(null);
   };
@@ -1391,7 +1394,8 @@ export const ParentDashboard: React.FC<Props> = ({ onBack, onLogout }) => {
   const createNewIsland = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newIslandName.trim()) {
-      setUploadStatus({ type: 'error', text: 'SECTOR ALIAS CANNOT BE BLANK.' });
+      setStoryEditorTab('basic');
+      setUploadStatus({ type: 'error', text: '关卡名称不能为空 (SECTOR NAME CANNOT BE BLANK).' });
       return;
     }
 
@@ -2198,32 +2202,35 @@ export const ParentDashboard: React.FC<Props> = ({ onBack, onLogout }) => {
         </div>
       )}
 
-      {/* View 2: ✏️ Dedicated Story Editor (独立全屏故事编辑器工作台) */}
+      {/* View 2: ✏️ Dedicated Story Editor (独立全屏故事编辑器工作台 - 紧凑一屏标签化布局) */}
       {isEditingStory && (
-        <div className="flex flex-col gap-6 animate-fade-in">
-          {/* Sticky Action Bar */}
-          <div className="story-editor-sticky-bar bg-[#0F172A]/90 border border-cyan-500/30 rounded-2xl p-4 shadow-2xl flex flex-wrap items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
+        <div className="flex flex-col gap-2.5 animate-fade-in">
+          {/* Top Sticky Compact Action Bar */}
+          <div className="story-editor-sticky-bar bg-[#0F172A]/95 border border-cyan-500/30 rounded-xl px-3.5 py-2 shadow-lg flex flex-wrap items-center justify-between gap-2.5 sticky top-0 z-20 backdrop-blur-md">
+            <div className="flex items-center gap-2.5 min-w-0">
               <button
                 type="button"
                 onClick={handleCloseStoryEditor}
-                className="px-3.5 py-2 rounded-xl bg-slate-900 border border-slate-700 hover:border-cyan-400 text-slate-300 hover:text-cyan-300 font-mono text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-sm active:scale-95"
+                className="px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-700 hover:border-cyan-400 text-slate-300 hover:text-cyan-300 font-mono text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-sm active:scale-95 shrink-0"
               >
-                <span>◀</span> <span>返回故事库 (BACK)</span>
+                <span>◀</span> <span>返回故事库</span>
               </button>
-              <div className="flex flex-col">
-                <span className="text-[10px] uppercase tracking-widest font-mono text-cyan-400 font-bold">
-                  {selectedIslandId ? `EDITING STORY SECTOR // ID: ${selectedIslandId}` : 'CREATING NEW STORY SECTOR'}
-                </span>
-                <h2 className="text-base sm:text-lg font-bold theme-text font-mono truncate max-w-md">
-                  {storyTitle || newIslandName || '未命名故事 (Untitled Story)'}
-                </h2>
+              <div className="h-4 w-px bg-slate-700 hidden sm:block shrink-0" />
+              <div className="flex flex-col min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] uppercase tracking-widest font-mono text-cyan-400 font-bold shrink-0">
+                    {selectedIslandId ? `SECTOR #${selectedIslandId}` : 'NEW SECTOR'}
+                  </span>
+                  <h2 className="text-sm sm:text-base font-bold theme-text font-mono truncate max-w-xs sm:max-w-md">
+                    {storyTitle || newIslandName || '未命名故事'}
+                  </h2>
+                </div>
               </div>
             </div>
 
-            <div className="flex items-center gap-3 flex-wrap">
+            <div className="flex items-center gap-2 flex-wrap">
               {uploadStatus && (
-                <span className={`px-3 py-1 text-xs font-mono rounded-lg border ${
+                <span className={`px-2.5 py-1 text-xs font-mono rounded-lg border ${
                   uploadStatus.type === 'success' ? 'bg-emerald-950/50 border-emerald-500/40 text-emerald-300' : 'bg-rose-950/50 border-rose-500/40 text-rose-300'
                 }`}>
                   {uploadStatus.text}
@@ -2232,18 +2239,18 @@ export const ParentDashboard: React.FC<Props> = ({ onBack, onLogout }) => {
               <button
                 type="button"
                 onClick={() => handleOpenAiGenStoryModal()}
-                className="px-4 py-2.5 bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 hover:from-amber-400 hover:to-orange-400 text-slate-950 font-mono text-xs font-black rounded-xl shadow-lg shadow-amber-500/25 transition-all flex items-center gap-1.5 cursor-pointer active:scale-95 border border-amber-400/40"
-                title="基于当前关卡关联的生词库，利用 AI 一键构思并生成完整的英文绘本故事、逐页中英对照和阅读理解问答"
+                className="px-3 py-1.5 bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 hover:from-amber-400 hover:to-orange-400 text-slate-950 font-mono text-xs font-black rounded-lg shadow transition-all flex items-center gap-1.5 cursor-pointer active:scale-95 border border-amber-400/40"
+                title="基于当前关卡关联的生词库，利用 AI 一键构思并生成完整的英文绘本故事"
               >
-                <span>✨</span> <span>AI 生词生成故事 (SYNTHESIZE)</span>
+                <span>✨</span> <span>AI 生词生成故事</span>
               </button>
               <button
                 type="button"
                 onClick={handleOpenAiAppend}
-                className="px-4 py-2.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-mono text-xs font-bold rounded-xl shadow-lg shadow-purple-600/25 transition-all flex items-center gap-1.5 cursor-pointer active:scale-95 border border-purple-400/40"
-                title="分批或追加上传后续绘本页面，自动顺延页码并合并生词和习题"
+                className="px-3 py-1.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-mono text-xs font-bold rounded-lg shadow transition-all flex items-center gap-1.5 cursor-pointer active:scale-95 border border-purple-400/40"
+                title="追加上传后续绘本页面，自动顺延页码并合并生词和习题"
               >
-                <span>🤖 ➕</span> <span>AI 追加新页面 (APPEND)</span>
+                <span>🤖 ➕</span> <span>AI 追加新页</span>
               </button>
               <button
                 type="button"
@@ -2252,337 +2259,427 @@ export const ParentDashboard: React.FC<Props> = ({ onBack, onLogout }) => {
                   if (form) form.requestSubmit();
                 }}
                 disabled={isSaving}
-                className="px-6 py-2.5 bg-gradient-to-r from-cyan-500 via-teal-400 to-emerald-500 hover:from-cyan-400 hover:to-emerald-400 text-slate-950 font-black text-xs uppercase tracking-wider rounded-xl shadow-lg shadow-cyan-500/25 transition-all cursor-pointer disabled:opacity-50 flex items-center gap-1.5 font-mono active:scale-95"
+                className="px-5 py-1.5 bg-gradient-to-r from-cyan-500 via-teal-400 to-emerald-500 hover:from-cyan-400 hover:to-emerald-400 text-slate-950 font-black text-xs uppercase tracking-wider rounded-lg shadow-md shadow-cyan-500/20 transition-all cursor-pointer disabled:opacity-50 flex items-center gap-1.5 font-mono active:scale-95"
               >
-                <span>💾</span> <span>{isSaving ? 'SAVING...' : (selectedIslandId ? 'COMMIT SECTOR CONFIG (保存更改)' : 'INITIALIZE SECTOR (创建故事)')}</span>
+                <span>💾</span> <span>{isSaving ? 'SAVING...' : (selectedIslandId ? '保存更改 (SAVE)' : '创建故事 (CREATE)')}</span>
               </button>
             </div>
           </div>
 
+          {/* Sub-Tabs Switcher Bar */}
+          <div className="flex items-center gap-1.5 bg-slate-900/90 border border-slate-800 p-1 rounded-xl overflow-x-auto">
+            <button
+              type="button"
+              onClick={() => setStoryEditorTab('content')}
+              className={`px-3.5 py-1.5 rounded-lg text-xs font-mono font-bold transition-all cursor-pointer flex items-center gap-1.5 shrink-0 ${
+                storyEditorTab === 'content'
+                  ? 'bg-cyan-500 text-slate-950 shadow-md font-black'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+              }`}
+            >
+              <span>📖</span>
+              <span>故事正文与段落翻译</span>
+              <span className={`text-[10px] px-1.5 py-0.2 rounded font-mono ${
+                storyEditorTab === 'content' ? 'bg-slate-950/20 text-slate-950' : 'bg-slate-800 text-cyan-400'
+              }`}>
+                {storyPassageJson.length}句
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setStoryEditorTab('basic')}
+              className={`px-3.5 py-1.5 rounded-lg text-xs font-mono font-bold transition-all cursor-pointer flex items-center gap-1.5 shrink-0 ${
+                storyEditorTab === 'basic'
+                  ? 'bg-cyan-500 text-slate-950 shadow-md font-black'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+              }`}
+            >
+              <span>📌</span>
+              <span>基础信息与学员权限</span>
+              <span className={`text-[10px] px-1.5 py-0.2 rounded font-mono ${
+                storyEditorTab === 'basic' ? 'bg-slate-950/20 text-slate-950' : 'bg-slate-800 text-slate-300'
+              }`}>
+                {manualUserIds.length ? `${manualUserIds.length}人` : '公开'}
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setStoryEditorTab('illustrations')}
+              className={`px-3.5 py-1.5 rounded-lg text-xs font-mono font-bold transition-all cursor-pointer flex items-center gap-1.5 shrink-0 ${
+                storyEditorTab === 'illustrations'
+                  ? 'bg-cyan-500 text-slate-950 shadow-md font-black'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+              }`}
+            >
+              <span>🖼️</span>
+              <span>绘本插图画廊</span>
+              <span className={`text-[10px] px-1.5 py-0.2 rounded font-mono ${
+                storyEditorTab === 'illustrations' ? 'bg-slate-950/20 text-slate-950' : 'bg-slate-800 text-purple-300'
+              }`}>
+                {pageIllustrationsList.filter(p => p.illustration_url).length}/{pageIllustrationsList.length}
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setStoryEditorTab('vocab_questions')}
+              className={`px-3.5 py-1.5 rounded-lg text-xs font-mono font-bold transition-all cursor-pointer flex items-center gap-1.5 shrink-0 ${
+                storyEditorTab === 'vocab_questions'
+                  ? 'bg-cyan-500 text-slate-950 shadow-md font-black'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+              }`}
+            >
+              <span>📚</span>
+              <span>专属生词与阅读问答</span>
+              <span className={`text-[10px] px-1.5 py-0.2 rounded font-mono ${
+                storyEditorTab === 'vocab_questions' ? 'bg-slate-950/20 text-slate-950' : 'bg-slate-800 text-indigo-300'
+              }`}>
+                {wordsList.length}词 · {storyQuestions.filter(q => q.question?.trim()).length}题
+              </span>
+            </button>
+          </div>
+
           {/* Story Editor Main Form */}
           <FormBoundary>
-            <form id="story-editor-form" onSubmit={createNewIsland} className="flex flex-col gap-6">
-              {/* Section 1: 📌 基础配置与学员权限 */}
-              <div className="bg-[#131B2E] border border-[#1F2D4A] rounded-2xl p-6 shadow-xl space-y-6">
-                <div className="flex items-center gap-2 border-b border-[#1F2D4A] pb-3">
-                  <span className="text-xl">📌</span>
-                  <h3 className="text-base font-bold text-slate-100 uppercase tracking-widest font-mono">
-                    基础信息与学员权限 (Basic Information & Permissions)
-                  </h3>
-                </div>
+            <form id="story-editor-form" onSubmit={createNewIsland} className="flex flex-col gap-3">
+              {/* TAB 1: 📖 故事文本与段落句子对照 */}
+              {storyEditorTab === 'content' && (
+                <div className="bg-[#131B2E] border border-[#1F2D4A] rounded-xl p-3 sm:p-4 shadow-xl flex flex-col gap-3">
+                  {/* Top Row: Sector Name + Story Title + Full Story Passage (3-column compact layout) */}
+                  <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-start">
+                    <div className="md:col-span-3 flex flex-col gap-1">
+                      <label className="text-[11px] text-slate-400 uppercase tracking-wider font-mono font-bold flex items-center gap-1">
+                        <span>🏷️</span>
+                        <span>关卡名称 (Sector Name) *</span>
+                      </label>
+                      <input
+                        type="text"
+                        value={newIslandName}
+                        onChange={(e) => setNewIslandName(e.target.value)}
+                        placeholder="例如: S1 Magic Forest"
+                        className="bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-cyan-300 font-mono placeholder-slate-600 focus:outline-none focus:border-cyan-500"
+                      />
+                      <span className="text-[10px] text-slate-500 font-mono">关卡在地图与列表的唯一标识</span>
+                    </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="flex flex-col gap-2">
-                    <label className="text-xs text-slate-400 uppercase tracking-widest font-mono font-bold">
-                      Sector Name (关卡/岛屿名称) *
-                    </label>
-                    <input
-                      type="text"
-                      value={newIslandName}
-                      onChange={(e) => setNewIslandName(e.target.value)}
-                      placeholder="e.g. Magic Forest"
-                      required
-                      className="bg-slate-900 border border-slate-800 rounded-lg px-4 py-2.5 text-sm text-cyan-300 font-mono placeholder-slate-600 focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500"
-                    />
+                    <div className="md:col-span-4 flex flex-col gap-1">
+                      <label className="text-[11px] text-slate-400 uppercase tracking-wider font-mono font-bold flex items-center gap-1">
+                        <span>📖</span>
+                        <span>英文标题 (Story Title)</span>
+                      </label>
+                      <input
+                        type="text"
+                        value={storyTitle}
+                        onChange={(e) => setStoryTitle(e.target.value)}
+                        placeholder="例如: The Brave Little Fox"
+                        className="bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-cyan-300 font-mono placeholder-slate-600 focus:outline-none focus:border-cyan-500"
+                      />
+                      <span className="text-[10px] text-slate-500 font-mono">绘本原书英文标题</span>
+                    </div>
+
+                    <div className="md:col-span-5 flex flex-col gap-1">
+                      <div className="flex items-center justify-between">
+                        <label className="text-[11px] text-slate-400 uppercase tracking-wider font-mono font-bold flex items-center gap-1">
+                          <span>📝</span>
+                          <span>故事完整文本 (Full Story Text)</span>
+                        </label>
+                        <span className="text-[10px] text-cyan-500/80 font-mono">
+                          {storyPassage ? `${storyPassage.split(/\s+/).filter(Boolean).length} 词` : '空'}
+                        </span>
+                      </div>
+                      <textarea
+                        value={storyPassage}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setStoryPassage(val);
+                          if (val.trim()) {
+                            const rawParagraphs = val.split(/\n\s*\n|\n/).map((p) => p.trim()).filter(Boolean);
+                            const autoJson: any[] = [];
+                            rawParagraphs.forEach((paraText, pIdx) => {
+                              const matches = paraText.match(/[^.!?]+(?:[.!?]+['"’”)]*|(?=$))/g) || [paraText];
+                              let sentenceNum = 1;
+                              matches.forEach((s) => {
+                                const cleanSent = s.trim();
+                                if (cleanSent) {
+                                  autoJson.push({
+                                    paragraph_num: pIdx + 1,
+                                    sentence_num: sentenceNum++,
+                                    sentence_text: cleanSent,
+                                    translation: ''
+                                  });
+                                }
+                              });
+                            });
+                            setStoryPassageJson(autoJson);
+                          } else {
+                            setStoryPassageJson([]);
+                          }
+                        }}
+                        placeholder="在此粘贴或输入故事全文，会自动切分下方表格..."
+                        rows={2}
+                        className="bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-cyan-300 font-mono placeholder-slate-600 focus:outline-none focus:border-cyan-500 leading-relaxed resize-y"
+                      />
+                    </div>
                   </div>
 
-                  <div className="flex flex-col gap-2">
-                    <div className="flex items-center justify-between">
-                      <label className="text-xs text-slate-400 uppercase tracking-widest font-mono font-bold">
-                        Group Name (所属分组 / 级别)
-                      </label>
+                  {/* Sentence Breakdown & Chinese Translation Table */}
+                  <div className="flex flex-col gap-1.5 pt-1">
+                    <div className="flex items-center justify-between flex-wrap gap-2">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[11px] text-slate-400 uppercase tracking-wider font-mono font-bold">
+                          逐句段落与中文对照 (SENTENCE BREAKDOWN & TRANSLATION)
+                        </span>
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-mono bg-cyan-950 text-cyan-300 border border-cyan-500/30 font-bold">
+                          {storyPassageJson.length} 句
+                        </span>
+                      </div>
                       <button
                         type="button"
-                        onClick={() => { setActiveTab('groups'); setIsEditingStory(false); }}
-                        className="text-[10px] text-cyan-400 hover:text-cyan-200 underline font-mono cursor-pointer"
+                        onClick={addSentenceSegment}
+                        className="bg-cyan-950/80 hover:bg-cyan-900 text-cyan-300 border border-cyan-500/50 rounded-lg px-2.5 py-1 text-xs font-mono font-bold transition-all cursor-pointer shadow-sm flex items-center gap-1 active:scale-95"
                       >
-                        ⚙️ 管理所有分组
+                        ➕ 添加句子 (ADD SENTENCE)
                       </button>
                     </div>
-                    <input
-                      type="text"
-                      value={groupName}
-                      onChange={(e) => setGroupName(e.target.value)}
-                      placeholder="e.g. General, Level A, Science..."
-                      list="existing-group-names"
-                      className="bg-slate-900 border border-slate-800 rounded-lg px-4 py-2.5 text-sm text-cyan-300 font-mono placeholder-slate-600 focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500"
-                    />
-                    <datalist id="existing-group-names">
-                      {storyGroups.map(g => (
-                        <option key={g.id} value={g.name} />
-                      ))}
-                    </datalist>
 
-                    {/* Quick group selector chips */}
-                    {storyGroups.length > 0 && (
-                      <div className="flex flex-wrap gap-1.5 mt-1">
-                        <span className="text-[10px] text-slate-500 font-mono self-center">快速选择:</span>
-                        {storyGroups.map(g => (
-                          <button
-                            key={g.id}
-                            type="button"
-                            onClick={() => setGroupName(g.name)}
-                            className={`px-2 py-0.5 rounded text-[10px] font-mono transition-all cursor-pointer border ${
-                              groupName === g.name
-                                ? 'bg-cyan-500/30 border-cyan-400 text-cyan-200 font-bold'
-                                : 'bg-slate-900 border-slate-800 text-slate-400 hover:border-slate-600'
-                            }`}
-                          >
-                            📁 {g.name}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Assigned Players */}
-                {renderUserSelectionGroup(manualUserIds, setManualUserIds)}
-              </div>
-
-              {/* Section 2: 📖 故事文本与句子段落对照 */}
-              <div className="bg-[#131B2E] border border-[#1F2D4A] rounded-2xl p-6 shadow-xl space-y-6">
-                <div className="flex items-center gap-2 border-b border-[#1F2D4A] pb-3">
-                  <span className="text-xl">📖</span>
-                  <h3 className="text-base font-bold text-slate-100 uppercase tracking-widest font-mono">
-                    故事文本与句子级翻译对照 (Story Passage & Sentence Translation)
-                  </h3>
-                </div>
-
-                <div className="flex flex-col gap-2">
-                  <label className="text-xs text-slate-400 uppercase tracking-widest font-mono font-bold">
-                    Story English Title (故事英文标题) *
-                  </label>
-                  <input
-                    type="text"
-                    value={storyTitle}
-                    onChange={(e) => setStoryTitle(e.target.value)}
-                    placeholder="e.g. The Brave Little Fox"
-                    required
-                    className="bg-slate-900 border border-slate-800 rounded-lg px-4 py-2.5 text-sm text-cyan-300 font-mono placeholder-slate-600 focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500"
-                  />
-                </div>
-
-                <div className="flex flex-col gap-2">
-                  <div className="flex items-center justify-between">
-                    <label className="text-xs text-slate-400 uppercase tracking-widest font-mono font-bold">
-                      Full Story Text (完整故事文本)
-                    </label>
-                    <span className="text-3xs text-slate-500 font-mono">
-                      修改此框文本会自动切分下方的段落句子表格
-                    </span>
-                  </div>
-                  <textarea
-                    value={storyPassage}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      setStoryPassage(val);
-                      if (val.trim()) {
-                        const rawParagraphs = val.split(/\n\s*\n|\n/).map((p) => p.trim()).filter(Boolean);
-                        const autoJson: any[] = [];
-                        rawParagraphs.forEach((paraText, pIdx) => {
-                          const matches = paraText.match(/[^.!?]+(?:[.!?]+['"’”)]*|(?=$))/g) || [paraText];
-                          let sentenceNum = 1;
-                          matches.forEach((s) => {
-                            const cleanSent = s.trim();
-                            if (cleanSent) {
-                              autoJson.push({
-                                paragraph_num: pIdx + 1,
-                                sentence_num: sentenceNum++,
-                                sentence_text: cleanSent,
-                                translation: ''
-                              });
-                            }
-                          });
-                        });
-                        setStoryPassageJson(autoJson);
-                      } else {
-                        setStoryPassageJson([]);
-                      }
-                    }}
-                    placeholder="Paste or write full story passage here..."
-                    rows={5}
-                    className="bg-slate-900 border border-slate-800 rounded-lg px-4 py-3 text-sm text-cyan-300 font-mono placeholder-slate-600 focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 leading-relaxed"
-                  />
-                </div>
-
-                {/* Paragraph & Sentence Breakdown Table */}
-                <div className="flex flex-col gap-2 pt-2">
-                  <div className="flex items-center justify-between flex-wrap gap-2">
-                    <label className="text-xs text-slate-400 uppercase tracking-widest font-mono font-bold">
-                      SENTENCE BREAKDOWN & CHINESE TRANSLATION ({storyPassageJson.length} 句子)
-                    </label>
-                    <button
-                      type="button"
-                      onClick={addSentenceSegment}
-                      className="bg-cyan-950/80 hover:bg-cyan-900 text-cyan-300 border border-cyan-500/50 rounded-lg px-3.5 py-1.5 text-xs font-mono font-bold transition-all cursor-pointer shadow-sm flex items-center gap-1"
-                    >
-                      ➕ 添加句子 (ADD SENTENCE)
-                    </button>
-                  </div>
-                  <p className="text-3xs text-slate-500 font-mono">
-                    Para # 代表所属段落（相同数字归为同一段落）。每句对应 Stage 1 故事阅读与 Stage 3 口语练习。
-                  </p>
-
-                  <div className="table-responsive bg-[#0F172A] border border-[#1F2D4A] rounded-xl overflow-hidden shadow-xl">
-                    <table className="w-full text-xs text-left font-mono" id="table-story-preview">
-                      <thead>
-                        <tr className="bg-[#131B2E] border-b border-[#1F2D4A] text-slate-400 font-mono">
-                          <th className="p-3 font-semibold uppercase tracking-wider w-[18%]">段落 / 序号</th>
-                          <th className="p-3 font-semibold uppercase tracking-wider w-[40%]">英文原句 (ENGLISH)</th>
-                          <th className="p-3 font-semibold uppercase tracking-wider w-[34%]">中文翻译 (CHINESE)</th>
-                          <th className="p-3 font-semibold uppercase tracking-wider w-[8%] text-center">操作</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {storyPassageJson.length === 0 ? (
-                          <tr>
-                            <td colSpan={4} className="p-6 text-center text-slate-500 italic font-mono">
-                              暂无句子划分，请在上方文本框输入文本或点击【➕ 添加句子】
-                            </td>
+                    <div className="table-responsive bg-[#0F172A] border border-[#1F2D4A] rounded-xl overflow-hidden shadow-inner max-h-[calc(100vh-250px)] min-h-[220px] overflow-y-auto">
+                      <table className="w-full text-xs text-left font-mono" id="table-story-preview">
+                        <thead className="sticky top-0 z-10">
+                          <tr className="bg-[#131B2E] border-b border-[#1F2D4A] text-slate-400 font-mono shadow-sm">
+                            <th className="p-2 font-semibold uppercase tracking-wider w-[14%] text-center">段落 / 序号</th>
+                            <th className="p-2 font-semibold uppercase tracking-wider w-[44%]">英文原句 (ENGLISH)</th>
+                            <th className="p-2 font-semibold uppercase tracking-wider w-[36%]">中文翻译 (CHINESE)</th>
+                            <th className="p-2 font-semibold uppercase tracking-wider w-[6%] text-center">操作</th>
                           </tr>
-                        ) : (
-                          storyPassageJson.map((item, index) => (
-                            <tr key={`${item.paragraph_num}-${item.sentence_num}-${index}`} className="border-b border-[#1F2D4A]/50 hover:bg-[#131B2E]/40 transition-colors">
-                              <td className="p-3 text-slate-400 font-bold leading-relaxed">
-                                <div className="flex items-center gap-1.5 mb-1">
-                                  <span className="text-[10px] text-slate-500">Para #</span>
-                                  <input
-                                    type="number"
-                                    min="1"
-                                    max="99"
-                                    value={item.paragraph_num || 1}
-                                    onChange={(e) => updateSentenceTranslation(index, 'paragraph_num', parseInt(e.target.value) || 1)}
-                                    className="w-14 bg-slate-900 border border-slate-800 text-cyan-300 text-center font-mono font-bold px-1.5 py-0.5 rounded focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500"
-                                  />
-                                </div>
-                                <div className="text-[10px] text-slate-600">Sent #{index + 1}</div>
-                              </td>
-                              <td className="p-2">
-                                <textarea
-                                  value={item.sentence_text}
-                                  onChange={(e) => updateSentenceTranslation(index, 'sentence_text', e.target.value)}
-                                  placeholder="English sentence..."
-                                  rows={2}
-                                  className="w-full bg-slate-900 border border-slate-800 rounded px-2.5 py-1.5 text-xs text-slate-100 font-mono focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 resize-y"
-                                />
-                              </td>
-                              <td className="p-2">
-                                <textarea
-                                  value={item.translation || ''}
-                                  onChange={(e) => updateSentenceTranslation(index, 'translation', e.target.value)}
-                                  placeholder="中文释义（用于 Stage 3 口语与阅读释义）..."
-                                  rows={2}
-                                  className="w-full bg-slate-900 border border-slate-800 rounded px-2.5 py-1.5 text-xs text-cyan-300 font-sans focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 resize-y"
-                                />
-                              </td>
-                              <td className="p-2 text-center">
-                                <button
-                                  type="button"
-                                  onClick={() => removeSentenceSegment(index)}
-                                  className="text-rose-400 hover:text-rose-300 cursor-pointer p-1 text-sm transition-all"
-                                  title="删除此句"
-                                >
-                                  ❌
-                                </button>
+                        </thead>
+                        <tbody>
+                          {storyPassageJson.length === 0 ? (
+                            <tr>
+                              <td colSpan={4} className="p-6 text-center text-slate-500 italic font-mono">
+                                暂无句子划分，请在上方文本框输入文本或点击【➕ 添加句子】
                               </td>
                             </tr>
-                          ))
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              </div>
-
-              {/* Section 2.5: 🖼️ 绘本逐页插图 (Page Illustrations Gallery) */}
-              <div className="bg-[#131B2E] border border-[#1F2D4A] rounded-2xl p-6 shadow-xl space-y-5">
-                <div className="flex items-center justify-between border-b border-[#1F2D4A] pb-3 flex-wrap gap-2">
-                  <div className="flex items-center gap-2">
-                    <span className="text-xl">🖼️</span>
-                    <div>
-                      <h3 className="text-base font-bold text-slate-100 uppercase tracking-widest font-mono">
-                        绘本逐页插图 (PAGE ILLUSTRATIONS GALLERY)
-                      </h3>
-                      <p className="text-3xs text-slate-500 font-mono mt-0.5">
-                        AI 智能提取的绘本纯画面插图，按页码（段落）对应。学生阅读与离线模式下将优先展示。
-                      </p>
+                          ) : (
+                            storyPassageJson.map((item, index) => (
+                              <tr key={`${item.paragraph_num}-${item.sentence_num}-${index}`} className="border-b border-[#1F2D4A]/50 hover:bg-[#131B2E]/40 transition-colors">
+                                <td className="p-1.5 text-center">
+                                  <div className="flex items-center justify-center gap-1">
+                                    <span className="text-[10px] text-slate-500">P#</span>
+                                    <input
+                                      type="number"
+                                      min="1"
+                                      max="99"
+                                      value={item.paragraph_num || 1}
+                                      onChange={(e) => updateSentenceTranslation(index, 'paragraph_num', parseInt(e.target.value) || 1)}
+                                      className="w-10 bg-slate-900 border border-slate-800 text-cyan-300 text-center font-mono font-bold px-1 py-0.5 rounded text-xs focus:outline-none focus:border-cyan-500"
+                                    />
+                                  </div>
+                                  <div className="text-[10px] text-slate-600 mt-0.5">#{index + 1}</div>
+                                </td>
+                                <td className="p-1.5">
+                                  <textarea
+                                    value={item.sentence_text}
+                                    onChange={(e) => updateSentenceTranslation(index, 'sentence_text', e.target.value)}
+                                    placeholder="English sentence..."
+                                    rows={1}
+                                    className="w-full bg-slate-900 border border-slate-800 rounded px-2 py-1 text-xs text-slate-100 font-mono focus:outline-none focus:border-cyan-500 min-h-[30px] resize-y"
+                                  />
+                                </td>
+                                <td className="p-1.5">
+                                  <textarea
+                                    value={item.translation || ''}
+                                    onChange={(e) => updateSentenceTranslation(index, 'translation', e.target.value)}
+                                    placeholder="中文释义..."
+                                    rows={1}
+                                    className="w-full bg-slate-900 border border-slate-800 rounded px-2 py-1 text-xs text-cyan-300 font-sans focus:outline-none focus:border-cyan-500 min-h-[30px] resize-y"
+                                  />
+                                </td>
+                                <td className="p-1.5 text-center">
+                                  <button
+                                    type="button"
+                                    onClick={() => removeSentenceSegment(index)}
+                                    className="text-rose-400 hover:text-rose-300 cursor-pointer p-1 text-xs transition-all hover:scale-110"
+                                    title="删除此句"
+                                  >
+                                    ✕
+                                  </button>
+                                </td>
+                              </tr>
+                            ))
+                          )}
+                        </tbody>
+                      </table>
                     </div>
                   </div>
-                  <div className="flex items-center gap-3">
-                    <button
-                      type="button"
-                      onClick={handleOpenAiAppend}
-                      className="px-3 py-1.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white text-xs font-mono font-bold rounded-lg shadow-md flex items-center gap-1.5 transition-all cursor-pointer border border-purple-400/40 active:scale-95"
-                    >
-                      <span>🤖 ➕</span>
-                      <span>AI 追加新页面</span>
-                    </button>
-                    <span className="text-xs font-mono bg-cyan-950 text-cyan-300 border border-cyan-500/30 px-2.5 py-1 rounded-full">
-                      {pageIllustrationsList.filter((p) => p.illustration_url).length} / {pageIllustrationsList.length} 页含插图
-                    </span>
+                </div>
+              )}
+
+              {/* TAB 2: 📌 基础配置与学员权限 */}
+              {storyEditorTab === 'basic' && (
+                <div className="bg-[#131B2E] border border-[#1F2D4A] rounded-xl p-4 sm:p-5 shadow-xl space-y-4">
+                  <div className="flex items-center gap-2 border-b border-[#1F2D4A] pb-2.5">
+                    <span className="text-lg">📌</span>
+                    <h3 className="text-sm font-bold text-slate-100 uppercase tracking-widest font-mono">
+                      基础信息与学员权限 (Basic Information & Permissions)
+                    </h3>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-xs text-slate-400 uppercase tracking-widest font-mono font-bold">
+                        Sector Name (关卡/岛屿名称) *
+                      </label>
+                      <input
+                        type="text"
+                        value={newIslandName}
+                        onChange={(e) => setNewIslandName(e.target.value)}
+                        placeholder="e.g. Magic Forest"
+                        className="bg-slate-900 border border-slate-800 rounded-lg px-3.5 py-2 text-xs text-cyan-300 font-mono placeholder-slate-600 focus:outline-none focus:border-cyan-500"
+                      />
+                    </div>
+
+                    <div className="flex flex-col gap-1.5">
+                      <div className="flex items-center justify-between">
+                        <label className="text-xs text-slate-400 uppercase tracking-widest font-mono font-bold">
+                          Group Name (所属分组 / 级别)
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => { setActiveTab('groups'); setIsEditingStory(false); }}
+                          className="text-[10px] text-cyan-400 hover:text-cyan-200 underline font-mono cursor-pointer"
+                        >
+                          ⚙️ 管理所有分组
+                        </button>
+                      </div>
+                      <input
+                        type="text"
+                        value={groupName}
+                        onChange={(e) => setGroupName(e.target.value)}
+                        placeholder="e.g. General, Level A, Science..."
+                        list="existing-group-names"
+                        className="bg-slate-900 border border-slate-800 rounded-lg px-3.5 py-2 text-xs text-cyan-300 font-mono placeholder-slate-600 focus:outline-none focus:border-cyan-500"
+                      />
+                      <datalist id="existing-group-names">
+                        {storyGroups.map(g => (
+                          <option key={g.id} value={g.name} />
+                        ))}
+                      </datalist>
+
+                      {/* Quick group selector chips */}
+                      {storyGroups.length > 0 && (
+                        <div className="flex flex-wrap gap-1.5 mt-0.5">
+                          <span className="text-[10px] text-slate-500 font-mono self-center">快速选择:</span>
+                          {storyGroups.map(g => (
+                            <button
+                              key={g.id}
+                              type="button"
+                              onClick={() => setGroupName(g.name)}
+                              className={`px-2 py-0.5 rounded text-[10px] font-mono transition-all cursor-pointer border ${
+                                groupName === g.name
+                                  ? 'bg-cyan-500/30 border-cyan-400 text-cyan-200 font-bold'
+                                  : 'bg-slate-900 border-slate-800 text-slate-400 hover:border-slate-600'
+                              }`}
+                            >
+                              📁 {g.name}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Assigned Players */}
+                  <div className="pt-2 border-t border-[#1F2D4A]/60">
+                    {renderUserSelectionGroup(manualUserIds, setManualUserIds)}
                   </div>
                 </div>
+              )}
 
-                {pageIllustrationsList.length === 0 ? (
-                  <div className="p-6 text-center text-slate-500 italic font-mono text-xs bg-slate-900/60 rounded-xl border border-slate-800 flex flex-col items-center gap-2">
-                    <span>暂无页码数据。请在下方输入故事文本或通过 AI 导入绘本图片。</span>
-                    <button
-                      type="button"
-                      onClick={handleOpenAiAppend}
-                      className="px-3 py-1.5 bg-purple-900/40 hover:bg-purple-900/60 text-purple-300 border border-purple-500/30 rounded-lg text-2xs font-mono font-bold cursor-pointer transition-all flex items-center gap-1 mt-1"
-                    >
-                      <span>🤖 ➕</span> <span>前往 AI 智能绘本导入</span>
-                    </button>
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {pageIllustrationsList.map((pageItem) => (
-                      <div
-                        key={pageItem.pageNum}
-                        className="bg-slate-900/80 border border-slate-800 hover:border-cyan-500/30 rounded-xl p-3.5 flex flex-col justify-between gap-3 transition-all"
+              {/* TAB 3: 🖼️ 绘本逐页插图 (Page Illustrations Gallery) */}
+              {storyEditorTab === 'illustrations' && (
+                <div className="bg-[#131B2E] border border-[#1F2D4A] rounded-xl p-3 sm:p-4 shadow-xl flex flex-col gap-3">
+                  <div className="flex items-center justify-between border-b border-[#1F2D4A] pb-2.5 flex-wrap gap-2">
+                    <div className="flex items-center gap-2">
+                      <span className="text-lg">🖼️</span>
+                      <div>
+                        <h3 className="text-sm font-bold text-slate-100 uppercase tracking-widest font-mono">
+                          绘本逐页插图 (PAGE ILLUSTRATIONS GALLERY)
+                        </h3>
+                        <p className="text-[10px] text-slate-500 font-mono">
+                          AI 智能提取的绘本纯画面插图，按页码（段落）对应展示。
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={handleOpenAiAppend}
+                        className="px-2.5 py-1 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white text-xs font-mono font-bold rounded-lg shadow-sm flex items-center gap-1 transition-all cursor-pointer border border-purple-400/40 active:scale-95"
                       >
-                        <div className="flex items-center justify-between">
-                          <span className="text-xs font-bold font-mono text-cyan-300 bg-cyan-950/80 px-2 py-0.5 rounded border border-cyan-500/30">
-                            第 {pageItem.pageNum} 页 (Para #{pageItem.pageNum})
-                          </span>
-                          <span className="text-[10px] font-mono text-slate-500">
-                            {pageItem.count} 句文本
-                          </span>
-                        </div>
+                        <span>🤖 ➕</span>
+                        <span>追加新页面</span>
+                      </button>
+                      <span className="text-xs font-mono bg-cyan-950 text-cyan-300 border border-cyan-500/30 px-2 py-0.5 rounded-full">
+                        {pageIllustrationsList.filter((p) => p.illustration_url).length} / {pageIllustrationsList.length} 页含插图
+                      </span>
+                    </div>
+                  </div>
 
-                        {/* Illustration Preview */}
-                        {pageItem.illustration_url ? (
-                          <div className="relative group rounded-lg overflow-hidden border border-slate-800 bg-black/50">
-                            <StoryIllustration
-                              src={pageItem.illustration_url}
-                              pageNumber={pageItem.pageNum}
-                              allowZoom={true}
-                              className="border-none bg-transparent"
-                            />
-                            <div className="flex items-center justify-end gap-2 p-1.5 bg-slate-950/80 border-t border-slate-800/80">
+                  {pageIllustrationsList.length === 0 ? (
+                    <div className="p-8 text-center text-slate-500 italic font-mono text-xs bg-slate-900/60 rounded-xl border border-slate-800 flex flex-col items-center gap-2">
+                      <span>暂无页码数据。请在【故事正文】输入段落或通过 AI 导入绘本图片。</span>
+                      <button
+                        type="button"
+                        onClick={handleOpenAiAppend}
+                        className="px-3 py-1.5 bg-purple-900/40 hover:bg-purple-900/60 text-purple-300 border border-purple-500/30 rounded-lg text-xs font-mono font-bold cursor-pointer transition-all flex items-center gap-1 mt-1"
+                      >
+                        <span>🤖 ➕</span> <span>前往 AI 智能绘本导入</span>
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 max-h-[calc(100vh-220px)] overflow-y-auto pr-1">
+                      {pageIllustrationsList.map((pageItem) => (
+                        <div
+                          key={pageItem.pageNum}
+                          className="bg-slate-900/80 border border-slate-800 hover:border-cyan-500/30 rounded-xl p-2.5 flex flex-col justify-between gap-2 transition-all"
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-bold font-mono text-cyan-300 bg-cyan-950/80 px-2 py-0.5 rounded border border-cyan-500/30">
+                              第 {pageItem.pageNum} 页 (Para #{pageItem.pageNum})
+                            </span>
+                            <span className="text-[10px] font-mono text-slate-500">
+                              {pageItem.count} 句文本
+                            </span>
+                          </div>
+
+                          {/* Illustration Preview */}
+                          {pageItem.illustration_url ? (
+                            <div className="relative group rounded-lg overflow-hidden border border-slate-800 bg-black/50 aspect-video flex items-center justify-center">
+                              <StoryIllustration
+                                src={pageItem.illustration_url}
+                                pageNumber={pageItem.pageNum}
+                                allowZoom={true}
+                                className="border-none bg-transparent w-full h-full object-contain"
+                              />
                               <button
                                 type="button"
                                 onClick={() => updatePageIllustration(pageItem.pageNum, null)}
-                                className="px-2 py-0.5 bg-rose-950/80 hover:bg-rose-900 border border-rose-500/40 text-rose-300 rounded text-[10px] font-mono font-bold cursor-pointer"
+                                className="absolute bottom-1 right-1 px-1.5 py-0.5 bg-rose-950/80 hover:bg-rose-900 border border-rose-500/40 text-rose-300 rounded text-[10px] font-mono font-bold cursor-pointer shadow"
                               >
-                                🗑️ 移除插图
+                                🗑️ 移除
                               </button>
                             </div>
-                          </div>
-                        ) : (
-                          <div className="aspect-video rounded-lg border border-dashed border-slate-800 bg-slate-950/40 flex flex-col items-center justify-center text-slate-600 text-xs font-mono gap-1">
-                            <span>📄 无本页插图</span>
-                            <span className="text-[10px] text-slate-700">（纯文本或未提取到画面）</span>
-                          </div>
-                        )}
+                          ) : (
+                            <div className="aspect-video rounded-lg border border-dashed border-slate-800 bg-slate-950/40 flex flex-col items-center justify-center text-slate-600 text-xs font-mono gap-0.5">
+                              <span>📄 无本页插图</span>
+                              <span className="text-[10px] text-slate-700">（纯文本）</span>
+                            </div>
+                          )}
 
-                        {/* URL Editor input */}
-                        <div className="space-y-1">
-                          <label className="text-[10px] font-mono text-slate-400 block">
-                            插图资源路径 (URL / Storage Key):
-                          </label>
-                          <div className="flex items-center gap-1.5">
+                          {/* URL input */}
+                          <div className="flex items-center gap-1">
                             <input
                               type="text"
                               value={pageItem.illustration_url || ''}
@@ -2594,7 +2691,7 @@ export const ParentDashboard: React.FC<Props> = ({ onBack, onLogout }) => {
                               <button
                                 type="button"
                                 onClick={() => updatePageIllustration(pageItem.pageNum, null)}
-                                className="text-slate-500 hover:text-rose-400 text-xs px-1.5 py-1"
+                                className="text-slate-500 hover:text-rose-400 text-xs px-1"
                                 title="清空"
                               >
                                 ✕
@@ -2602,296 +2699,248 @@ export const ParentDashboard: React.FC<Props> = ({ onBack, onLogout }) => {
                             )}
                           </div>
                         </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {/* Section 3: 🚀 专属生词库与问答配置快捷入口 (Vocabulary & Questions Shortcuts) */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {/* Card 1: 专属生词库 */}
-                <div className="bg-[#131B2E] border border-[#1F2D4A] hover:border-indigo-500/40 rounded-2xl p-6 shadow-xl flex flex-col justify-between gap-5 transition-all">
-                  <div className="flex flex-col gap-3">
-                    <div className="flex items-center justify-between border-b border-[#1F2D4A] pb-3">
-                      <div className="flex items-center gap-2.5">
-                        <div className="w-9 h-9 rounded-xl bg-indigo-500/10 border border-indigo-500/30 flex items-center justify-center text-lg">
-                          📖
-                        </div>
-                        <div>
-                          <h4 className="text-sm font-bold text-indigo-400 uppercase tracking-widest font-mono">
-                            专属生词库 (VOCABULARY BANK)
-                          </h4>
-                          <span className="text-2xs text-slate-400 font-mono">
-                            独立生词管理与 AI 丰富解析
-                          </span>
-                        </div>
-                      </div>
-                      <span className="px-2.5 py-1 rounded-full text-2xs font-mono font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
-                        {wordsList.length} 个词条
-                      </span>
+                      ))}
                     </div>
-
-                    <p className="text-xs text-slate-300 font-mono leading-relaxed">
-                      本故事的重点生词已与独立单词宝库全面打通。AI 智能绘本导入提取的单词已自动归入词库，支持一键 AI 深度解析音标、核心释义、趣味例句、反义词与词源趣谈。
-                    </p>
-
-                    {/* Raw words preview tag cloud */}
-                    {wordsList.length > 0 ? (
-                      <div className="flex flex-wrap gap-1.5 p-3 bg-slate-950/60 border border-slate-800/80 rounded-xl max-h-24 overflow-y-auto">
-                        {wordsList.map((w, idx) => (
-                          <span
-                            key={idx}
-                            className="px-2 py-0.5 rounded text-2xs font-mono bg-indigo-950/60 text-indigo-200 border border-indigo-800/50"
-                          >
-                            {w.word}
-                            {w.translation ? ` (${w.translation})` : ''}
-                          </span>
-                        ))}
-                      </div>
-                    ) : (
-                      <div className="p-3 bg-slate-950/40 border border-dashed border-slate-800 rounded-xl text-center text-2xs text-slate-500 font-mono">
-                        当前故事尚未提取或添加生词
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="border-t border-[#1F2D4A] pt-4 flex items-center justify-between gap-3">
-                    {selectedIslandId ? (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const currentIsland = islands.find((isl) => isl.id === Number(selectedIslandId));
-                          if (currentIsland) {
-                            handleOpenEditWords(currentIsland);
-                          }
-                        }}
-                        className="w-full py-2.5 px-4 bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-500 hover:to-blue-500 text-white font-mono text-xs font-bold rounded-xl shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-95"
-                      >
-                        <span>📖</span>
-                        <span>前往编辑单词与 AI 解析 ➔</span>
-                      </button>
-                    ) : (
-                      <div className="w-full text-center py-2 text-2xs text-amber-400 font-mono bg-amber-950/20 border border-amber-500/20 rounded-xl">
-                        💡 点击下方保存故事后，即可直接前往「编辑单词」进行 AI 解析
-                      </div>
-                    )}
-                  </div>
+                  )}
                 </div>
+              )}
 
-                {/* Card 2: 阅读理解问答 */}
-                <div className="bg-[#131B2E] border border-[#1F2D4A] hover:border-purple-500/40 rounded-2xl p-6 shadow-xl flex flex-col justify-between gap-5 transition-all">
-                  <div className="flex flex-col gap-3">
-                    <div className="flex items-center justify-between border-b border-[#1F2D4A] pb-3">
-                      <div className="flex items-center gap-2.5">
-                        <div className="w-9 h-9 rounded-xl bg-purple-500/10 border border-purple-500/30 flex items-center justify-center text-lg">
-                          🧩
+              {/* TAB 4: 📚 专属生词库与问答配置快捷入口 */}
+              {storyEditorTab === 'vocab_questions' && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* Card 1: 专属生词库 */}
+                  <div className="bg-[#131B2E] border border-[#1F2D4A] hover:border-indigo-500/40 rounded-xl p-4 sm:p-5 shadow-xl flex flex-col justify-between gap-4 transition-all">
+                    <div className="flex flex-col gap-2.5">
+                      <div className="flex items-center justify-between border-b border-[#1F2D4A] pb-2.5">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xl">📖</span>
+                          <div>
+                            <h4 className="text-sm font-bold text-indigo-400 uppercase tracking-widest font-mono">
+                              专属生词库 (VOCABULARY BANK)
+                            </h4>
+                            <span className="text-[10px] text-slate-400 font-mono">
+                              生词管理与 AI 深度解析
+                            </span>
+                          </div>
                         </div>
-                        <div>
-                          <h4 className="text-sm font-bold text-purple-400 uppercase tracking-widest font-mono">
-                            阅读理解问答 (COMPREHENSION QUESTIONS)
-                          </h4>
-                          <span className="text-2xs text-slate-400 font-mono">
-                            独立问答配置与 AI 智能出题
-                          </span>
-                        </div>
+                        <span className="px-2 py-0.5 rounded-full text-xs font-mono font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+                          {wordsList.length} 词
+                        </span>
                       </div>
-                      <span className="px-2.5 py-1 rounded-full text-2xs font-mono font-bold bg-purple-500/20 text-purple-300 border border-purple-500/30">
-                        {storyQuestions.filter((q) => q.question && q.question.trim()).length} 道问答
-                      </span>
-                    </div>
 
-                    <p className="text-xs text-slate-300 font-mono leading-relaxed">
-                      学员在故事关卡第 3 阶段「挑战测试」时作答。系统支持由 AI 研读故事正文一键智能生成 3~10 道阅读理解问答、中文引导提示与参考答案。
-                    </p>
+                      <p className="text-xs text-slate-300 font-mono leading-relaxed">
+                        生词已与独立单词宝库打通，支持一键 AI 深度解析音标、核心释义、趣味例句、反义词与词源趣谈。
+                      </p>
 
-                    {/* Questions preview */}
-                    {storyQuestions.filter((q) => q.question && q.question.trim()).length > 0 ? (
-                      <div className="flex flex-col gap-1.5 p-3 bg-slate-950/60 border border-slate-800/80 rounded-xl max-h-24 overflow-y-auto">
-                        {storyQuestions
-                          .filter((q) => q.question && q.question.trim())
-                          .map((q, idx) => (
-                            <div key={idx} className="text-2xs font-mono text-purple-200 truncate flex items-center gap-1.5">
-                              <span className="text-purple-400 font-bold">Q{idx + 1}:</span>
-                              <span className="truncate">{q.question}</span>
-                            </div>
+                      {/* Tag cloud */}
+                      {wordsList.length > 0 ? (
+                        <div className="flex flex-wrap gap-1.5 p-3 bg-slate-950/60 border border-slate-800/80 rounded-xl max-h-48 overflow-y-auto">
+                          {wordsList.map((w, idx) => (
+                            <span
+                              key={idx}
+                              className="px-2 py-0.5 rounded text-2xs font-mono bg-indigo-950/60 text-indigo-200 border border-indigo-800/50"
+                            >
+                              {w.word}
+                              {w.translation ? ` (${w.translation})` : ''}
+                            </span>
                           ))}
-                      </div>
-                    ) : (
-                      <div className="p-3 bg-slate-950/40 border border-dashed border-slate-800 rounded-xl text-center text-2xs text-slate-500 font-mono">
-                        当前故事尚未配置阅读理解问答
-                      </div>
-                    )}
+                        </div>
+                      ) : (
+                        <div className="p-4 bg-slate-950/40 border border-dashed border-slate-800 rounded-xl text-center text-xs text-slate-500 font-mono">
+                          当前故事尚未提取或添加生词
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="border-t border-[#1F2D4A] pt-3">
+                      {selectedIslandId ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const currentIsland = islands.find((isl) => isl.id === Number(selectedIslandId));
+                            if (currentIsland) {
+                              handleOpenEditWords(currentIsland);
+                            }
+                          }}
+                          className="w-full py-2 px-3 bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-500 hover:to-blue-500 text-white font-mono text-xs font-bold rounded-xl shadow transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-95"
+                        >
+                          <span>📖</span>
+                          <span>前往编辑单词与 AI 解析 ➔</span>
+                        </button>
+                      ) : (
+                        <div className="w-full text-center py-2 text-xs text-amber-400 font-mono bg-amber-950/20 border border-amber-500/20 rounded-xl">
+                          💡 保存故事后，即可直接前往「编辑单词」
+                        </div>
+                      )}
+                    </div>
                   </div>
 
-                  <div className="border-t border-[#1F2D4A] pt-4 flex items-center justify-between gap-3">
-                    {selectedIslandId ? (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const currentIsland = islands.find((isl) => isl.id === Number(selectedIslandId));
-                          if (currentIsland) {
-                            handleOpenEditQuestions(currentIsland);
-                          }
-                        }}
-                        className="w-full py-2.5 px-4 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-mono text-xs font-bold rounded-xl shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-95"
-                      >
-                        <span>🧩</span>
-                        <span>前往编辑问题与 AI 出题 ➔</span>
-                      </button>
-                    ) : (
-                      <div className="w-full text-center py-2 text-2xs text-amber-400 font-mono bg-amber-950/20 border border-amber-500/20 rounded-xl">
-                        💡 点击下方保存故事后，即可直接前往「编辑问题」进行 AI 出题
+                  {/* Card 2: 阅读理解问答 */}
+                  <div className="bg-[#131B2E] border border-[#1F2D4A] hover:border-purple-500/40 rounded-xl p-4 sm:p-5 shadow-xl flex flex-col justify-between gap-4 transition-all">
+                    <div className="flex flex-col gap-2.5">
+                      <div className="flex items-center justify-between border-b border-[#1F2D4A] pb-2.5">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xl">🧩</span>
+                          <div>
+                            <h4 className="text-sm font-bold text-purple-400 uppercase tracking-widest font-mono">
+                              阅读理解问答 (COMPREHENSION QUESTIONS)
+                            </h4>
+                            <span className="text-[10px] text-slate-400 font-mono">
+                              独立问答配置与 AI 智能出题
+                            </span>
+                          </div>
+                        </div>
+                        <span className="px-2 py-0.5 rounded-full text-xs font-mono font-bold bg-purple-500/20 text-purple-300 border border-purple-500/30">
+                          {storyQuestions.filter((q) => q.question && q.question.trim()).length} 题
+                        </span>
                       </div>
-                    )}
+
+                      <p className="text-xs text-slate-300 font-mono leading-relaxed">
+                        学员在第 3 阶段「挑战测试」时作答。支持由 AI 研读故事正文一键智能生成中英文问答及参考答案。
+                      </p>
+
+                      {/* Questions preview */}
+                      {storyQuestions.filter((q) => q.question && q.question.trim()).length > 0 ? (
+                        <div className="flex flex-col gap-1.5 p-3 bg-slate-950/60 border border-slate-800/80 rounded-xl max-h-48 overflow-y-auto">
+                          {storyQuestions
+                            .filter((q) => q.question && q.question.trim())
+                            .map((q, idx) => (
+                              <div key={idx} className="text-xs font-mono text-purple-200 truncate flex items-center gap-1.5">
+                                <span className="text-purple-400 font-bold shrink-0">Q{idx + 1}:</span>
+                                <span className="truncate">{q.question}</span>
+                              </div>
+                            ))}
+                        </div>
+                      ) : (
+                        <div className="p-4 bg-slate-950/40 border border-dashed border-slate-800 rounded-xl text-center text-xs text-slate-500 font-mono">
+                          当前故事尚未配置阅读理解问答
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="border-t border-[#1F2D4A] pt-3">
+                      {selectedIslandId ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const currentIsland = islands.find((isl) => isl.id === Number(selectedIslandId));
+                            if (currentIsland) {
+                              handleOpenEditQuestions(currentIsland);
+                            }
+                          }}
+                          className="w-full py-2 px-3 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-mono text-xs font-bold rounded-xl shadow transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-95"
+                        >
+                          <span>🧩</span>
+                          <span>前往编辑问题与 AI 出题 ➔</span>
+                        </button>
+                      ) : (
+                        <div className="w-full text-center py-2 text-xs text-amber-400 font-mono bg-amber-950/20 border border-amber-500/20 rounded-xl">
+                          💡 保存故事后，即可直接前往「编辑问题」
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
-              </div>
-
-              {/* Bottom Save Bar */}
-              <div className="flex flex-wrap items-center justify-between gap-4 p-6 bg-[#131B2E] border border-[#1F2D4A] rounded-2xl shadow-xl">
-                <button
-                  type="button"
-                  onClick={handleCloseStoryEditor}
-                  className="px-5 py-2.5 bg-slate-900 border border-slate-700 text-slate-400 hover:text-slate-200 rounded-xl font-mono text-xs font-bold transition-all cursor-pointer"
-                >
-                  ◀ 返回故事关卡库 (CANCEL)
-                </button>
-
-                <div className="flex items-center gap-3">
-                  <button
-                    type="button"
-                    onClick={handleOpenAiAppend}
-                    className="px-5 py-3 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-mono text-xs font-bold rounded-xl shadow-lg shadow-purple-600/25 transition-all flex items-center gap-1.5 cursor-pointer active:scale-95 border border-purple-400/40"
-                    title="分批或追加上传后续绘本页面，自动顺延页码并合并生词和习题"
-                  >
-                    <span>🤖 ➕</span> <span>AI 追加新页面 (APPEND)</span>
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={isSaving}
-                    className="px-8 py-3 bg-gradient-to-r from-cyan-500 via-teal-400 to-emerald-500 hover:from-cyan-400 hover:to-emerald-400 text-slate-950 font-black text-xs uppercase tracking-wider rounded-xl shadow-lg shadow-cyan-500/25 transition-all cursor-pointer disabled:opacity-50 flex items-center gap-2 font-mono active:scale-95"
-                  >
-                    <span>💾</span> <span>{isSaving ? 'SAVING...' : (selectedIslandId ? 'COMMIT SECTOR CONFIG (保存更改)' : 'INITIALIZE SECTOR (创建故事)')}</span>
-                  </button>
-                </div>
-              </div>
+              )}
             </form>
           </FormBoundary>
         </div>
       )}
 
-      {/* View: 🧩 Story Comprehension Questions Editor (故事阅读理解问答独立管理) */}
+      {/* View: 🧩 Story Comprehension Questions Editor (故事阅读理解问答独立管理 - 紧凑双栏一屏工作台) */}
       {activeTab === 'stories' && isEditingQuestions && editingQuestionsIsland && !isEditingStory && (
-        <div className="flex flex-col gap-6 animate-fade-in">
-          {/* Top Header Card */}
-          <div className="bg-[#131B2E] border border-[#1F2D4A] rounded-2xl p-6 shadow-xl flex flex-col gap-5">
-            <div className="flex flex-wrap items-center justify-between gap-4 border-b border-[#1F2D4A] pb-4">
-              <div className="flex items-center gap-3">
-                <button
-                  type="button"
-                  onClick={handleCloseEditQuestions}
-                  className="px-3.5 py-2 bg-slate-900 border border-slate-700 hover:border-slate-500 text-slate-300 hover:text-white rounded-xl font-mono text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5"
-                >
-                  <span>◀</span> <span>返回故事关卡库</span>
-                </button>
-                <div className="w-10 h-10 rounded-xl bg-purple-500/10 border border-purple-500/30 flex items-center justify-center text-xl">
-                  🧩
-                </div>
-                <div>
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <h3 className="text-base font-bold text-purple-400 uppercase tracking-widest font-mono">
-                      {editingQuestionsIsland.story_title || editingQuestionsIsland.name}
-                    </h3>
-                    <span className="px-2 py-0.5 rounded-full text-2xs font-mono font-bold bg-purple-500/20 text-purple-300 border border-purple-500/30">
-                      SECTOR #{editingQuestionsIsland.id}
-                    </span>
-                    {editingQuestionsIsland.group_name && (
-                      <span className="px-2 py-0.5 rounded-full text-2xs font-mono bg-cyan-500/15 text-cyan-300 border border-cyan-500/30">
-                        {editingQuestionsIsland.group_name}
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-2xs text-slate-400 font-mono mt-0.5">
-                    管理与编辑本绘本的阅读理解问答，支持由 AI 深度分析故事自动出题。
-                  </p>
-                </div>
-              </div>
-
-              {/* Action Buttons */}
-              <div className="flex items-center gap-3 flex-wrap">
-                <div className="flex items-center gap-2 bg-slate-950/80 border border-slate-800 px-3 py-1.5 rounded-xl">
-                  <span className="text-2xs text-slate-400 font-mono">出题数量:</span>
-                  <select
-                    value={generateQuestionsCount}
-                    onChange={(e) => setGenerateQuestionsCount(Number(e.target.value))}
-                    className="bg-transparent text-purple-300 text-xs font-mono font-bold focus:outline-none cursor-pointer"
-                  >
-                    <option value={3} className="bg-slate-900 text-slate-200">3 道题</option>
-                    <option value={5} className="bg-slate-900 text-slate-200">5 道题 (推荐)</option>
-                    <option value={8} className="bg-slate-900 text-slate-200">8 道题</option>
-                    <option value={10} className="bg-slate-900 text-slate-200">10 道题</option>
-                  </select>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => handleGenerateQuestionsForIsland()}
-                  disabled={isGeneratingQuestions}
-                  className="px-4 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-mono text-xs font-bold rounded-xl shadow-lg shadow-purple-600/25 transition-all flex items-center gap-2 cursor-pointer active:scale-95 disabled:opacity-50"
-                  title="让 AI 自动阅读当前故事并生成中英阅读理解问答"
-                >
-                  <span>🤖</span>
-                  <span>{isGeneratingQuestions ? 'AI 正在阅读出题...' : '一键启动 AI 生成'}</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={handleSaveQuestionsForIsland}
-                  disabled={isSavingQuestions}
-                  className="px-5 py-2 bg-gradient-to-r from-cyan-500 to-teal-400 hover:from-cyan-400 hover:to-teal-300 text-slate-950 font-black text-xs uppercase tracking-wider rounded-xl shadow-lg shadow-cyan-500/25 transition-all cursor-pointer disabled:opacity-50 flex items-center gap-2 font-mono active:scale-95"
-                >
-                  <span>💾</span>
-                  <span>{isSavingQuestions ? 'SAVING...' : '保存问答配置'}</span>
-                </button>
+        <div className="flex flex-col gap-2.5 animate-fade-in">
+          {/* Top Bar: Compact Single-Row Action Bar */}
+          <div className="bg-[#0F172A]/95 border border-purple-500/30 rounded-xl px-3.5 py-2 shadow-lg flex flex-wrap items-center justify-between gap-2.5 sticky top-0 z-20 backdrop-blur-md">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <button
+                type="button"
+                onClick={handleCloseEditQuestions}
+                className="px-3 py-1.5 bg-slate-900 border border-slate-700 hover:border-purple-400 text-slate-300 hover:text-purple-300 rounded-lg font-mono text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 shrink-0"
+              >
+                <span>◀</span> <span>返回故事库</span>
+              </button>
+              <div className="h-4 w-px bg-slate-700 hidden sm:block shrink-0" />
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="text-base shrink-0">🧩</span>
+                <h3 className="text-sm font-bold text-purple-300 uppercase tracking-wider font-mono truncate max-w-xs sm:max-w-md">
+                  {editingQuestionsIsland.story_title || editingQuestionsIsland.name}
+                </h3>
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-purple-500/20 text-purple-300 border border-purple-500/30 shrink-0">
+                  #{editingQuestionsIsland.id}
+                </span>
+                {editingQuestionsIsland.group_name && (
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-mono bg-cyan-500/15 text-cyan-300 border border-cyan-500/30 hidden md:inline shrink-0">
+                    {editingQuestionsIsland.group_name}
+                  </span>
+                )}
               </div>
             </div>
 
-            {/* Status Alert Banner */}
-            {questionsEditStatus && (
-              <div
-                className={`p-3.5 rounded-xl border flex items-center justify-between text-xs font-mono animate-fade-in ${
-                  questionsEditStatus.type === 'success'
-                    ? 'bg-emerald-950/40 border-emerald-500/40 text-emerald-300'
-                    : 'bg-rose-950/40 border-rose-500/40 text-rose-300'
-                }`}
-              >
-                <span>{questionsEditStatus.text}</span>
-                <button
-                  type="button"
-                  onClick={() => setQuestionsEditStatus(null)}
-                  className="text-slate-400 hover:text-white text-sm px-2 cursor-pointer"
+            {/* Right Action Tools */}
+            <div className="flex items-center gap-2 flex-wrap">
+              {questionsEditStatus && (
+                <span className={`px-2.5 py-1 text-xs font-mono rounded-lg border ${
+                  questionsEditStatus.type === 'success' ? 'bg-emerald-950/50 border-emerald-500/40 text-emerald-300' : 'bg-rose-950/50 border-rose-500/40 text-rose-300'
+                }`}>
+                  {questionsEditStatus.text}
+                </span>
+              )}
+              <div className="flex items-center gap-1.5 bg-slate-950/80 border border-slate-800 px-2 py-1 rounded-lg">
+                <span className="text-[10px] text-slate-400 font-mono">出题:</span>
+                <select
+                  value={generateQuestionsCount}
+                  onChange={(e) => setGenerateQuestionsCount(Number(e.target.value))}
+                  className="bg-transparent text-purple-300 text-xs font-mono font-bold focus:outline-none cursor-pointer"
                 >
-                  ✕
-                </button>
+                  <option value={3} className="bg-slate-900 text-slate-200">3 题</option>
+                  <option value={5} className="bg-slate-900 text-slate-200">5 题 (推荐)</option>
+                  <option value={8} className="bg-slate-900 text-slate-200">8 题</option>
+                  <option value={10} className="bg-slate-900 text-slate-200">10 题</option>
+                </select>
               </div>
-            )}
 
-            {/* Story Reference Accordion */}
-            <details className="group bg-slate-950/60 border border-slate-800/80 rounded-xl overflow-hidden transition-all">
-              <summary className="p-3.5 flex items-center justify-between cursor-pointer select-none hover:bg-slate-900/60 transition-colors">
-                <div className="flex items-center gap-2 text-xs font-mono font-bold text-slate-300">
-                  <span>📖</span>
-                  <span>故事参考正文 (STORY PASSAGE REFERENCE)</span>
-                  <span className="text-2xs font-normal text-slate-500 font-mono">
-                    (点击展开/折叠，查看 AI 出题依据的故事文本)
+              <button
+                type="button"
+                onClick={() => handleGenerateQuestionsForIsland()}
+                disabled={isGeneratingQuestions}
+                className="px-3 py-1.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-mono text-xs font-bold rounded-lg shadow transition-all flex items-center gap-1.5 cursor-pointer active:scale-95 disabled:opacity-50"
+                title="让 AI 自动阅读当前故事并生成中英阅读理解问答"
+              >
+                <span>🤖</span>
+                <span>{isGeneratingQuestions ? 'AI 出题中...' : 'AI 智能出题'}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleSaveQuestionsForIsland}
+                disabled={isSavingQuestions}
+                className="px-4 py-1.5 bg-gradient-to-r from-cyan-500 to-teal-400 hover:from-cyan-400 hover:to-teal-300 text-slate-950 font-black text-xs uppercase tracking-wider rounded-lg shadow transition-all cursor-pointer disabled:opacity-50 flex items-center gap-1.5 font-mono active:scale-95"
+              >
+                <span>💾</span>
+                <span>{isSavingQuestions ? 'SAVING...' : '保存问答 (SAVE)'}</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Main 2-Column Split Studio */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 items-start">
+            {/* Left Column: 📖 Story Passage Reference Panel (4 cols) */}
+            <div className="lg:col-span-4 bg-[#131B2E] border border-[#1F2D4A] rounded-xl p-3 shadow-xl flex flex-col gap-2 h-[calc(100vh-140px)] min-h-[400px]">
+              <div className="flex items-center justify-between border-b border-[#1F2D4A] pb-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-base">📖</span>
+                  <span className="text-xs font-bold font-mono text-slate-200 uppercase tracking-wider">
+                    故事参考正文 (STORY TEXT)
                   </span>
                 </div>
-                <span className="text-xs text-slate-500 group-open:rotate-180 transition-transform">
-                  ▼
+                <span className="text-[10px] text-slate-500 font-mono">
+                  {Array.isArray(editingQuestionsIsland.story_passage_json) ? `${editingQuestionsIsland.story_passage_json.length} 句` : ''}
                 </span>
-              </summary>
-              <div className="p-4 border-t border-slate-800/60 text-xs font-mono text-slate-300 leading-relaxed max-h-60 overflow-y-auto whitespace-pre-wrap">
+              </div>
+
+              {/* Scrollable Story Passage Text */}
+              <div className="flex-1 overflow-y-auto text-xs font-mono text-slate-300 leading-relaxed pr-1 whitespace-pre-wrap divide-y divide-slate-800/60">
                 {(() => {
                   if (
                     editingQuestionsIsland.story_passage_json &&
@@ -2899,174 +2948,131 @@ export const ParentDashboard: React.FC<Props> = ({ onBack, onLogout }) => {
                     editingQuestionsIsland.story_passage_json.length > 0
                   ) {
                     return editingQuestionsIsland.story_passage_json.map((s: any, idx: number) => (
-                      <div key={idx} className="mb-2 last:mb-0">
-                        <span className="text-cyan-400 font-bold mr-2">#{idx + 1}</span>
-                        <span>{s.sentence_text || s.en || ''}</span>
-                        {s.zh && <p className="text-slate-500 text-2xs pl-6 mt-0.5">{s.zh}</p>}
+                      <div key={idx} className="py-1.5 first:pt-0 last:pb-0">
+                        <span className="text-cyan-400 font-bold mr-1.5">#{idx + 1}</span>
+                        <span className="text-slate-200">{s.sentence_text || s.en || ''}</span>
+                        {(s.translation || s.zh) && (
+                          <p className="text-slate-400 text-[11px] font-sans pl-5 mt-0.5">
+                            {s.translation || s.zh}
+                          </p>
+                        )}
                       </div>
                     ));
                   }
-                  return editingQuestionsIsland.story_passage || <span className="text-slate-500 italic">暂无故事正文文本</span>;
+                  return (
+                    <div className="p-2 text-slate-400">
+                      {editingQuestionsIsland.story_passage || <span className="text-slate-500 italic">暂无故事正文文本</span>}
+                    </div>
+                  );
                 })()}
               </div>
-            </details>
-          </div>
 
-          {/* Question List Card */}
-          <div className="bg-[#131B2E] border border-[#1F2D4A] rounded-2xl p-6 shadow-xl flex flex-col gap-5">
-            <div className="flex items-center justify-between border-b border-[#1F2D4A] pb-4">
-              <div className="flex items-center gap-2">
-                <h4 className="text-sm font-bold text-slate-200 font-mono uppercase tracking-wider">
-                  阅读理解问答列表 ({editingQuestionsList.length} 题)
-                </h4>
-                <span className="text-2xs text-slate-400 font-mono">
-                  学员在故事关卡第 3 阶段「挑战测试」时作答
-                </span>
+              <div className="pt-2 border-t border-[#1F2D4A] text-[10px] text-slate-500 font-mono flex items-center gap-1">
+                <span>💡</span> <span>AI 出题与学员测试将基于以上正文</span>
               </div>
-              <button
-                type="button"
-                onClick={addEditingQuestion}
-                className="px-3.5 py-1.5 bg-purple-950/60 hover:bg-purple-900 border border-purple-500/40 text-purple-300 hover:text-white rounded-lg font-mono text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5"
-              >
-                <span>➕</span> <span>添加问题</span>
-              </button>
             </div>
 
-            {editingQuestionsList.length === 0 ? (
-              <div className="py-12 px-4 text-center border-2 border-dashed border-slate-800 rounded-2xl flex flex-col items-center gap-3">
-                <div className="text-3xl">🧩</div>
-                <p className="text-sm font-mono text-slate-400">
-                  当前故事关卡暂无阅读理解问答
-                </p>
-                <p className="text-xs font-mono text-slate-500 max-w-md">
-                  您可以点击上方【🤖 一键启动 AI 生成】由 AI 自动阅读当前故事并生成问答，或点击【➕ 添加问题】手动输入。
-                </p>
-                <div className="flex items-center gap-3 mt-2">
-                  <button
-                    type="button"
-                    onClick={() => handleGenerateQuestionsForIsland()}
-                    disabled={isGeneratingQuestions}
-                    className="px-4 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-mono text-xs font-bold rounded-xl shadow-md transition-all flex items-center gap-1.5 cursor-pointer"
-                  >
-                    <span>🤖</span> <span>一键启动 AI 生成</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={addEditingQuestion}
-                    className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 font-mono text-xs font-bold rounded-xl transition-all cursor-pointer"
-                  >
-                    <span>➕</span> <span>手动添加问题</span>
-                  </button>
+            {/* Right Column: 🧩 Questions List Panel (8 cols) */}
+            <div className="lg:col-span-8 bg-[#131B2E] border border-[#1F2D4A] rounded-xl p-3 shadow-xl flex flex-col gap-2 h-[calc(100vh-140px)] min-h-[400px]">
+              <div className="flex items-center justify-between border-b border-[#1F2D4A] pb-2">
+                <div className="flex items-center gap-2">
+                  <h4 className="text-xs font-bold text-slate-200 font-mono uppercase tracking-wider">
+                    阅读理解问答列表 ({editingQuestionsList.length} 题)
+                  </h4>
+                  <span className="text-[10px] text-slate-400 font-mono hidden sm:inline">
+                    · 用于 Stage 3 挑战测试
+                  </span>
                 </div>
+                <button
+                  type="button"
+                  onClick={addEditingQuestion}
+                  className="px-2.5 py-1 bg-purple-950/60 hover:bg-purple-900 border border-purple-500/40 text-purple-300 hover:text-white rounded-lg font-mono text-xs font-bold transition-all cursor-pointer flex items-center gap-1 active:scale-95"
+                >
+                  <span>➕</span> <span>添加问题</span>
+                </button>
               </div>
-            ) : (
-              <div className="flex flex-col gap-4">
-                {editingQuestionsList.map((item, index) => (
-                  <div
-                    key={index}
-                    className="bg-[#0B101B] border border-[#1F2D4A] hover:border-purple-500/40 rounded-xl p-4 sm:p-5 flex flex-col gap-3 transition-colors"
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <span className="w-7 h-7 rounded-lg bg-purple-500/20 border border-purple-500/40 text-purple-300 font-mono font-black text-xs flex items-center justify-center">
-                          Q{index + 1}
-                        </span>
-                        <span className="text-2xs text-slate-400 font-mono">
-                          QUESTION #{index + 1}
-                        </span>
-                      </div>
+
+              {/* Questions Scrollable List */}
+              <div className="flex-1 overflow-y-auto pr-1 flex flex-col gap-2">
+                {editingQuestionsList.length === 0 ? (
+                  <div className="py-12 px-4 text-center border-2 border-dashed border-slate-800 rounded-xl flex flex-col items-center justify-center gap-2.5 my-auto">
+                    <div className="text-2xl">🧩</div>
+                    <p className="text-xs font-mono text-slate-400">
+                      当前故事关卡暂无阅读理解问答
+                    </p>
+                    <div className="flex items-center gap-2 mt-1">
                       <button
                         type="button"
-                        onClick={() => removeEditingQuestion(index)}
-                        className="text-xs text-rose-400/80 hover:text-rose-300 hover:bg-rose-950/40 px-2 py-1 rounded-md transition-colors font-mono cursor-pointer flex items-center gap-1"
-                        title="删除此题"
+                        onClick={() => handleGenerateQuestionsForIsland()}
+                        disabled={isGeneratingQuestions}
+                        className="px-3 py-1.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-mono text-xs font-bold rounded-lg shadow transition-all flex items-center gap-1.5 cursor-pointer"
                       >
-                        <span>🗑️</span> <span>删除</span>
+                        <span>🤖</span> <span>一键 AI 生成</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={addEditingQuestion}
+                        className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 font-mono text-xs font-bold rounded-lg transition-all cursor-pointer"
+                      >
+                        <span>➕</span> <span>手动添加</span>
                       </button>
                     </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
-                      {/* Question Field */}
-                      <div className="md:col-span-12 flex flex-col gap-1">
-                        <label className="text-2xs font-mono font-bold text-slate-400 uppercase tracking-wider flex items-center justify-between">
-                          <span>问题 (QUESTION) *</span>
-                          <span className="text-slate-500 font-normal">英文提问</span>
-                        </label>
+                  </div>
+                ) : (
+                  editingQuestionsList.map((item, index) => (
+                    <div
+                      key={index}
+                      className="bg-[#0B101B] border border-[#1F2D4A] hover:border-purple-500/40 rounded-lg p-2.5 flex flex-col gap-2 transition-colors"
+                    >
+                      {/* Top Row: Q# Badge + Question Input + Delete */}
+                      <div className="flex items-center gap-2">
+                        <span className="w-6 h-6 rounded-md bg-purple-500/20 border border-purple-500/40 text-purple-300 font-mono font-black text-[11px] flex items-center justify-center shrink-0">
+                          Q{index + 1}
+                        </span>
                         <input
                           type="text"
                           value={item.question}
                           onChange={(e) => updateEditingQuestion(index, 'question', e.target.value)}
-                          placeholder="例如: Why did the little bird leave its nest?"
-                          className="w-full bg-[#131B2E] border border-[#1F2D4A] focus:border-purple-400 focus:ring-1 focus:ring-purple-400 rounded-xl px-3.5 py-2 text-xs text-slate-200 font-mono transition-all"
+                          placeholder="英文问题 (Question) *，例如: Why did the little bird leave its nest?"
+                          className="flex-1 bg-[#131B2E] border border-[#1F2D4A] focus:border-purple-400 rounded-lg px-2.5 py-1 text-xs text-slate-100 font-mono"
                         />
+                        <button
+                          type="button"
+                          onClick={() => removeEditingQuestion(index)}
+                          className="text-slate-500 hover:text-rose-400 p-1 text-xs transition-colors cursor-pointer shrink-0"
+                          title="删除此题"
+                        >
+                          ✕
+                        </button>
                       </div>
 
-                      {/* Hint Field */}
-                      <div className="md:col-span-6 flex flex-col gap-1">
-                        <label className="text-2xs font-mono font-bold text-slate-400 uppercase tracking-wider flex items-center justify-between">
-                          <span>中文提示 / 引导 (HINT / CLUE)</span>
-                          <span className="text-slate-500 font-normal">选填</span>
-                        </label>
-                        <input
-                          type="text"
-                          value={item.hint || ''}
-                          onChange={(e) => updateEditingQuestion(index, 'hint', e.target.value)}
-                          placeholder="例如: 思考一下鸟妈妈教它学飞的情景..."
-                          className="w-full bg-[#131B2E] border border-[#1F2D4A] focus:border-purple-400 focus:ring-1 focus:ring-purple-400 rounded-xl px-3.5 py-2 text-xs text-slate-200 font-mono transition-all"
-                        />
-                      </div>
-
-                      {/* Answer Field */}
-                      <div className="md:col-span-6 flex flex-col gap-1">
-                        <label className="text-2xs font-mono font-bold text-slate-400 uppercase tracking-wider flex items-center justify-between">
-                          <span>标准答案 / 关键词 (ANSWER) *</span>
-                          <span className="text-slate-500 font-normal">判分参考</span>
-                        </label>
-                        <input
-                          type="text"
-                          value={item.answer || ''}
-                          onChange={(e) => updateEditingQuestion(index, 'answer', e.target.value)}
-                          placeholder="例如: To learn how to fly and find food."
-                          className="w-full bg-[#131B2E] border border-[#1F2D4A] focus:border-purple-400 focus:ring-1 focus:ring-purple-400 rounded-xl px-3.5 py-2 text-xs text-slate-200 font-mono transition-all"
-                        />
+                      {/* Bottom Row: Hint & Answer in 2 columns */}
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2 pl-8">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[10px] text-slate-400 font-mono shrink-0">提示:</span>
+                          <input
+                            type="text"
+                            value={item.hint || ''}
+                            onChange={(e) => updateEditingQuestion(index, 'hint', e.target.value)}
+                            placeholder="中文引导提示 (选填)..."
+                            className="w-full bg-[#131B2E] border border-[#1F2D4A] focus:border-purple-400 rounded-md px-2 py-0.5 text-xs text-slate-300 font-sans"
+                          />
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[10px] text-slate-400 font-mono shrink-0">答案:</span>
+                          <input
+                            type="text"
+                            value={item.answer || ''}
+                            onChange={(e) => updateEditingQuestion(index, 'answer', e.target.value)}
+                            placeholder="参考标准答案 (Answer) *..."
+                            className="w-full bg-[#131B2E] border border-[#1F2D4A] focus:border-purple-400 rounded-md px-2 py-0.5 text-xs text-cyan-300 font-mono"
+                          />
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  ))
+                )}
               </div>
-            )}
-          </div>
-
-          {/* Bottom Action Footer Bar */}
-          <div className="flex flex-wrap items-center justify-between gap-4 p-6 bg-[#131B2E] border border-[#1F2D4A] rounded-2xl shadow-xl">
-            <button
-              type="button"
-              onClick={handleCloseEditQuestions}
-              className="px-5 py-2.5 bg-slate-900 border border-slate-700 text-slate-400 hover:text-slate-200 rounded-xl font-mono text-xs font-bold transition-all cursor-pointer"
-            >
-              ◀ 返回故事关卡库 (CANCEL)
-            </button>
-
-            <div className="flex items-center gap-3">
-              <button
-                type="button"
-                onClick={() => handleGenerateQuestionsForIsland()}
-                disabled={isGeneratingQuestions}
-                className="px-5 py-2.5 bg-purple-950/80 hover:bg-purple-900 border border-purple-500/40 text-purple-300 hover:text-white font-mono text-xs font-bold rounded-xl transition-all cursor-pointer flex items-center gap-2 disabled:opacity-50"
-              >
-                <span>🤖</span>
-                <span>{isGeneratingQuestions ? 'AI 生成中...' : '一键启动 AI 生成问答'}</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={handleSaveQuestionsForIsland}
-                disabled={isSavingQuestions}
-                className="px-8 py-2.5 bg-gradient-to-r from-cyan-500 via-teal-400 to-emerald-500 hover:from-cyan-400 hover:to-emerald-400 text-slate-950 font-black text-xs uppercase tracking-wider rounded-xl shadow-lg shadow-cyan-500/25 transition-all cursor-pointer disabled:opacity-50 flex items-center gap-2 font-mono active:scale-95"
-              >
-                <span>💾</span>
-                <span>{isSavingQuestions ? 'SAVING...' : '保存问答配置 (SAVE QUESTIONS)'}</span>
-              </button>
             </div>
           </div>
         </div>

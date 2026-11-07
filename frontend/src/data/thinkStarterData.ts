@@ -843,4 +843,269 @@ export const THINK_STARTER_UNITS: ThinkUnitData[] = [
       ],
     },
   },
+  // ================= UNIT 6 =================
+  {
+    id: 6,
+    unit: 'Unit 6',
+    title: 'BEST FRIENDS',
+    subtitle: '身体五官部位、外貌特征描摹、have/has got 用法、可数与不可数名词及友谊互助',
+    themeColor: 'rose',
+    vocabularySections: [
+      {
+        title: 'Vocabulary 1: Parts of the Body (身体与五官部位)',
+        subtitle: '掌握 10 个常见面部五官与身体肢体核心词汇',
+        layout: 'grid',
+        items: [
+          { en: 'nose', zh: '鼻子', icon: '👃' },
+          { en: 'ear', zh: '耳朵', icon: '👂' },
+          { en: 'eye', zh: '眼睛', icon: '👁️' },
+          { en: 'face', zh: '脸 / 面部', icon: '👧' },
+          { en: 'mouth', zh: '嘴巴', icon: '👄' },
+          { en: 'arm', zh: '手臂', icon: '💪' },
+          { en: 'hand', zh: '手', icon: '✋' },
+          { en: 'body', zh: '身体', icon: '🧍' },
+          { en: 'leg', zh: '腿', icon: '🦵' },
+          { en: 'foot', zh: '脚 (复数: feet)', icon: '🦶', extra: '复数不规则变化为 feet' },
+        ],
+      },
+      {
+        title: 'Vocabulary 2: Facial Features & Accessories (面部外貌特征与配饰)',
+        subtitle: '描摹人物长相、胡须特征与配饰标志',
+        layout: 'grid',
+        items: [
+          { en: 'glasses', zh: '眼镜 (常作复数)', icon: '👓', extra: 'wear glasses 戴眼镜' },
+          { en: 'moustache', zh: '八字胡 / 唇上胡子', icon: '🥸', extra: '长在嘴唇上方的胡须' },
+          { en: 'beard', zh: '络腮胡 / 下巴胡子', icon: '🧔', extra: '长在下巴或两腮的胡须' },
+          { en: 'smile', zh: '微笑 / 笑容', icon: '😊', extra: 'have a warm smile 面带微笑' },
+          { en: 'earring', zh: '耳环 / 耳饰', icon: '💍', extra: 'wear earrings 戴耳环' },
+        ],
+      },
+      {
+        title: 'Vocabulary 3: Hair Styles & Appearance Colors (发型发色与五官色彩)',
+        subtitle: '发型曲直长短与常见特征颜色搭配',
+        layout: 'pairs',
+        items: [
+          { en: 'straight hair', zh: '直发', icon: '💇', extra: 'straight 直的' },
+          { en: 'wavy hair', zh: '波浪卷发', icon: '🌊', extra: 'wavy 波浪状的' },
+          { en: 'curly hair', zh: '卷发', icon: '🌀', extra: 'curly 卷曲的' },
+          { en: 'long hair', zh: '长发', icon: '📏', extra: 'long 长的' },
+          { en: 'short hair', zh: '短发', icon: '✂️', extra: 'short 短的' },
+          { en: 'blonde', zh: '金色的 / 金发', icon: '👱', extra: 'blonde hair 金黄色头发' },
+          { en: 'brown', zh: '棕色的 / 褐色', icon: '🟤', extra: 'brown eyes/hair 棕色' },
+          { en: 'black', zh: '黑色的', icon: '⚫', extra: 'black hair 黑色头发' },
+          { en: 'grey', zh: '灰色的 / 白发', icon: '⚪', extra: 'grey hair 灰白头发' },
+          { en: 'red', zh: '红色的 / 红发', icon: '🔴', extra: 'red hair 姜红发色' },
+          { en: 'blue', zh: '蓝色的 (蓝眼睛)', icon: '🔵', extra: 'blue eyes 蓝眼睛' },
+          { en: 'green', zh: '绿色的 (绿眼睛)', icon: '🟢', extra: 'green eyes 绿眼睛' },
+        ],
+      },
+      {
+        title: 'Vocabulary 4: Height & Dimension Opposites (身材与长短反义词对)',
+        subtitle: '成对对比掌握高矮与长短',
+        layout: 'antonyms',
+        items: [
+          { en: 'tall', zh: '高的', icon: '🦒', antonym: 'short (矮的)' },
+          { en: 'long', zh: '长的', icon: '📏', antonym: 'short (短的)' },
+        ],
+      },
+    ],
+    grammarPoints: [
+      {
+        title: 'Grammar 1: have / has got (表示“拥有”或“具有某种特征”)',
+        ruleSummary: 'have got / has got 专门用于表示某人拥有某物或具备某种外貌特征（如发色、眼睛颜色等）。主语为第三人称单数 (he/she/it) 时用 has got；其他人称用 have got。',
+        table: {
+          headers: ['主语人称', '肯定形式 (Positive)', '否定形式 (Negative)', '例句示范'],
+          rows: [
+            ['I', "have got ('ve got)", "have not got (haven't got)", "I've got brown eyes. (我有棕色的眼睛。)"],
+            ['You', "have got ('ve got)", "have not got (haven't got)", "You've got a nice smile. (你笑容很灿烂。)"],
+            ['We', "have got ('ve got)", "have not got (haven't got)", "We haven't got glasses. (我们没戴眼镜。)"],
+            ['They', "have got ('ve got)", "have not got (haven't got)", "They've got dark hair. (他们有一头黑发。)"],
+            ['He', "has got ('s got)", "has not got (hasn't got)", "He's got a beard and moustache. (他留着胡子。)"],
+            ['She', "has got ('s got)", "has not got (hasn't got)", "She hasn't got curly hair. (她不是卷发。)"],
+            ['It', "has got ('s got)", "has not got (hasn't got)", "It's got big ears. (它有一对大耳朵。)"],
+          ],
+        },
+        notes: [
+          "肯定句缩写：I have got = I've got；He has got = He's got；She has got = She's got",
+          "否定句结构：主语 + haven't got / hasn't got + 宾语，not 置于 have/has 之后",
+          "注意与 there is/are 区分：have got 强调归属主体（人/动物），there be 强调某处存在某物",
+        ],
+      },
+      {
+        title: 'Grammar 2: have / has got - Questions & Answers (一般疑问句与简略回答)',
+        ruleSummary: "把 Have / Has 提到主语前构成疑问句，got 仍放在主语之后。简略回答中只保留 have/haven't 或 has/hasn't，不再带 got！",
+        table: {
+          headers: ['疑问句结构', '肯定简答 (Yes)', '否定简答 (No)', '典型问答例句'],
+          rows: [
+            ['Have + I / you / we / they + got...?', 'Yes, I/you/we/they have.', "No, I/you/we/they haven't.", "Have you got blue eyes? —— Yes, I have. / No, I haven't."],
+            ['Has + he / she / it + got...?', 'Yes, he/she/it has.', "No, he/she/it hasn't.", "Has she got wavy hair? —— Yes, she has. / No, she hasn't."],
+            ['Has he got earrings?', 'Yes, he has.', "No, he hasn't.", "Has he got a moustache? —— No, he hasn't."],
+          ],
+        },
+        notes: [
+          "口诀：简答不带 got！例：Yes, I have. (不可写成 Yes, I have got.)",
+          "注意三单转换：主语是单个人名时用 Has，如 Has Tom got curly hair?",
+        ],
+      },
+      {
+        title: 'Grammar 3: Countable and Uncountable Nouns (可数与不可数名词及 some / any 用法)',
+        ruleSummary: '可数名词能数出具体数量，有单复数之分；不可数名词无法具体计数（如时间、水等），只有单数形式。修饰两者复数/量时，肯定句通常用 some，否定句和疑问句通常用 any。',
+        table: {
+          headers: ['名词分类', '概念与形式规律', '限定词搭配规则', '典型例句示范'],
+          rows: [
+            ['可数名词单数 (Singular)', '具体单个个体，有单数形式', '单数前用 a / an', 'She has got an earring and a blue bag.'],
+            ['可数名词复数 (Plural)', '两个及以上个体，词尾通常 +s / -es', 'two, three... 或 some / any', 'They have got three pencils and some books.'],
+            ['不可数名词 (Uncountable)', '无法具体计数的事物 (如 time, milk, hair)', '不能加 a/an，没有复数形式', 'We have got some time before class.'],
+            ['肯定句用法 (some)', '修饰可数名词复数或不可数名词', '肯定句中表示“一些”', "I've got some good friends at school."],
+            ['否定句用法 (any)', '修饰可数名词复数或不可数名词', '否定句中表示“任何/一点也没有”', "He hasn't got any brothers or sisters."],
+            ['疑问句用法 (any)', '修饰可数名词复数或不可数名词', '一般疑问句中表示“有没有一些”', 'Have you got any pets at home?'],
+          ],
+        },
+        notes: [
+          "a 用于辅音音素开头的单数名词前 (a nose, a boy)；an 用于元音音素开头的单数名词前 (an eye, an ear, an apple)",
+          "有些词汇在英语中视作不可数名词，如 time (时间)、information (信息)、water (水)、bread (面包)",
+          "头发 hair 作整体头发时常用作不可数名词 (He has got short hair.)，单根头发时才可数 (a white hair)",
+        ],
+      },
+    ],
+    speakingDialogues: [
+      {
+        title: 'Reading & Functions: Describing People (询问与描述人物外貌与性格)',
+        items: [
+          { en: 'What does he look like?', zh: '他长什么样？(问外貌)', responseEn: "He is tall and he's got short curly brown hair.", responseZh: '他个子很高，留着棕色卷短发。' },
+          { en: 'What does she look like?', zh: '她长什么样？(问外貌)', responseEn: "She's got long straight blonde hair and blue eyes.", responseZh: '她有一头金黄色的直长发和蓝眼睛。' },
+          { en: 'What is this new teacher like?', zh: '这位新老师人怎么样？(问性格)', responseEn: 'She is very friendly, kind and clever.', responseZh: '她非常亲切友好，热心且聪慧。' },
+          { en: 'What are they like?', zh: '他们性格为人怎么样？(问性格)', responseEn: 'They are very active and helpful.', responseZh: '他们非常活跃而且乐于助人。' },
+          { en: 'Are they Chinese?', zh: '他们是中国人吗？', responseEn: 'Yes, they are.', responseZh: '是的，他们是。' },
+          { en: 'Are they foolish?', zh: '他们愚蠢吗？', responseEn: "No, they aren't. They are brilliant.", responseZh: '不，他们不蠢，他们非常出色。' },
+          { en: 'Is he French?', zh: '他是法国人吗？', responseEn: 'Yes, he is.', responseZh: '是的，他是。' },
+          { en: 'Is it Paul?', zh: '那是保罗吗？', responseEn: "No, it isn't. That is Simon.", responseZh: '不，不是他。那是西蒙。' },
+        ],
+      },
+      {
+        title: 'Think Value: Helping a Friend (关怀身边的朋友：情境与互助行动)',
+        items: [
+          { en: 'My friend is sad.', zh: '我的朋友很难过、伤心。', responseEn: 'I give him/her a warm hug.', responseZh: '我给他/她一个温暖的拥抱。' },
+          { en: 'My friend gets a bad mark in his/her History test.', zh: '我的朋友历史测验考砸了。', responseEn: 'I help him/her study and review together.', responseZh: '我帮他/她一起复习功课。' },
+          { en: 'My friend is hungry and has nothing to eat.', zh: '我的朋友肚子饿了却没有食物。', responseEn: 'I make him/her a delicious sandwich.', responseZh: '我给他/她做一份美味的三明治。' },
+          { en: "My friend's computer is broken.", zh: '我朋友的电脑坏了。', responseEn: 'I lend him/her my tablet.', responseZh: '我把我的平板电脑借给他/她用。' },
+        ],
+      },
+    ],
+    cultureSection: {
+      title: 'Culture: Welcome People Around the World (世界各地的礼节与问候文化)',
+      cards: [
+        {
+          title: 'Bowing (点头鞠躬礼)',
+          country: 'Asian Countries (亚洲多国)',
+          flag: '🇯🇵',
+          details: [
+            'In many countries in Asia, people bow their heads when they greet each other.',
+            'Bowing shows politeness, respect, and humility.',
+          ],
+        },
+        {
+          title: 'Hongi (毛利碰鼻礼)',
+          country: 'New Zealand (新西兰)',
+          flag: '🇳🇿',
+          details: [
+            'The Maori people in New Zealand rub noses together when they meet.',
+            'It represents sharing the breath of life ("ha") together.',
+          ],
+        },
+        {
+          title: 'Namaste (合十礼)',
+          country: 'India, Nepal & Bangladesh (南亚国家)',
+          flag: '🇮🇳',
+          details: [
+            'People bring their hands together in front of their heart and say "Namaste".',
+            'It means "I bow to the divine in you" as a sign of deep respect.',
+          ],
+        },
+        {
+          title: 'Handshake (经典握手礼)',
+          country: 'Western Countries (西方国家)',
+          flag: '🇬🇧',
+          details: [
+            'Many people shake hands firmly when they meet in everyday or business life.',
+            'It is a universal gesture of friendship and trust.',
+          ],
+        },
+        {
+          title: 'Hand on Heart (手抚心口点头礼)',
+          country: 'Malaysia (马来西亚)',
+          flag: '🇲🇾',
+          details: [
+            'You put your right hand on your heart and gently nod your head.',
+            'It conveys heartfelt sincerity, warmth, and respect.',
+          ],
+        },
+        {
+          title: 'Fist Bump (碰拳礼)',
+          country: 'The United States (美国)',
+          flag: '🇺🇸',
+          details: [
+            'Some people bump their fists together to greet friends casually.',
+            'Very popular among young people and sports teammates.',
+          ],
+        },
+        {
+          title: 'Hand Kissing to Forehead (吻手贴额礼)',
+          country: 'Turkey & Philippines (土耳其与菲律宾)',
+          flag: '🇹🇷',
+          details: [
+            'You kiss the right hand of elders and place it on your forehead.',
+            'A beautiful traditional way to show respect to grandparents and elders.',
+          ],
+        },
+        {
+          title: 'Cheek Kiss (亲吻面颊礼 / 贴面礼)',
+          country: 'France, Spain & Latin America (多国)',
+          flag: '🇫🇷',
+          details: [
+            'Friends kiss each other gently on one or both cheeks ("la bise").',
+            'A warm and customary greeting among close friends and family members.',
+          ],
+        },
+      ],
+    },
+    writingGuide: {
+      title: 'Writing Mind Map: Describing a Best Friend (描述我最好的朋友)',
+      topic: 'My Best Friend (我的好朋友)',
+      branches: [
+        {
+          label: 'Appearance: Height & Hair (身高身材与发型)',
+          icon: '💇',
+          templates: [
+            { en: 'My best friend is [tall / short / of medium height].', zh: '我最好的朋友个子[高 / 矮 / 中等身高]。' },
+            { en: 'He / She has got [long curly brown / short straight black] hair.', zh: '他/她留着[长棕色卷发 / 短黑色直发]。' },
+          ],
+        },
+        {
+          label: 'Appearance: Face, Eyes & Accessories (五官神态与配饰)',
+          icon: '👓',
+          templates: [
+            { en: 'He / She has got big [blue / brown / green] eyes and a sweet smile.', zh: '他/她长着大大的[蓝色/棕色/绿色]眼睛，面带甜美的微笑。' },
+            { en: 'He / She wears [stylish glasses / shiny earrings].', zh: '他/她戴着[时尚的眼镜 / 闪亮的耳环]。' },
+          ],
+        },
+        {
+          label: 'Personality & Qualities (性格为人与闪光品质)',
+          icon: '🌟',
+          templates: [
+            { en: 'He / She is very [friendly / clever / kind / active].', zh: '他/她性格非常[友好 / 聪明 / 善良 / 活跃]。' },
+            { en: 'He / She is always ready to help me when I am in trouble.', zh: '每当我遇到困难时，他/她总是乐于帮助我。' },
+          ],
+        },
+        {
+          label: 'Likes & Dislikes (兴趣爱好与课余日常)',
+          icon: '⚽',
+          templates: [
+            { en: 'In his / her free time, he / she likes [playing football / reading / swimming].', zh: '在空闲时间，他/她喜欢[踢足球 / 阅读 / 游泳]。' },
+            { en: "He / She doesn't like [getting up early on cold mornings].", zh: '他/她不喜欢[在寒冷的早晨早起]。' },
+          ],
+        },
+      ],
+    },
+  },
 ];

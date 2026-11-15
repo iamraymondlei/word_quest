@@ -294,10 +294,7 @@ class OfflineStorageEngine {
 
         // Target completed stage is completedStageParam or stage - 1 (e.g. stage=2 means stage 1 is completed)
         const completedStage = completedStageParam || (stage > 1 ? stage - 1 : 1);
-        let stageBit = completedStage >= 1 && completedStage <= 5 ? (1 << (completedStage - 1)) : 0;
-        if (completedStage === 3) {
-          stageBit |= 16;
-        }
+        const stageBit = completedStage >= 1 && completedStage <= 5 ? (1 << (completedStage - 1)) : 0;
         island.completed_stages_mask = ((island.completed_stages_mask || 0) | stageBit) & 31;
 
         if (stage1Answers && stage1Answers.length > 0) {

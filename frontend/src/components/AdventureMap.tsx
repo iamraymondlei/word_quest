@@ -63,9 +63,6 @@ const getSectorMask = (sector: Island): number => {
     else if (stage === 4) mask = 7;
     else if (stage >= 5) mask = 15;
   }
-  if ((mask & 4) !== 0) {
-    mask |= 16;
-  }
   return mask & 31;
 };
 

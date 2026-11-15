@@ -727,9 +727,6 @@ export const GamePlay: React.FC<Props> = ({
       else if (unlocked === 4) mask = 7;
       else if (unlocked >= 5) mask = 15;
     }
-    if ((mask & 4) !== 0) {
-      mask |= 16;
-    }
     return mask & 31;
   };
 
@@ -2330,7 +2327,7 @@ export const GamePlay: React.FC<Props> = ({
 
       await apiService.addCoins(currentUser.id, coins);
 
-      island.completed_stages_mask = ((island.completed_stages_mask || 0) | targetBit | (targetBit === 4 ? 16 : 0)) & 31;
+      island.completed_stages_mask = ((island.completed_stages_mask || 0) | targetBit) & 31;
 
       onProgressUpdated();
       setStage('translation_success');

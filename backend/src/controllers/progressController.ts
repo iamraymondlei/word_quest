@@ -143,9 +143,6 @@ export const updateStage = async (req: Request, res: Response) => {
       else if (rawUnlocked === 4) mask = 7;
       else if (rawUnlocked >= 5) mask = 15;
     }
-    if ((mask & 4) !== 0) {
-      mask |= 16;
-    }
     mask = mask & 31;
 
     let parsedAnswers: string[] = [];

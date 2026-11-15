@@ -600,20 +600,6 @@ export async function initializeDatabaseSchema() {
       console.warn('Migration: Word books category alignment warning:', alignErr.message);
     }
 
-    // 17. Sync Word Matching 朗读跟读 (bit 4) to 挑战测试 (bit 16) if completed
-    try {
-      const [updateResult]: any = await pool.query(`
-        UPDATE user_island_progress
-        SET completed_stages_mask = completed_stages_mask | 16
-        WHERE (completed_stages_mask & 4) != 0 AND (completed_stages_mask & 16) = 0
-      `);
-      if (updateResult.affectedRows > 0) {
-        console.log(`Migration: Backfilled 挑战测试 (bit 16) for ${updateResult.affectedRows} record(s) where 朗读跟读 (bit 4) was completed`);
-      }
-    } catch (syncErr: any) {
-      console.warn('Migration: Word matching challenge bit sync warning:', syncErr.message);
-    }
-
     // 17. Ensure user_grammar_quiz_records table exists
     await pool.query(`
       CREATE TABLE IF NOT EXISTS user_grammar_quiz_records (

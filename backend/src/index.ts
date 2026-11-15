@@ -170,6 +170,15 @@ export async function initializeDatabaseSchema() {
     }
     await pool.query("UPDATE islands SET group_name = 'General' WHERE group_name IS NULL OR group_name = ''");
 
+    // 6.1 Ensure audio_url column exists in islands table
+    const [islandAudioCols]: any = await pool.query(
+      "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'islands' AND COLUMN_NAME = 'audio_url'"
+    );
+    if (islandAudioCols.length === 0) {
+      await pool.query("ALTER TABLE islands ADD COLUMN audio_url VARCHAR(500) NULL");
+      console.log('Migration: Added audio_url column to islands table');
+    }
+
     // 7. Ensure stars and spent_stars columns exist in users table
     const [starCols]: any = await pool.query(
       "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'stars'"

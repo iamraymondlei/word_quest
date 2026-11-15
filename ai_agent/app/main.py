@@ -10,8 +10,9 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
+import edge_tts
 from PIL import Image, UnidentifiedImageError
 
 from app.config import settings
@@ -25,6 +26,7 @@ from app.schemas import (
     GenerateStoryFromVocabResponse,
     SongTranslationRequest,
     TranslationResponse,
+    TTSGenerateRequest,
     VocabularyEnrichRequest,
     VocabularyEnrichResponse,
 )
@@ -119,6 +121,88 @@ async def list_models(cli: str = "agy"):
         "models": cfg.get("models", []),
         "default_model": cfg.get("default_model", "gemini-3.8-flash-high" if cli == "agy" else "gpt-5.6-sol"),
     }
+
+
+# ── Edge-TTS High Quality Neural Speech Endpoints ────────────────────
+
+RECOMMENDED_VOICES = [
+    {
+        "id": "en-US-ChristopherNeural",
+        "name": "Christopher (美音 · 经典男声故事官 · 推荐)",
+        "locale": "en-US",
+        "gender": "Male",
+        "style": "Storyteller / Warm",
+    },
+    {
+        "id": "en-US-AnaNeural",
+        "name": "Ana (美音 · 生动卡通童声 · 儿童最爱)",
+        "locale": "en-US",
+        "gender": "Female",
+        "style": "Child / Cartoon",
+    },
+    {
+        "id": "en-US-JennyNeural",
+        "name": "Jenny (美音 · 亲切自然女声 · 清晰清晰)",
+        "locale": "en-US",
+        "gender": "Female",
+        "style": "Friendly / Natural",
+    },
+    {
+        "id": "en-GB-SoniaNeural",
+        "name": "Sonia (英音 · 优雅绘本女声 · 经典英伦)",
+        "locale": "en-GB",
+        "gender": "Female",
+        "style": "British / Elegant",
+    },
+    {
+        "id": "en-GB-RyanNeural",
+        "name": "Ryan (英音 · 温和沉稳男声)",
+        "locale": "en-GB",
+        "gender": "Male",
+        "style": "British / Gentle",
+    },
+]
+
+
+@app.get("/tts/voices")
+async def get_tts_voices():
+    """Return curated list of recommended voices for picture book storytelling."""
+    return {"success": True, "voices": RECOMMENDED_VOICES}
+
+
+@app.post("/tts/generate")
+async def generate_tts_audio(req: TTSGenerateRequest):
+    """Generate high-quality MP3 audio from text using Microsoft Edge Neural TTS."""
+    clean_text = req.text.strip()
+    if not clean_text:
+        raise HTTPException(status_code=400, detail="Text cannot be empty.")
+
+    voice = req.voice or "en-US-ChristopherNeural"
+    rate = req.rate or "+0%"
+    pitch = req.pitch or "+0Hz"
+
+    try:
+        communicate = edge_tts.Communicate(clean_text, voice=voice, rate=rate, pitch=pitch)
+        audio_chunks = []
+        async for chunk in communicate.stream():
+            if chunk["type"] == "audio":
+                audio_chunks.append(chunk["data"])
+
+        audio_bytes = b"".join(audio_chunks)
+        if len(audio_bytes) == 0:
+            raise ValueError("No audio data generated.")
+
+        return Response(
+            content=audio_bytes,
+            media_type="audio/mpeg",
+            headers={
+                "Content-Disposition": "inline; filename=speech.mp3",
+                "Cache-Control": "public, max-age=86400",
+            },
+        )
+    except Exception as e:
+        logger.exception("Failed to synthesize speech via Edge-TTS")
+        raise HTTPException(status_code=500, detail=f"TTS synthesis failed: {e}")
 
 
 @app.post("/translate-song", response_model=TranslationResponse)

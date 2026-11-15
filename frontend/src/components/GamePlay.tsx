@@ -13,6 +13,7 @@ import {
 } from './StoryChaseAssets';
 import { isIPadOrTabletDevice } from '../utils/device';
 import { apiService } from '../utils/apiService';
+import { offlineStorage } from '../utils/offlineStorage';
 import { StoryIllustration } from './StoryIllustration';
 import { tokenizePassageWithLemmas } from '../utils/lemmatizer';
 import './GamePlay.css';
@@ -208,6 +209,196 @@ export const GamePlay: React.FC<Props> = ({
   const ttsSpeedRef = useRef<number>(1.0);
   const chaseInputRef = useRef<HTMLInputElement>(null);
   const chaseLastTickRef = useRef<number>(Date.now());
+
+  // --- Stage 1 Full-Passage Blind Listening (全文盲听) state and refs ---
+  const [isBlindMode, setIsBlindMode] = useState<boolean>(false);
+  const [isBlindRevealed, setIsBlindRevealed] = useState<boolean>(false);
+  const [blindPlaying, setBlindPlaying] = useState<boolean>(false);
+  const [blindCurrentTime, setBlindCurrentTime] = useState<number>(0);
+  const [blindDuration, setBlindDuration] = useState<number>(0);
+  const [blindRate, setBlindRate] = useState<number>(1.0);
+  const [isBlindLoop, setIsBlindLoop] = useState<boolean>(false);
+  const [resolvedAudioUrl, setResolvedAudioUrl] = useState<string | null>(null);
+  const blindAudioRef = useRef<HTMLAudioElement | null>(null);
+
+  // Pre-resolve offline blob URL if cached locally in IndexedDB for 100% offline audio playback
+  useEffect(() => {
+    let active = true;
+    let objectUrl: string | null = null;
+
+    if (!island.audio_url) {
+      setResolvedAudioUrl(null);
+      return;
+    }
+
+    offlineStorage.getAudioObjectURL(island.audio_url).then((blobUrl) => {
+      if (!active) {
+        if (blobUrl) URL.revokeObjectURL(blobUrl);
+        return;
+      }
+      if (blobUrl) {
+        objectUrl = blobUrl;
+        setResolvedAudioUrl(blobUrl);
+      } else {
+        setResolvedAudioUrl(island.audio_url || null);
+      }
+    }).catch(() => {
+      if (active) setResolvedAudioUrl(island.audio_url || null);
+    });
+
+    return () => {
+      active = false;
+      if (objectUrl) {
+        URL.revokeObjectURL(objectUrl);
+      }
+    };
+  }, [island.audio_url]);
+
+  // Sync playback rate to audio element
+  useEffect(() => {
+    if (blindAudioRef.current) {
+      blindAudioRef.current.playbackRate = blindRate;
+    }
+  }, [blindRate]);
+
+  // Clean up audio / speech on unmount
+  useEffect(() => {
+    return () => {
+      if (blindAudioRef.current) {
+        blindAudioRef.current.pause();
+      }
+      if ('speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+      }
+    };
+  }, []);
+
+  const formatAudioTime = (sec: number) => {
+    if (isNaN(sec) || sec < 0) return '00:00';
+    const m = Math.floor(sec / 60);
+    const s = Math.floor(sec % 60);
+    return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+  };
+
+  const getFullPassageText = useCallback(() => {
+    if (island.story_passage_json && Array.isArray(island.story_passage_json) && island.story_passage_json.length > 0) {
+      return island.story_passage_json
+        .map((s: any) => (typeof s === 'string' ? s : s.sentence_text || s.en || ''))
+        .filter(Boolean)
+        .join(' ');
+    }
+    return island.story_passage || '';
+  }, [island]);
+
+  const handlePlayBlindWebSpeech = useCallback(() => {
+    if (!('speechSynthesis' in window)) {
+      alert('⚠️ Your browser does not support Speech Synthesis API.');
+      return;
+    }
+    window.speechSynthesis.cancel();
+    const text = getFullPassageText();
+    if (!text) return;
+
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = 'en-US';
+    utterance.rate = blindRate;
+
+    const voices = window.speechSynthesis.getVoices();
+    const offlineVoice = voices.find(v => v.lang.startsWith('en') && (v.localService || !v.voiceURI.includes('Google'))) || voices.find(v => v.lang.startsWith('en'));
+    if (offlineVoice) {
+      utterance.voice = offlineVoice;
+    }
+
+    utterance.onstart = () => {
+      setBlindPlaying(true);
+    };
+    utterance.onend = () => {
+      if (isBlindLoop) {
+        handlePlayBlindWebSpeech();
+      } else {
+        setBlindPlaying(false);
+      }
+    };
+    utterance.onerror = () => {
+      setBlindPlaying(false);
+    };
+
+    window.speechSynthesis.speak(utterance);
+  }, [blindRate, isBlindLoop, getFullPassageText]);
+
+  const handleToggleBlindListening = useCallback(() => {
+    if (!isBlindMode) {
+      setIsBlindMode(true);
+      setIsBlindRevealed(false);
+      setPassageCollapsed(false);
+      const effectiveUrl = resolvedAudioUrl || island.audio_url;
+      if (effectiveUrl && blindAudioRef.current) {
+        blindAudioRef.current.currentTime = 0;
+        blindAudioRef.current.play().then(() => {
+          setBlindPlaying(true);
+        }).catch((err) => {
+          console.warn('Audio play failed, falling back to Web Speech:', err);
+          handlePlayBlindWebSpeech();
+        });
+      } else {
+        handlePlayBlindWebSpeech();
+      }
+    } else {
+      setIsBlindMode(false);
+      setIsBlindRevealed(false);
+      if (blindAudioRef.current) {
+        blindAudioRef.current.pause();
+      }
+      if ('speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+      }
+      setBlindPlaying(false);
+    }
+  }, [isBlindMode, resolvedAudioUrl, island.audio_url, handlePlayBlindWebSpeech]);
+
+  const handleBlindPlayPause = () => {
+    const effectiveUrl = resolvedAudioUrl || island.audio_url;
+    if (effectiveUrl && blindAudioRef.current) {
+      if (blindPlaying) {
+        blindAudioRef.current.pause();
+        setBlindPlaying(false);
+      } else {
+        blindAudioRef.current.play().then(() => {
+          setBlindPlaying(true);
+        }).catch(err => {
+          console.warn('Audio play failed, falling back to Web Speech:', err);
+          handlePlayBlindWebSpeech();
+        });
+      }
+    } else {
+      if (blindPlaying) {
+        if ('speechSynthesis' in window) {
+          window.speechSynthesis.cancel();
+        }
+        setBlindPlaying(false);
+      } else {
+        handlePlayBlindWebSpeech();
+      }
+    }
+  };
+
+  const handleBlindSkip = (deltaSeconds: number) => {
+    const effectiveUrl = resolvedAudioUrl || island.audio_url;
+    if (effectiveUrl && blindAudioRef.current) {
+      const newTime = Math.min(Math.max(0, blindAudioRef.current.currentTime + deltaSeconds), blindDuration || 9999);
+      blindAudioRef.current.currentTime = newTime;
+      setBlindCurrentTime(newTime);
+    }
+  };
+
+  const handleBlindSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const targetTime = parseFloat(e.target.value);
+    setBlindCurrentTime(targetTime);
+    const effectiveUrl = resolvedAudioUrl || island.audio_url;
+    if (effectiveUrl && blindAudioRef.current) {
+      blindAudioRef.current.currentTime = targetTime;
+    }
+  };
 
   // --- translation drill mode state and refs ---
 
@@ -2775,15 +2966,212 @@ export const GamePlay: React.FC<Props> = ({
                         <span>📖</span>
                         <span className="truncate">{title}</span>
                       </h2>
-                      <button
-                        type="button"
-                        onClick={() => setPassageCollapsed(prev => !prev)}
-                        aria-expanded={!passageCollapsed}
-                        className="shrink-0 px-3 py-1.5 rounded-lg border theme-border bg-black/10 dark:bg-white/10 hover:bg-cyan-500/20 text-cyan-400 text-xs font-bold font-mono cursor-pointer transition-all touch-manipulation"
-                      >
-                        {passageCollapsed ? '▼ Show Story' : '▲ Hide Story'}
-                      </button>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <button
+                          type="button"
+                          onClick={handleToggleBlindListening}
+                          className={`px-3 py-1.5 rounded-lg border text-xs font-bold font-mono cursor-pointer transition-all touch-manipulation flex items-center gap-1.5 active:scale-95 ${
+                            isBlindMode
+                              ? 'bg-gradient-to-r from-amber-500 to-orange-500 text-slate-950 border-amber-400 font-black shadow-lg shadow-amber-500/25'
+                              : 'border-cyan-500/40 bg-cyan-950/40 hover:bg-cyan-900/60 text-cyan-300'
+                          }`}
+                          title="进入全文盲听磨耳朵模式：纯听力输入，遮挡文本，可随时翻开对照"
+                        >
+                          <span>{isBlindMode ? '🎧 盲听中 (BLIND ACTIVE)' : '🎧 全文盲听 (BLIND LISTENING)'}</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setPassageCollapsed(prev => !prev)}
+                          aria-expanded={!passageCollapsed}
+                          className="shrink-0 px-3 py-1.5 rounded-lg border theme-border bg-black/10 dark:bg-white/10 hover:bg-cyan-500/20 text-cyan-400 text-xs font-bold font-mono cursor-pointer transition-all touch-manipulation"
+                        >
+                          {passageCollapsed ? '▼ Show Story' : '▲ Hide Story'}
+                        </button>
+                      </div>
                     </div>
+
+                    {/* Audio element for island.audio_url (supports cached offline blob & online streaming) */}
+                    {(resolvedAudioUrl || island.audio_url) && (
+                      <audio
+                        ref={blindAudioRef}
+                        src={resolvedAudioUrl || island.audio_url || undefined}
+                        preload="auto"
+                        onPlay={() => setBlindPlaying(true)}
+                        onPause={() => setBlindPlaying(false)}
+                        onTimeUpdate={() => {
+                          if (blindAudioRef.current) {
+                            setBlindCurrentTime(blindAudioRef.current.currentTime);
+                          }
+                        }}
+                        onLoadedMetadata={() => {
+                          if (blindAudioRef.current) {
+                            setBlindDuration(blindAudioRef.current.duration || 0);
+                          }
+                        }}
+                        onEnded={() => {
+                          if (isBlindLoop && blindAudioRef.current) {
+                            blindAudioRef.current.currentTime = 0;
+                            blindAudioRef.current.play();
+                          } else {
+                            setBlindPlaying(false);
+                          }
+                        }}
+                      />
+                    )}
+
+                    {/* ── Blind Listening Sound Station (磨耳朵音频工作台) ── */}
+                    {isBlindMode && (
+                      <div className="mb-6 rounded-2xl border border-cyan-500/40 bg-gradient-to-br from-slate-900/95 via-indigo-950/70 to-slate-900/95 p-4 sm:p-5 shadow-2xl backdrop-blur-md flex flex-col gap-4 animate-fade-in">
+                        {/* Header bar of Sound Station */}
+                        <div className="flex items-center justify-between flex-wrap gap-2">
+                          <div className="flex items-center gap-3">
+                            {/* Rotating Vinyl Record / Pulsing Audio Icon */}
+                            <div className={`w-11 h-11 rounded-full bg-slate-950 border-2 border-cyan-400/60 flex items-center justify-center text-xl shadow-lg shadow-cyan-500/20 ${blindPlaying ? 'animate-spin' : ''}`} style={{ animationDuration: '4s' }}>
+                              💿
+                            </div>
+                            <div className="flex flex-col">
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs sm:text-sm font-bold font-mono text-cyan-300">
+                                  🎧 沉浸式绘本盲听磨耳朵
+                                </span>
+                                {island.audio_url ? (
+                                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-950/80 text-emerald-300 border border-emerald-500/40 font-mono font-bold">
+                                    🎵 母语者原声 / AI自然连读
+                                  </span>
+                                ) : (
+                                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-cyan-950/80 text-cyan-300 border border-cyan-500/40 font-mono font-bold">
+                                    🎙️ 智能朗读连播
+                                  </span>
+                                )}
+                              </div>
+                              <span className="text-[10px] sm:text-xs text-slate-400 font-mono">
+                                不看文字纯盲听，锻炼听觉理解与自然语感连读
+                              </span>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => setIsBlindRevealed(prev => !prev)}
+                              className={`px-3 py-1.5 rounded-xl border text-xs font-mono font-bold transition-all cursor-pointer flex items-center gap-1.5 active:scale-95 ${
+                                isBlindRevealed
+                                  ? 'bg-amber-500/20 border-amber-500/50 text-amber-300 hover:bg-amber-500/30'
+                                  : 'bg-cyan-500/20 border-cyan-500/50 text-cyan-300 hover:bg-cyan-500/30'
+                              }`}
+                            >
+                              <span>{isBlindRevealed ? '🙈 遮挡正文盲听' : '👁️ 翻开原文对照'}</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={handleToggleBlindListening}
+                              className="px-2.5 py-1.5 rounded-xl border border-slate-700 hover:border-slate-500 text-slate-400 hover:text-white text-xs font-mono cursor-pointer transition-all active:scale-95"
+                              title="退出盲听模式"
+                            >
+                              ✖️
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Player Controls & Scrubber */}
+                        <div className="flex flex-col gap-2 bg-slate-950/70 border border-slate-800/80 rounded-xl p-3 sm:p-4">
+                          {/* Progress Scrubber (when audio_url exists) */}
+                          {(resolvedAudioUrl || island.audio_url) && (
+                            <div className="flex items-center gap-3 font-mono text-xs text-slate-400">
+                              <span className="text-cyan-400 font-bold min-w-[42px] text-right">
+                                {formatAudioTime(blindCurrentTime)}
+                              </span>
+                              <input
+                                type="range"
+                                min={0}
+                                max={blindDuration || 100}
+                                step={0.1}
+                                value={blindCurrentTime}
+                                onChange={handleBlindSeek}
+                                className="flex-grow accent-cyan-400 h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer"
+                              />
+                              <span className="min-w-[42px]">
+                                {formatAudioTime(blindDuration)}
+                              </span>
+                            </div>
+                          )}
+
+                          {/* Control Buttons Bar */}
+                          <div className="flex items-center justify-between flex-wrap gap-2 pt-1">
+                            <div className="flex items-center gap-2">
+                              {/* Rewind 5s */}
+                              <button
+                                type="button"
+                                onClick={() => handleBlindSkip(-5)}
+                                disabled={!(resolvedAudioUrl || island.audio_url)}
+                                className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-cyan-300 text-xs font-mono font-bold transition-all disabled:opacity-40 cursor-pointer active:scale-95"
+                                title="快退 5 秒"
+                              >
+                                ⏪ 5s
+                              </button>
+
+                              {/* Play / Pause Primary Button */}
+                              <button
+                                type="button"
+                                onClick={handleBlindPlayPause}
+                                className="px-5 py-2 rounded-xl bg-gradient-to-r from-cyan-400 via-teal-400 to-emerald-400 hover:from-cyan-300 hover:to-emerald-300 text-slate-950 font-mono font-black text-sm shadow-lg shadow-cyan-500/25 active:scale-95 transition-all flex items-center gap-1.5 cursor-pointer"
+                              >
+                                <span>{blindPlaying ? '⏸️ 暂停' : '▶️ 播放'}</span>
+                              </button>
+
+                              {/* Forward 5s */}
+                              <button
+                                type="button"
+                                onClick={() => handleBlindSkip(5)}
+                                disabled={!(resolvedAudioUrl || island.audio_url)}
+                                className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-cyan-300 text-xs font-mono font-bold transition-all disabled:opacity-40 cursor-pointer active:scale-95"
+                                title="快进 5 秒"
+                              >
+                                5s ⏩
+                              </button>
+
+                              {/* Loop Toggle */}
+                              <button
+                                type="button"
+                                onClick={() => setIsBlindLoop(prev => !prev)}
+                                className={`px-2.5 py-1 rounded-lg text-xs font-mono font-bold transition-all cursor-pointer active:scale-95 border ${
+                                  isBlindLoop
+                                    ? 'bg-cyan-500/20 border-cyan-400 text-cyan-300'
+                                    : 'bg-slate-800/80 border-slate-700 text-slate-400 hover:text-slate-200'
+                                }`}
+                                title="单曲循环"
+                              >
+                                🔂 循环
+                              </button>
+                            </div>
+
+                            {/* Speed Selector */}
+                            <div className="flex items-center gap-1 bg-slate-900 border border-slate-800 p-0.5 rounded-lg font-mono text-xs">
+                              <span className="text-[10px] text-slate-500 px-1.5">倍速:</span>
+                              {[0.8, 1.0, 1.2].map(speed => (
+                                <button
+                                  key={speed}
+                                  type="button"
+                                  onClick={() => {
+                                    setBlindRate(speed);
+                                    if (blindAudioRef.current) {
+                                      blindAudioRef.current.playbackRate = speed;
+                                    }
+                                  }}
+                                  className={`px-2 py-0.5 rounded font-bold transition-all cursor-pointer ${
+                                    blindRate === speed
+                                      ? 'bg-cyan-500 text-slate-950 shadow-sm'
+                                      : 'text-slate-400 hover:text-slate-200'
+                                  }`}
+                                >
+                                  {speed.toFixed(1)}x
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
 
                     {!passageCollapsed && (
                     <>
@@ -2826,10 +3214,47 @@ export const GamePlay: React.FC<Props> = ({
                       )}
                     </div>
 
-                    {/* Story Passage Content */}
-                    <div className="min-h-[150px] mb-6">
-                      {renderPassage()}
-                    </div>
+                    {/* Story Passage Content / Blind Veil */}
+                    {isBlindMode && !isBlindRevealed ? (
+                      <div className="relative rounded-2xl border border-cyan-500/30 bg-gradient-to-b from-slate-900/90 via-indigo-950/40 to-slate-900/90 p-8 sm:p-12 text-center shadow-inner flex flex-col items-center justify-center min-h-[220px] mb-6 animate-fade-in">
+                        <div className="w-14 h-14 rounded-full bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-3xl mb-3 shadow-[0_0_20px_rgba(6,182,212,0.2)] animate-pulse">
+                          🙈
+                        </div>
+                        <h3 className="text-base sm:text-lg font-bold font-mono text-cyan-300 mb-1">
+                          盲听磨耳朵中 · 正文文本已遮挡
+                        </h3>
+                        <p className="text-xs text-slate-400 max-w-sm font-mono leading-relaxed mb-4">
+                          闭上眼睛或倾听声音，专注捕捉母语者连读、发音和故事画面。听完后可随时翻开原文对照。
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => setIsBlindRevealed(true)}
+                          className="px-5 py-2 rounded-xl bg-gradient-to-r from-cyan-500 to-teal-400 hover:from-cyan-400 hover:to-teal-300 text-slate-950 font-mono font-black text-xs shadow-lg shadow-cyan-500/20 active:scale-95 transition-all flex items-center gap-1.5 cursor-pointer"
+                        >
+                          <span>👁️</span> <span>翻开原文对照 (REVEAL TEXT)</span>
+                        </button>
+                      </div>
+                    ) : (
+                      <>
+                        {isBlindMode && isBlindRevealed && (
+                          <div className="mb-4 p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-between gap-3 text-xs font-mono text-amber-300">
+                            <span className="flex items-center gap-2">
+                              <span>👁️</span> <span>原文已翻开对照中。</span>
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => setIsBlindRevealed(false)}
+                              className="px-2.5 py-0.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-amber-200 text-xs font-bold active:scale-95 transition-all cursor-pointer"
+                            >
+                              🙈 重新遮挡
+                            </button>
+                          </div>
+                        )}
+                        <div className="min-h-[150px] mb-6">
+                          {renderPassage()}
+                        </div>
+                      </>
+                    )}
                     </>
                     )}
                   </div>

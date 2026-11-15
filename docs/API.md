@@ -58,7 +58,17 @@
 | POST | `/api/islands/ai-generate-story` | 输入目标单词列表，直接调用 AI Agent 一键构思生成故事数据与逐页逐句对照 |
 | PUT | `/api/islands/:id/questions` | 独立更新并持久化指定故事关卡的阅读理解问答列表（写入 `islands.story_questions`） |
 
-后端上传限制为每个文件 5 MB。图片解析成功不等于已保存故事；前端仍需调用故事写入接口。
+### 绘本音频与全文盲听
+
+| 方法 | 路径 | 主要输入 | 说明 |
+|---|---|---|---|
+| GET | `/api/islands/tts-voices` | 无 | 获取推荐的 Edge-TTS 绘本朗读母语者音色列表 |
+| GET | `/api/islands/audio/:filename` | 路径参数 `filename` | 支持流式分段 Range 播放绘本音频文件 (`audio/mpeg`) |
+| POST | `/api/islands/:id/generate-audio` | `{ voice?, rate?, text? }` | （方案一）调用 AI Agent 采用微软 Edge Neural TTS 生成母语者自然连读 MP3，并自动持久化写入关卡 `audio_url` |
+| POST | `/api/islands/:id/audio` | `multipart/form-data` 单音频文件（字段 `audio`，限 30MB） | （方案二）上传官方绘本原声音频文件并持久化写入关卡 `audio_url` |
+| DELETE | `/api/islands/:id/audio` | 路径参数 ID | 删除已绑定的绘本音频并重置 `audio_url = NULL` |
+
+后端上传限制为每个文件 5 MB（故事音频文件限 30 MB）。图片解析成功不等于已保存故事；前端仍需调用故事写入接口。
 
 ### 进度与奖励
 

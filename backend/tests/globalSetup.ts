@@ -52,6 +52,7 @@ export default async function globalSetup() {
         story_passage TEXT,
         story_passage_json JSON DEFAULT NULL,
         story_questions JSON DEFAULT NULL,
+        audio_url VARCHAR(500) NULL,
         sort_order INT DEFAULT 0,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -283,6 +284,15 @@ export default async function globalSetup() {
     );
     if (progCols.length === 0) {
       await connection.query(`ALTER TABLE user_island_progress ADD COLUMN stage1_answers_json TEXT NULL`);
+    }
+
+    // Ensure audio_url exists on islands
+    const [audioCols]: any = await connection.query(
+      `SELECT column_name FROM information_schema.columns WHERE table_schema = ? AND table_name = 'islands' AND column_name = 'audio_url'`,
+      [testDbName]
+    );
+    if (audioCols.length === 0) {
+      await connection.query(`ALTER TABLE islands ADD COLUMN audio_url VARCHAR(500) NULL`);
     }
 
     console.log(`[Jest GlobalSetup] Dedicated test database '${testDbName}' is verified and ready.\n`);

@@ -31,5 +31,6 @@ docker-compose.yml
 ai_agent/Dockerfile
 backend/Dockerfile
 !frontend/Dockerfile
+backend/uploads/
 frontend/.local-certs/
 frontend/public/wordquest-local-ca.cer

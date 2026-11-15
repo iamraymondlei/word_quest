@@ -18,6 +18,7 @@ export interface Island {
   story_passage: string;
   story_questions: any;
   words?: any[];
+  audio_url?: string | null;
   word_book_id?: number | null;
   unlocked_stage: number;
   completed_stages_mask?: number;

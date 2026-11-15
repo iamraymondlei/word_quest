@@ -5,6 +5,7 @@ let hash = 0;
 for (const char of version) hash = (hash * 31 + char.charCodeAt(0)) | 0;
 const APP_CACHE = `wordquest-app-${hash >>> 0}`;
 const IMAGE_CACHE = 'wordquest-illustrations';
+const AUDIO_CACHE = 'wordquest-audios';
 const MODE_CACHE = 'wordquest-mode';
 const MODE_URL = '/__wordquest_offline_mode__';
 
@@ -41,6 +42,17 @@ self.addEventListener('fetch', (event) => {
     if (forcedOffline) {
       const cached = await caches.match(request);
       if (cached) return cached;
+      if (sameOrigin) {
+        if (url.pathname.startsWith('/api/illustrations/')) {
+          const imgCache = await caches.open(IMAGE_CACHE);
+          const match = await imgCache.match(request);
+          if (match) return match;
+        } else if (url.pathname.startsWith('/api/islands/audio/') || url.pathname.startsWith('/api/songs/audio/')) {
+          const audioCache = await caches.open(AUDIO_CACHE);
+          const match = await audioCache.match(request);
+          if (match) return match;
+        }
+      }
       if (request.mode === 'navigate' && sameOrigin) {
         const app = await caches.match('/index.html');
         if (app) return app;
@@ -62,6 +74,19 @@ self.addEventListener('fetch', (event) => {
       const response = await fetch(request);
       if (response.ok) await cache.put(request, response.clone());
       return response;
+    }
+    if (sameOrigin && (url.pathname.startsWith('/api/islands/audio/') || url.pathname.startsWith('/api/songs/audio/'))) {
+      const cache = await caches.open(AUDIO_CACHE);
+      const cached = await cache.match(request);
+      if (cached) return cached;
+      try {
+        const response = await fetch(request);
+        if (response.ok) await cache.put(request, response.clone());
+        return response;
+      } catch (err) {
+        if (cached) return cached;
+        throw err;
+      }
     }
     if (sameOrigin && !url.pathname.startsWith('/api/')) {
       const cached = await caches.match(request);

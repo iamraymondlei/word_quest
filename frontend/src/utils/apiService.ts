@@ -500,10 +500,14 @@ class ApiService {
 
       let totalWords = 0;
       const illustrationUrls = new Set<string>();
+      const audioUrls = new Set<string>();
 
       islands.forEach((i: any) => {
         if (i.words && Array.isArray(i.words)) {
           totalWords += i.words.length;
+        }
+        if (i.audio_url && typeof i.audio_url === 'string') {
+          audioUrls.add(i.audio_url);
         }
         if (Array.isArray(i.story_passage_json)) {
           i.story_passage_json.forEach((p: any) => {
@@ -528,6 +532,23 @@ class ApiService {
               }
             } catch (err) {
               console.warn(`Failed to precache illustration ${url}:`, err);
+            }
+          })
+        );
+      }
+
+      // 5. Precache all story audio files concurrently into IndexedDB & Audio Cache
+      if (audioUrls.size > 0) {
+        await Promise.all(
+          Array.from(audioUrls).map(async (url) => {
+            try {
+              const audioRes = await fetch(url);
+              if (audioRes.ok) {
+                const blob = await audioRes.blob();
+                await offlineStorage.saveAudioBlob(url, blob);
+              }
+            } catch (err) {
+              console.warn(`Failed to precache story audio ${url}:`, err);
             }
           })
         );

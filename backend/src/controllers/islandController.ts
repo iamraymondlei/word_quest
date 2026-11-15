@@ -1,5 +1,13 @@
 import { Request, Response } from 'express';
+import fs from 'fs';
+import path from 'path';
 import pool from '../config/db';
+
+const STORY_UPLOAD_DIR = path.resolve(process.env.STORY_UPLOAD_DIR || path.join(process.cwd(), 'uploads', 'stories'));
+
+export function ensureStoryUploadDir(): void {
+  fs.mkdirSync(STORY_UPLOAD_DIR, { recursive: true });
+}
 
 // 解析简易的 CSV 内容，支持双引号包裹以处理包含逗号的句子，并处理保留的双引号
 const parseCSV = (csvText: string): Array<{ word: string; translation: string; sentence: string; sentence_translation: string }> => {
@@ -9,7 +17,7 @@ const parseCSV = (csvText: string): Array<{ word: string; translation: string; s
   for (let i = 1; i < lines.length; i++) {
     const line = lines[i].trim();
     if (!line) continue;
-    
+
     const parts: string[] = [];
     let j = 0;
     while (j < line.length) {
@@ -21,7 +29,7 @@ const parseCSV = (csvText: string): Array<{ word: string; translation: string; s
         parts.push('');
         break;
       }
-      
+
       if (line[j] === '"') {
         j++; // skip opening quote
         let field = '';
@@ -85,7 +93,7 @@ const isReservedGroupName = (name: any): boolean => {
 };
 
 export const createOrUpdateIsland = async (req: Request, res: Response) => {
-  const { name, group_name, story_title, story_passage, story_passage_json, story_questions, words } = req.body;
+  const { name, group_name, story_title, story_passage, story_passage_json, story_questions, words, audio_url } = req.body;
   if (!name) return res.status(400).json({ error: 'Island name is required' });
 
   // Reject reserved group names 'ALL' and '__ALL__' (case-insensitive)
@@ -97,7 +105,7 @@ export const createOrUpdateIsland = async (req: Request, res: Response) => {
   const groupParam = group_name !== undefined
     ? ((typeof group_name === 'string' && group_name.trim()) ? group_name.trim() : 'General')
     : null;
-  
+
   let connection;
   try {
     connection = await pool.getConnection();
@@ -105,27 +113,54 @@ export const createOrUpdateIsland = async (req: Request, res: Response) => {
 
     const hasQuestionsParam = story_questions !== undefined;
     const questionsJson = hasQuestionsParam ? JSON.stringify(story_questions || []) : null;
+    const hasAudioParam = audio_url !== undefined;
+    const audioParam = hasAudioParam ? (audio_url || null) : undefined;
 
-    await connection.query(
-      `INSERT INTO islands (name, group_name, story_title, story_passage, story_passage_json, story_questions) 
-       VALUES (?, COALESCE(?, 'General'), ?, ?, ?, COALESCE(?, '[]'))
-       ON DUPLICATE KEY UPDATE 
-         group_name = COALESCE(?, group_name),
-         story_title = VALUES(story_title), 
-         story_passage = VALUES(story_passage), 
-         story_passage_json = VALUES(story_passage_json),
-         story_questions = COALESCE(?, story_questions)`,
-      [
-        name, 
-        groupParam,
-        story_title || '', 
-        story_passage || '', 
-        story_passage_json ? JSON.stringify(story_passage_json) : null,
-        questionsJson,
-        groupParam,
-        questionsJson
-      ]
-    );
+    if (hasAudioParam) {
+      await connection.query(
+        `INSERT INTO islands (name, group_name, story_title, story_passage, story_passage_json, story_questions, audio_url)
+         VALUES (?, COALESCE(?, 'General'), ?, ?, ?, COALESCE(?, '[]'), ?)
+         ON DUPLICATE KEY UPDATE
+           group_name = COALESCE(?, group_name),
+           story_title = VALUES(story_title),
+           story_passage = VALUES(story_passage),
+           story_passage_json = VALUES(story_passage_json),
+           story_questions = COALESCE(?, story_questions),
+           audio_url = VALUES(audio_url)`,
+        [
+          name,
+          groupParam,
+          story_title || '',
+          story_passage || '',
+          story_passage_json ? JSON.stringify(story_passage_json) : null,
+          questionsJson,
+          audioParam,
+          groupParam,
+          questionsJson
+        ]
+      );
+    } else {
+      await connection.query(
+        `INSERT INTO islands (name, group_name, story_title, story_passage, story_passage_json, story_questions)
+         VALUES (?, COALESCE(?, 'General'), ?, ?, ?, COALESCE(?, '[]'))
+         ON DUPLICATE KEY UPDATE
+           group_name = COALESCE(?, group_name),
+           story_title = VALUES(story_title),
+           story_passage = VALUES(story_passage),
+           story_passage_json = VALUES(story_passage_json),
+           story_questions = COALESCE(?, story_questions)`,
+        [
+          name,
+          groupParam,
+          story_title || '',
+          story_passage || '',
+          story_passage_json ? JSON.stringify(story_passage_json) : null,
+          questionsJson,
+          groupParam,
+          questionsJson
+        ]
+      );
+    }
 
     const [rows]: any = await connection.query('SELECT id FROM islands WHERE name = ?', [name]);
     const islandId = rows[0].id;
@@ -208,7 +243,7 @@ export const createOrUpdateIsland = async (req: Request, res: Response) => {
         word_book_id = bookRows[0].id;
       }
     }
-    
+
     // Format JSON fields back for frontend convenience
     res.json({
       ...island,
@@ -322,7 +357,7 @@ export const getIslands = async (req: Request, res: Response) => {
         }
       }
     }
-    
+
     if (islands.length === 0) {
       return res.json([]);
     }
@@ -448,6 +483,7 @@ export const getIslands = async (req: Request, res: Response) => {
         story_passage: island.story_passage,
         story_passage_json: typeof island.story_passage_json === 'string' ? JSON.parse(island.story_passage_json) : island.story_passage_json,
         story_questions: typeof island.story_questions === 'string' ? JSON.parse(island.story_questions) : island.story_questions,
+        audio_url: island.audio_url || null,
         words: wordsByIslandId[island.id],
         word_book_id: bookMap[island.id] || null,
         unlocked_stage: unlockedStage,
@@ -528,7 +564,7 @@ export const uploadIslandWords = async (req: Request, res: Response) => {
 
     // 获取或创建岛屿
     await connection.query(
-      `INSERT INTO islands (name, group_name) VALUES (?, COALESCE(?, 'General')) 
+      `INSERT INTO islands (name, group_name) VALUES (?, COALESCE(?, 'General'))
        ON DUPLICATE KEY UPDATE group_name = COALESCE(?, group_name)`,
       [island_name, groupParam, groupParam]
     );
@@ -542,8 +578,8 @@ export const uploadIslandWords = async (req: Request, res: Response) => {
     // 导入单词
     for (const rec of records) {
       await connection.query(
-        `INSERT INTO words (island_id, word, translation, sentence, sentence_translation) 
-         VALUES (?, ?, ?, ?, ?) 
+        `INSERT INTO words (island_id, word, translation, sentence, sentence_translation)
+         VALUES (?, ?, ?, ?, ?)
          ON DUPLICATE KEY UPDATE translation = VALUES(translation), sentence = VALUES(sentence), sentence_translation = VALUES(sentence_translation)`,
         [islandId, rec.word, rec.translation, rec.sentence, rec.sentence_translation]
       );
@@ -637,7 +673,7 @@ const parseStoryCSV = (csvText: string): Array<{ paragraph_num: number; sentence
   // Validate headers: paragraph_num,sentence_num,sentence_text,translation
   const headers = lines[0].trim().split(',').map(h => h.trim().replace(/^["']|["']$/g, ''));
   const expectedHeaders = ['paragraph_num', 'sentence_num', 'sentence_text', 'translation'];
-  
+
   if (headers.length !== expectedHeaders.length || !headers.every((h, idx) => h === expectedHeaders[idx])) {
     throw new Error('CSV headers must be exactly: paragraph_num, sentence_num, sentence_text, translation');
   }
@@ -659,7 +695,7 @@ const parseStoryCSV = (csvText: string): Array<{ paragraph_num: number; sentence
         parts.push('');
         break;
       }
-      
+
       if (line[j] === '"') {
         j++; // skip opening quote
         let field = '';
@@ -930,8 +966,8 @@ export const importAIStory = async (req: Request, res: Response) => {
     }
 
     // Directly return the parsed content to the frontend for manual confirmation and adjustment
-    const requestedGroupName = (typeof req.body.group_name === 'string' && req.body.group_name.trim()) 
-      ? req.body.group_name.trim() 
+    const requestedGroupName = (typeof req.body.group_name === 'string' && req.body.group_name.trim())
+      ? req.body.group_name.trim()
       : 'General';
 
     return res.json({
@@ -1288,13 +1324,23 @@ export const deleteIsland = async (req: Request, res: Response) => {
     connection = await pool.getConnection();
     await connection.beginTransaction();
 
-    const [islandRows]: any = await connection.query('SELECT id, name FROM islands WHERE id = ?', [id]);
+    const [islandRows]: any = await connection.query('SELECT id, name, audio_url FROM islands WHERE id = ?', [id]);
     if (islandRows.length === 0) {
       await connection.rollback();
       return res.status(404).json({ error: 'Story sector not found.' });
     }
 
     const islandName = islandRows[0].name;
+    const audioUrl = islandRows[0].audio_url;
+
+    // Clean up audio file if present
+    if (audioUrl && typeof audioUrl === 'string' && audioUrl.startsWith('/api/islands/audio/')) {
+      const filename = path.basename(audioUrl);
+      const filePath = path.join(STORY_UPLOAD_DIR, filename);
+      if (fs.existsSync(filePath)) {
+        try { fs.unlinkSync(filePath); } catch {}
+      }
+    }
 
     // Clean up dependent records
     await connection.query('DELETE FROM user_island_access WHERE island_id = ?', [id]);
@@ -1326,5 +1372,223 @@ export const deleteIsland = async (req: Request, res: Response) => {
     return res.status(500).json({ error: err.message || 'Internal Server Error' });
   } finally {
     if (connection) connection.release();
+  }
+};
+
+// ── Story Audio & Blind Listening Handlers ──────────────────────────
+
+export const getStoryAudio = (req: Request, res: Response) => {
+  const filename = path.basename(decodeURIComponent(req.params.filename));
+  if (!filename || filename !== req.params.filename || filename.includes('..')) {
+    return res.status(400).json({ error: 'Invalid audio filename' });
+  }
+  ensureStoryUploadDir();
+  const filePath = path.join(STORY_UPLOAD_DIR, filename);
+  if (!fs.existsSync(filePath)) {
+    return res.status(404).json({ error: 'Story audio file not found' });
+  }
+  res.setHeader('Content-Type', 'audio/mpeg');
+  res.setHeader('Accept-Ranges', 'bytes');
+  res.sendFile(filePath);
+};
+
+export const getTtsVoices = async (_req: Request, res: Response) => {
+  try {
+    const agentUrl = process.env.AI_AGENT_URL || 'http://ai_agent:8000';
+    const resp = await fetch(`${agentUrl}/tts/voices`);
+    if (resp.ok) {
+      const data = await resp.json();
+      return res.json(data);
+    }
+    // Fallback if AI agent is unavailable or returns error
+    res.json({
+      success: true,
+      voices: [
+        { id: 'en-US-ChristopherNeural', name: 'Christopher (美音 · 经典男声故事官 · 推荐)', locale: 'en-US', gender: 'Male', style: 'Storyteller / Warm' },
+        { id: 'en-US-AnaNeural', name: 'Ana (美音 · 生动卡通童声 · 儿童最爱)', locale: 'en-US', gender: 'Female', style: 'Child / Cartoon' },
+        { id: 'en-US-JennyNeural', name: 'Jenny (美音 · 亲切自然女声 · 清晰清晰)', locale: 'en-US', gender: 'Female', style: 'Friendly / Natural' },
+        { id: 'en-GB-SoniaNeural', name: 'Sonia (英音 · 优雅绘本女声 · 经典英伦)', locale: 'en-GB', gender: 'Female', style: 'British / Elegant' },
+        { id: 'en-GB-RyanNeural', name: 'Ryan (英音 · 温和沉稳男声)', locale: 'en-GB', gender: 'Male', style: 'British / Gentle' }
+      ]
+    });
+  } catch (error: any) {
+    console.error('getTtsVoices fallback due to error:', error);
+    res.json({
+      success: true,
+      voices: [
+        { id: 'en-US-ChristopherNeural', name: 'Christopher (美音 · 经典男声故事官 · 推荐)', locale: 'en-US', gender: 'Male', style: 'Storyteller / Warm' },
+        { id: 'en-US-AnaNeural', name: 'Ana (美音 · 生动卡通童声 · 儿童最爱)', locale: 'en-US', gender: 'Female', style: 'Child / Cartoon' },
+        { id: 'en-US-JennyNeural', name: 'Jenny (美音 · 亲切自然女声 · 清晰清晰)', locale: 'en-US', gender: 'Female', style: 'Friendly / Natural' },
+        { id: 'en-GB-SoniaNeural', name: 'Sonia (英音 · 优雅绘本女声 · 经典英伦)', locale: 'en-GB', gender: 'Female', style: 'British / Elegant' },
+        { id: 'en-GB-RyanNeural', name: 'Ryan (英音 · 温和沉稳男声)', locale: 'en-GB', gender: 'Male', style: 'British / Gentle' }
+      ]
+    });
+  }
+};
+
+export const generateStoryAudio = async (req: Request, res: Response) => {
+  const islandId = Number(req.params.id);
+  if (!islandId) {
+    return res.status(400).json({ error: 'Invalid island ID' });
+  }
+
+  try {
+    ensureStoryUploadDir();
+    const [rows]: any = await pool.query('SELECT * FROM islands WHERE id = ?', [islandId]);
+    if (rows.length === 0) {
+      return res.status(404).json({ error: 'Story sector not found' });
+    }
+    const island = rows[0];
+
+    // Priority: req.body.text -> story_passage_json (joined english) -> story_passage
+    let textToRead = '';
+    if (req.body && typeof req.body.text === 'string' && req.body.text.trim()) {
+      textToRead = req.body.text.trim();
+    } else if (island.story_passage_json) {
+      try {
+        const parsed = typeof island.story_passage_json === 'string'
+          ? JSON.parse(island.story_passage_json)
+          : island.story_passage_json;
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          textToRead = parsed
+            .map((item: any) => (typeof item === 'string' ? item : item.en || item.sentence || ''))
+            .filter(Boolean)
+            .join(' ');
+        }
+      } catch (e) {
+        textToRead = island.story_passage || '';
+      }
+    }
+    if (!textToRead) {
+      textToRead = island.story_passage || '';
+    }
+
+    if (!textToRead.trim()) {
+      return res.status(400).json({ error: '绘本故事正文为空，请先在故事编辑框中输入文本或添加句子段落。' });
+    }
+
+    const voice = req.body?.voice || 'en-US-ChristopherNeural';
+    const rate = req.body?.rate || '+0%';
+
+    const agentUrl = process.env.AI_AGENT_URL || 'http://ai_agent:8000';
+    const ttsRes = await fetch(`${agentUrl}/tts/generate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        text: textToRead,
+        voice,
+        rate,
+      }),
+    });
+
+    if (!ttsRes.ok) {
+      const errText = await ttsRes.text();
+      return res.status(502).json({ error: `AI 语音生成服务响应错误: ${errText || ttsRes.statusText}` });
+    }
+
+    const audioBuffer = Buffer.from(await ttsRes.arrayBuffer());
+    if (audioBuffer.length === 0) {
+      return res.status(502).json({ error: '生成音频失败：返回数据为空。' });
+    }
+
+    const filename = `story_${islandId}_${Date.now()}.mp3`;
+    const destPath = path.join(STORY_UPLOAD_DIR, filename);
+    fs.writeFileSync(destPath, audioBuffer);
+
+    // If an existing audio file was stored in STORY_UPLOAD_DIR, remove it
+    if (island.audio_url && typeof island.audio_url === 'string' && island.audio_url.startsWith('/api/islands/audio/')) {
+      const oldFilename = path.basename(island.audio_url);
+      const oldPath = path.join(STORY_UPLOAD_DIR, oldFilename);
+      if (fs.existsSync(oldPath)) {
+        try { fs.unlinkSync(oldPath); } catch {}
+      }
+    }
+
+    const audioUrl = `/api/islands/audio/${filename}`;
+    await pool.query('UPDATE islands SET audio_url = ? WHERE id = ?', [audioUrl, islandId]);
+
+    res.json({
+      success: true,
+      audio_url: audioUrl,
+      message: 'AI 绘本朗读音频生成成功！',
+    });
+  } catch (error: any) {
+    console.error('generateStoryAudio error:', error);
+    res.status(500).json({ error: error.message || '生成音频失败' });
+  }
+};
+
+export const uploadStoryAudio = async (req: Request, res: Response) => {
+  const islandId = Number(req.params.id);
+  if (!islandId) {
+    return res.status(400).json({ error: 'Invalid island ID' });
+  }
+
+  const file = req.file;
+  if (!file) {
+    return res.status(400).json({ error: '请选择要上传的音频文件 (.mp3, .m4a, .wav)' });
+  }
+
+  try {
+    ensureStoryUploadDir();
+    const [rows]: any = await pool.query('SELECT * FROM islands WHERE id = ?', [islandId]);
+    if (rows.length === 0) {
+      return res.status(404).json({ error: 'Story sector not found' });
+    }
+    const island = rows[0];
+
+    const ext = path.extname(file.originalname).toLowerCase() || '.mp3';
+    const filename = `story_${islandId}_${Date.now()}${ext}`;
+    const destPath = path.join(STORY_UPLOAD_DIR, filename);
+    fs.writeFileSync(destPath, file.buffer);
+
+    // Clean up old audio file if exists
+    if (island.audio_url && typeof island.audio_url === 'string' && island.audio_url.startsWith('/api/islands/audio/')) {
+      const oldFilename = path.basename(island.audio_url);
+      const oldPath = path.join(STORY_UPLOAD_DIR, oldFilename);
+      if (fs.existsSync(oldPath)) {
+        try { fs.unlinkSync(oldPath); } catch {}
+      }
+    }
+
+    const audioUrl = `/api/islands/audio/${filename}`;
+    await pool.query('UPDATE islands SET audio_url = ? WHERE id = ?', [audioUrl, islandId]);
+
+    res.json({
+      success: true,
+      audio_url: audioUrl,
+      message: '绘本音频上传成功！',
+    });
+  } catch (error: any) {
+    console.error('uploadStoryAudio error:', error);
+    res.status(500).json({ error: error.message || '音频上传失败' });
+  }
+};
+
+export const deleteStoryAudio = async (req: Request, res: Response) => {
+  const islandId = Number(req.params.id);
+  if (!islandId) {
+    return res.status(400).json({ error: 'Invalid island ID' });
+  }
+
+  try {
+    const [rows]: any = await pool.query('SELECT audio_url FROM islands WHERE id = ?', [islandId]);
+    if (rows.length === 0) {
+      return res.status(404).json({ error: 'Story sector not found' });
+    }
+    const audioUrl = rows[0].audio_url;
+    if (audioUrl && typeof audioUrl === 'string' && audioUrl.startsWith('/api/islands/audio/')) {
+      const filename = path.basename(audioUrl);
+      const filePath = path.join(STORY_UPLOAD_DIR, filename);
+      if (fs.existsSync(filePath)) {
+        try { fs.unlinkSync(filePath); } catch {}
+      }
+    }
+
+    await pool.query('UPDATE islands SET audio_url = NULL WHERE id = ?', [islandId]);
+    res.json({ success: true, message: '音频已删除' });
+  } catch (error: any) {
+    console.error('deleteStoryAudio error:', error);
+    res.status(500).json({ error: error.message || '删除音频失败' });
   }
 };

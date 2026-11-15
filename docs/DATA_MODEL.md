@@ -46,6 +46,7 @@
 | `story_passage` | 兼容用纯文本正文 |
 | `story_passage_json` | 分段、句序、英文和中文翻译的 JSON |
 | `story_questions` | 阅读问题、提示和答案 JSON |
+| `audio_url` | 绘本故事音频访问相对路径（如 `/api/islands/audio/story_xxx.mp3`），为 NULL 时前台全文盲听使用浏览器 Web Speech 实时发声 |
 | `sort_order` | 地图排序 |
 | `created_at` | 创建时间 |
 

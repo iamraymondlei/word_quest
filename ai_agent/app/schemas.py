@@ -268,6 +268,15 @@ class GenerateStoryFromVocabResponse(BaseModel):
 
 # ── API response wrapper ─────────────────────────────────────────────
 
+class TTSGenerateRequest(BaseModel):
+    """Request schema for text-to-speech audio synthesis via Edge-TTS."""
+
+    text: str = Field(..., min_length=1, max_length=10000, description="要转换为语音的文本内容")
+    voice: str = Field(default="en-US-ChristopherNeural", description="音色名称")
+    rate: str = Field(default="+0%", description="语速调整，例如 -10%, +0%, +10%")
+    pitch: str = Field(default="+0Hz", description="音调调整")
+
+
 class APIResponse(BaseModel):
     """Standardized API response envelope."""
 

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { FormBoundary } from './FormBoundary';
 import { SuspenseState } from './SuspenseState';
 import {
@@ -111,6 +111,7 @@ export interface Island {
   }>;
   words: WordItem[];
   word_book_id?: number | null;
+  audio_url?: string | null;
   unlocked_stage: number;
   completed_stages_mask?: number;
   assigned_user_ids?: number[];
@@ -267,6 +268,32 @@ export const ParentDashboard: React.FC<Props> = ({ onBack, onLogout }) => {
   const [aiGenAutoSave, setAiGenAutoSave] = useState<boolean>(true);
   const [isAiGenLoading, setIsAiGenLoading] = useState<boolean>(false);
   const [aiGenStatus, setAiGenStatus] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  // Story Audio (Option 1: AI TTS, Option 2: Upload MP3) states
+  const [storyAudioUrl, setStoryAudioUrl] = useState<string | null>(null);
+  const [isGeneratingAudio, setIsGeneratingAudio] = useState<boolean>(false);
+  const [isUploadingAudio, setIsUploadingAudio] = useState<boolean>(false);
+  const [audioActionMsg, setAudioActionMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [selectedTtsVoice, setSelectedTtsVoice] = useState<string>('en-US-ChristopherNeural');
+  const [ttsVoiceList, setTtsVoiceList] = useState<Array<{ id: string; name: string; locale: string; gender: string }>>([
+    { id: 'en-US-ChristopherNeural', name: 'Christopher (美音 · 经典男声故事官 · 推荐)', locale: 'en-US', gender: 'Male' },
+    { id: 'en-US-AnaNeural', name: 'Ana (美音 · 生动卡通童声 · 儿童最爱)', locale: 'en-US', gender: 'Female' },
+    { id: 'en-US-JennyNeural', name: 'Jenny (美音 · 亲切自然女声 · 清晰清晰)', locale: 'en-US', gender: 'Female' },
+    { id: 'en-GB-SoniaNeural', name: 'Sonia (英音 · 优雅绘本女声 · 经典英伦)', locale: 'en-GB', gender: 'Female' },
+    { id: 'en-GB-RyanNeural', name: 'Ryan (英音 · 温和沉稳男声)', locale: 'en-GB', gender: 'Male' },
+  ]);
+  const audioFileInputRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    fetch('/api/islands/tts-voices')
+      .then(res => res.json())
+      .then(data => {
+        if (data && data.voices && Array.isArray(data.voices) && data.voices.length > 0) {
+          setTtsVoiceList(data.voices);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   // Game Settings States
   const [gameSettings, setGameSettings] = useState<GameSettings>(DEFAULT_FRONTEND_GAME_SETTINGS);
@@ -431,6 +458,8 @@ export const ParentDashboard: React.FC<Props> = ({ onBack, onLogout }) => {
     const existingWords = island.words || [];
     setWordsList(existingWords);
     setManualUserIds(island.assigned_user_ids || []);
+    setStoryAudioUrl(island.audio_url || null);
+    setAudioActionMsg(null);
     setStoryEditorTab('content');
     setIsEditingStory(true);
     setUploadStatus(null);
@@ -440,6 +469,8 @@ export const ParentDashboard: React.FC<Props> = ({ onBack, onLogout }) => {
     setIsEditingWords(false);
     setSelectedIslandId('');
     clearIslandFormFields();
+    setStoryAudioUrl(null);
+    setAudioActionMsg(null);
     setStoryEditorTab('content');
     setIsEditingStory(true);
     setUploadStatus(null);
@@ -1384,6 +1415,102 @@ export const ParentDashboard: React.FC<Props> = ({ onBack, onLogout }) => {
     setWordsList([]);
     setSelectedIslandId('');
     setManualUserIds([]);
+    setStoryAudioUrl(null);
+    setAudioActionMsg(null);
+  };
+
+  const handleGenerateStoryAudio = async () => {
+    if (!selectedIslandId) {
+      setAudioActionMsg({ type: 'error', text: '请先保存关卡后再生成朗读音频。' });
+      return;
+    }
+    const textToSynthesize = storyPassageJson.length > 0
+      ? storyPassageJson.map(s => s.sentence_text).filter(Boolean).join(' ')
+      : storyPassage;
+    if (!textToSynthesize || !textToSynthesize.trim()) {
+      setAudioActionMsg({ type: 'error', text: '请先填写绘本正文或句子段落。' });
+      return;
+    }
+
+    setIsGeneratingAudio(true);
+    setAudioActionMsg(null);
+    try {
+      const res = await fetch(`/api/islands/${selectedIslandId}/generate-audio`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          text: textToSynthesize,
+          voice: selectedTtsVoice,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok && data.audio_url) {
+        setStoryAudioUrl(data.audio_url);
+        setAudioActionMsg({ type: 'success', text: '✨ AI 绘本朗读音频已成功生成！' });
+        fetchIslands();
+      } else {
+        setAudioActionMsg({ type: 'error', text: data.error || '生成音频失败' });
+      }
+    } catch (err: any) {
+      setAudioActionMsg({ type: 'error', text: err.message || '网络通信异常' });
+    } finally {
+      setIsGeneratingAudio(false);
+    }
+  };
+
+  const handleUploadStoryAudio = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!selectedIslandId) {
+      setAudioActionMsg({ type: 'error', text: '请先保存关卡后再上传音频。' });
+      return;
+    }
+
+    setIsUploadingAudio(true);
+    setAudioActionMsg(null);
+    try {
+      const formData = new FormData();
+      formData.append('audio', file);
+      const res = await fetch(`/api/islands/${selectedIslandId}/audio`, {
+        method: 'POST',
+        body: formData,
+      });
+      const data = await res.json();
+      if (res.ok && data.audio_url) {
+        setStoryAudioUrl(data.audio_url);
+        setAudioActionMsg({ type: 'success', text: '🎵 绘本原声音频上传成功！' });
+        fetchIslands();
+      } else {
+        setAudioActionMsg({ type: 'error', text: data.error || '音频上传失败' });
+      }
+    } catch (err: any) {
+      setAudioActionMsg({ type: 'error', text: err.message || '网络通信异常' });
+    } finally {
+      setIsUploadingAudio(false);
+      if (audioFileInputRef.current) audioFileInputRef.current.value = '';
+    }
+  };
+
+  const handleDeleteStoryAudio = async () => {
+    if (!selectedIslandId) return;
+    if (!window.confirm('确定要删除当前绘本故事的音频吗？删除后前台全文盲听将自动降级为浏览器语音。')) return;
+
+    setAudioActionMsg(null);
+    try {
+      const res = await fetch(`/api/islands/${selectedIslandId}/audio`, {
+        method: 'DELETE',
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setStoryAudioUrl(null);
+        setAudioActionMsg({ type: 'success', text: '音频已删除' });
+        fetchIslands();
+      } else {
+        setAudioActionMsg({ type: 'error', text: data.error || '删除音频失败' });
+      }
+    } catch (err: any) {
+      setAudioActionMsg({ type: 'error', text: err.message || '网络通信异常' });
+    }
   };
 
   const resetIslandForm = () => {
@@ -1418,7 +1545,8 @@ export const ParentDashboard: React.FC<Props> = ({ onBack, onLogout }) => {
           story_passage_json: storyPassageJson,
           story_questions: storyQuestions,
           words: wordsList,
-          user_ids: manualUserIds
+          user_ids: manualUserIds,
+          audio_url: storyAudioUrl !== undefined ? storyAudioUrl : undefined
         })
       });
       
@@ -2421,6 +2549,123 @@ export const ParentDashboard: React.FC<Props> = ({ onBack, onLogout }) => {
                         rows={2}
                         className="bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-cyan-300 font-mono placeholder-slate-600 focus:outline-none focus:border-cyan-500 leading-relaxed resize-y"
                       />
+                    </div>
+                  </div>
+
+                  {/* ── Story Audio & Blind Listening Configuration ── */}
+                  <div className="bg-slate-900/90 border border-cyan-500/30 rounded-xl p-3 flex flex-col gap-2.5 shadow-sm">
+                    <div className="flex items-center justify-between flex-wrap gap-2">
+                      <div className="flex items-center gap-2">
+                        <span className="text-base">🎧</span>
+                        <div>
+                          <div className="text-xs font-mono font-bold text-cyan-300 flex items-center gap-2">
+                            <span>绘本朗读音频 & 全文盲听配置</span>
+                            {storyAudioUrl ? (
+                              <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-950 text-emerald-300 border border-emerald-500/40 font-bold">
+                                ✓ 已配置音频
+                              </span>
+                            ) : (
+                              <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-950/60 text-amber-300 border border-amber-500/40 font-bold">
+                                未配置 (前台降级为 Web Speech)
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-[10px] text-slate-400 font-mono">
+                            方案一：AI 母语者一键生成连读朗读 (Edge-TTS)；方案二：直接上传官方原版绘本原声 MP3。前台 Stage 1 将用于全文盲听磨耳朵。
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Hidden file input for uploading audio */}
+                      <input
+                        type="file"
+                        ref={audioFileInputRef}
+                        onChange={handleUploadStoryAudio}
+                        accept=".mp3,.m4a,.wav,.aac,.ogg,.flac"
+                        className="hidden"
+                      />
+
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {/* Voice selector for AI TTS */}
+                        <div className="flex items-center gap-1.5 bg-slate-950 border border-slate-700 rounded-lg px-2 py-1">
+                          <span className="text-[10px] text-slate-400 font-mono">音色:</span>
+                          <select
+                            value={selectedTtsVoice}
+                            onChange={(e) => setSelectedTtsVoice(e.target.value)}
+                            disabled={isGeneratingAudio}
+                            className="bg-transparent text-[11px] font-mono text-cyan-300 focus:outline-none cursor-pointer"
+                          >
+                            {ttsVoiceList.map(v => (
+                              <option key={v.id} value={v.id} className="bg-slate-900 text-white">
+                                {v.name}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={handleGenerateStoryAudio}
+                          disabled={isGeneratingAudio || isUploadingAudio}
+                          className="px-3 py-1.5 rounded-lg bg-gradient-to-r from-cyan-600 to-teal-500 hover:from-cyan-500 hover:to-teal-400 text-slate-950 font-mono text-xs font-black shadow transition-all cursor-pointer disabled:opacity-50 active:scale-95 flex items-center gap-1.5"
+                          title="使用微软 Edge Neural TTS 母语者音色生成流畅自然的故事朗读 MP3"
+                        >
+                          <span>{isGeneratingAudio ? '⏳' : '✨'}</span>
+                          <span>{isGeneratingAudio ? 'AI 生成中...' : (storyAudioUrl ? '重新生成 AI 朗读' : 'AI 一键生成朗读 (Edge-TTS)')}</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => audioFileInputRef.current?.click()}
+                          disabled={isGeneratingAudio || isUploadingAudio}
+                          className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-600 hover:border-cyan-400 text-slate-200 font-mono text-xs font-bold shadow transition-all cursor-pointer disabled:opacity-50 active:scale-95 flex items-center gap-1.5"
+                          title="上传本地现有的官方绘本音频 (MP3, M4A, WAV)"
+                        >
+                          <span>{isUploadingAudio ? '⏳' : '🎵'}</span>
+                          <span>{isUploadingAudio ? '上传中...' : '上传官方音频'}</span>
+                        </button>
+
+                        {storyAudioUrl && (
+                          <button
+                            type="button"
+                            onClick={handleDeleteStoryAudio}
+                            className="px-2.5 py-1.5 rounded-lg bg-rose-950/60 hover:bg-rose-900/80 border border-rose-500/40 text-rose-300 font-mono text-xs font-bold shadow transition-all cursor-pointer active:scale-95 flex items-center gap-1"
+                            title="删除已存储的音频"
+                          >
+                            <span>🗑️</span> <span>删除音频</span>
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Player preview & Action feedback */}
+                    <div className="flex items-center justify-between gap-3 flex-wrap pt-1 border-t border-slate-800/80">
+                      {storyAudioUrl ? (
+                        <div className="flex items-center gap-2 flex-grow min-w-0">
+                          <span className="text-[10px] text-cyan-400 font-mono shrink-0">试听预览:</span>
+                          <audio
+                            key={storyAudioUrl}
+                            controls
+                            src={storyAudioUrl}
+                            preload="metadata"
+                            className="h-7 max-w-md w-full rounded"
+                          />
+                        </div>
+                      ) : (
+                        <span className="text-[10px] text-slate-500 font-mono italic">
+                          未上传或生成音频。前台学员在「全文盲听」时将使用浏览器 Web Speech 实时发声。
+                        </span>
+                      )}
+
+                      {audioActionMsg && (
+                        <span className={`text-[11px] font-mono px-2.5 py-0.5 rounded border ${
+                          audioActionMsg.type === 'success'
+                            ? 'bg-emerald-950/70 border-emerald-500/50 text-emerald-300'
+                            : 'bg-rose-950/70 border-rose-500/50 text-rose-300'
+                        }`}>
+                          {audioActionMsg.text}
+                        </span>
+                      )}
                     </div>
                   </div>
 

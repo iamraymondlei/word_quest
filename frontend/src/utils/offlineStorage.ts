@@ -5,7 +5,7 @@
  */
 
 const DB_NAME = 'WordQuestOfflineDB';
-const DB_VERSION = 3;
+const DB_VERSION = 4;
 
 export interface SyncAction {
   id?: number;
@@ -79,6 +79,11 @@ class OfflineStorageEngine {
         if (!db.objectStoreNames.contains('vocabularyWords')) {
           const vocabStore = db.createObjectStore('vocabularyWords', { keyPath: 'id' });
           vocabStore.createIndex('by_book', 'book_id', { unique: false });
+        }
+
+        // 8. Story & Song Audios binary store for 100% offline blind listening & songs
+        if (!db.objectStoreNames.contains('audios')) {
+          db.createObjectStore('audios', { keyPath: 'url' });
         }
       };
 
@@ -493,6 +498,53 @@ class OfflineStorageEngine {
 
   async getIllustrationObjectURL(url: string): Promise<string | null> {
     const blob = await this.getIllustrationBlob(url);
+    if (blob) {
+      return URL.createObjectURL(blob);
+    }
+    return null;
+  }
+
+  // ── Story & Song Audio Binary Storage ─────────────────────────────────
+  async saveAudioBlob(url: string, blob: Blob): Promise<void> {
+    if (!url || !blob) return;
+    try {
+      const db = await this.initDB();
+      const tx = db.transaction('audios', 'readwrite');
+      const store = tx.objectStore('audios');
+      store.put({
+        url,
+        blob,
+        timestamp: Date.now(),
+      });
+    } catch (err) {
+      console.warn('Failed to store audio blob in IndexedDB:', err);
+    }
+  }
+
+  async getAudioBlob(url: string): Promise<Blob | null> {
+    if (!url) return null;
+    try {
+      const db = await this.initDB();
+      return new Promise((resolve) => {
+        const tx = db.transaction('audios', 'readonly');
+        const store = tx.objectStore('audios');
+        const req = store.get(url);
+        req.onsuccess = () => {
+          if (req.result && req.result.blob) {
+            resolve(req.result.blob);
+          } else {
+            resolve(null);
+          }
+        };
+        req.onerror = () => resolve(null);
+      });
+    } catch {
+      return null;
+    }
+  }
+
+  async getAudioObjectURL(url: string): Promise<string | null> {
+    const blob = await this.getAudioBlob(url);
     if (blob) {
       return URL.createObjectURL(blob);
     }

@@ -1396,4 +1396,264 @@ export const THINK_STARTER_UNITS: ThinkUnitData[] = [
       ],
     },
   },
+  // ================= UNIT 8 =================
+  {
+    id: 8,
+    unit: 'Unit 8',
+    title: 'FEEL THE RHYTHM',
+    subtitle: '衣物服饰与量词搭配、情绪感受与评价形容词、动作动词与-ing变位规则、现在进行时(肯定/否定/疑问/回答)、场景描写写作导图与KET阅读拓展词汇',
+    themeColor: 'fuchsia',
+    vocabularySections: [
+      {
+        title: 'Vocabulary 1: Clothes & Accessories (衣物服饰与量词搭配)',
+        subtitle: '掌握常见服装名词及 a pair of (一条/一双) 成套量词用法',
+        layout: 'grid',
+        items: [
+          { en: 'a coat', zh: '外套 / 大衣', icon: '🧥', extra: 'wear a coat 穿外套' },
+          { en: 'a dress', zh: '连衣裙', icon: '👗', extra: 'a pretty dress 漂亮的连衣裙' },
+          { en: 'a pair of jeans', zh: '一条牛仔裤', icon: '👖', extra: 'jeans 常作复数，一条用 a pair of' },
+          { en: 'a jumper', zh: '套头毛衫 / 卫衣', icon: '🧶', extra: '英式 English: jumper; 美式: sweater' },
+          { en: 'a pair of trousers', zh: '一条长裤', icon: '👖', extra: 'trousers 常作复数，一条用 a pair of' },
+          { en: 'a pair of shorts', zh: '一条短裤', icon: '🩳', extra: 'shorts 常作复数，一条用 a pair of' },
+          { en: 'a skirt', zh: '短裙 / 半身裙', icon: '👗', extra: 'wear a skirt 穿短裙' },
+          { en: 'a pair of shoes', zh: '一双鞋子', icon: '👞', extra: 'shoes 常作复数，一双用 a pair of' },
+          { en: 'a pair of socks', zh: '一双袜子', icon: '🧦', extra: 'socks 常作复数，一双用 a pair of' },
+          { en: 'a T-shirt', zh: 'T恤 / 短袖汗衫', icon: '👕', extra: 'casual T-shirt 休闲T恤' },
+          { en: 'a shirt', zh: '衬衫 (长袖/短袖有领)', icon: '👔', extra: 'a smart shirt 笔挺的衬衫' },
+          { en: 'a pair of trainers', zh: '一双运动鞋 / 跑鞋', icon: '👟', extra: '英式 English: trainers; 美式: sneakers' },
+        ],
+      },
+      {
+        title: 'Vocabulary 2: Feelings & Evaluation (心情感受与精彩评价)',
+        subtitle: '描摹个人情绪状态与事物体验的核心形容词',
+        layout: 'grid',
+        items: [
+          { en: 'excited', zh: '兴奋的 / 激动的', icon: '🤩', extra: 'feel excited about... 对……感到兴奋' },
+          { en: 'happy', zh: '开心的 / 快乐的', icon: '😊', extra: 'a happy smile 开心的微笑' },
+          { en: 'tired', zh: '疲倦的 / 累的', icon: '🥱', extra: 'feel tired after running 跑完步觉得累' },
+          { en: 'quiet', zh: '安静的 / 宁静的', icon: '🤫', extra: 'keep quiet 保持安静' },
+          { en: 'great', zh: '极好的 / 棒极了', icon: '👍', extra: 'That sounds great! 听起来棒极了！' },
+          { en: 'wonderful', zh: '精彩的 / 美妙的', icon: '✨', extra: 'a wonderful concert 美妙的音乐会' },
+          { en: 'not very good', zh: '不太好 / 一般般', icon: '😐', extra: 'The weather is not very good.' },
+          { en: 'fantastic', zh: '极好的 / 了不起的', icon: '🌟', extra: 'a fantastic performance 精彩绝伦的演出' },
+          { en: 'amazing', zh: '令人惊奇的 / 太神奇了', icon: '💥', extra: 'an amazing VR experience 神奇的VR体验' },
+          { en: 'relaxed', zh: '放松的 / 从容的', icon: '😌', extra: 'feel relaxed in the park 在公园感到放松' },
+        ],
+      },
+      {
+        title: 'Vocabulary 3: Action Verbs & -ing Forms (核心动作动词与-ing变化)',
+        subtitle: '现在进行时核心活动动词原形与现在分词对照',
+        layout: 'pairs',
+        items: [
+          { en: 'eat -> eating', zh: '吃东西', icon: '🍽️', extra: 'eat a sandwich 正在吃三明治' },
+          { en: 'drink -> drinking', zh: '喝饮料', icon: '🥤', extra: 'drink juice 正在喝果汁' },
+          { en: 'dance -> dancing', zh: '跳舞 (去e加ing)', icon: '💃', extra: 'dance to the rhythm 随节奏起舞' },
+          { en: 'run -> running', zh: '奔跑 (双写n加ing)', icon: '🏃', extra: 'run in the park 在公园跑步' },
+          { en: 'sing -> singing', zh: '唱歌', icon: '🎤', extra: 'sing a pop song 唱流行歌曲' },
+          { en: 'smile -> smiling', zh: '微笑 (去e加ing)', icon: '😄', extra: 'smile at friends 向朋友微笑' },
+          { en: 'read -> reading', zh: '阅读 / 看书', icon: '📖', extra: 'read an interesting book 看有趣的书' },
+          { en: 'sit -> sitting', zh: '坐着 (双写t加ing)', icon: '🪑', extra: 'sit on the bench 坐在长椅上' },
+          { en: 'talk -> talking', zh: '讲话 / 交谈', icon: '🗣️', extra: 'talk to each other 互相交谈' },
+          { en: 'stand -> standing', zh: '站立', icon: '🧍', extra: 'stand in the crowd 站在人群中' },
+          { en: 'leave -> leaving', zh: '离开 (去e加ing)', icon: '🚪', extra: 'leave the stage 离开舞台' },
+          { en: 'wear -> wearing', zh: '穿戴 (衣物/鞋帽/眼镜)', icon: '👗', extra: 'wear a jacket / glasses 穿着外套/戴着眼镜' },
+        ],
+      },
+      {
+        title: 'Vocabulary 4: Reading Extension (阅读拓展词汇与KET高频短语)',
+        subtitle: 'Reading 1 & Reading 2 重点词汇、演出场景与空闲生活高频短语 (来自拓展文档)',
+        layout: 'pairs',
+        items: [
+          { en: 'platform', zh: '站台 / 月台 (火车站)', icon: '🚉', extra: 'wait on the platform 在站台上等车' },
+          { en: 'stage', zh: '舞台 / 演出台', icon: '🎭', extra: 'perform on the stage 在舞台上表演' },
+          { en: 'midnight', zh: '午夜 / 半夜十二点', icon: '🕛', extra: 'at midnight 在午夜' },
+          { en: 'expensive', zh: '昂贵的 / 价格高的', icon: '🏷️', extra: 'expensive tickets 昂贵的门票' },
+          { en: 'favourite', zh: '最喜爱的 (英式拼写)', icon: '❤️', extra: 'favourite music 最喜欢的音乐' },
+          { en: 'interview', zh: '采访 / 访谈', icon: '🎙️', extra: 'interview a DJ 采访DJ' },
+          { en: 'free time', zh: '空闲时间 / 业余时光', icon: '⏳', extra: 'in your free time 在你的空闲时间' },
+          { en: 'work as a DJ', zh: '担任DJ / 做DJ工作', icon: '🎧', extra: 'play dance tracks 放舞曲' },
+          { en: 'local youth club', zh: '当地青年俱乐部 / 活动中心', icon: '🏢', extra: 'meet friends at the club 在俱乐部聚会' },
+          { en: 'crowd', zh: '人群 / 观众席', icon: '👥', extra: 'a cheering crowd 欢呼的人群' },
+          { en: 'find new songs', zh: '找新歌 / 搜寻新音乐', icon: '🎵', extra: 'explore exciting tracks 寻找令人兴奋的曲目' },
+          { en: 'VR headset', zh: 'VR眼镜 / 虚拟现实头显', icon: '🥽', extra: 'virtual reality headset 体验虚拟现实' },
+          { en: 'on the way to...', zh: '在去……的路上', icon: '🚶', extra: 'on the way to the concert 在去音乐会的路上' },
+          { en: 'wait for', zh: '等待 / 等候', icon: '⏱️', extra: 'wait for the train 等火车' },
+          { en: 'right in the middle of', zh: '就在……正中间', icon: '🎯', extra: 'right in the middle of the crowd 就在人群正中间' },
+          { en: 'get dark', zh: '天色变暗 / 天黑下来', icon: '🌆', extra: 'The sky is getting dark.' },
+          { en: 'straight upstairs', zh: '径直上楼 / 直接上楼去', icon: '🪜', extra: 'go straight upstairs to bed 直接上楼睡觉' },
+          { en: 'on the train home', zh: '在回家的火车上', icon: '🚆', extra: 'listen to music on the train home' },
+        ],
+      },
+    ],
+    grammarPoints: [
+      {
+        title: 'Grammar 1: Expressing Preferences (like / love / don\'t like / hate + 动词-ing)',
+        ruleSummary: '表示喜好或厌恶程度的动词 (love 非常喜欢 > like 喜欢 > don\'t/doesn\'t like 不太喜欢 > hate 讨厌) 后面接动作时，动词必须使用动名词形式 (v-ing)。口诀：“喜怒哀乐动词后，动词跟来 ing 跑不掉”。',
+        table: {
+          headers: ['情感喜好程度', '结构句型', '经典例句 (English)', '中文释义'],
+          rows: [
+            ['非常热爱 (Love ❤️❤️❤️)', '主语 + love + v-ing', 'I love playing ping-pong. / She loves dancing.', '我超级喜欢打乒乓球。/ 她非常热爱跳舞。'],
+            ['喜欢 (Like ❤️)', '主语 + like + v-ing', 'I like dancing. / We like listening to music.', '我喜欢跳舞。/ 我们喜欢听音乐。'],
+            ['不太喜欢 (Don\'t like 💔)', '主语 + don\'t / doesn\'t like + v-ing', 'I don\'t like cooking. / He doesn\'t like running.', '我不喜欢做饭。/ 他不喜欢跑步。'],
+            ['厌恶 / 讨厌 (Hate 🖤)', '主语 + hate + v-ing', 'I hate playing football. / They hate waiting in the rain.', '我讨厌踢足球。/ 他们讨厌在雨中等待。'],
+          ],
+        },
+        notes: [
+          '第三人称单数 (he/she/it) 在一般现在时中动词加 -s：He likes dancing. / She loves singing. / He doesn\'t like cooking.',
+          '在 like / love / hate 后面接动词时，务必使用动名词形式 (v-ing)，不能直接接动词原形 (如 I like dance 是错误的，应为 I like dancing)。',
+          'play 球类运动时直接加球类名词（不加 the）：play ping-pong, play football, play basketball。',
+        ],
+      },
+      {
+        title: 'Grammar 2: Spelling Rules for -ing Forms (动词现在分词变位四大黄金法则)',
+        ruleSummary: '动词加 -ing 四大规则：1. 一般动词直接加 -ing；2. 不发音字母 e 结尾，去 e 加 -ing；3. 重读闭音节辅-元-辅结尾，双写尾字母加 -ing；4. 字母 ie 结尾，变 ie 为 y 加 -ing。',
+        table: {
+          headers: ['变位规则', '规则说明', '典型动词对照 (Base -> -ing)', '重点记忆与解析'],
+          rows: [
+            ['规则一：一般直接加 -ing', '绝大多数动词在词尾直接加上 -ing', 'talk -> talking, eat -> eating, jump -> jumping, read -> reading, sing -> singing', '发音保持自然顺延，如 talk/talking, read/reading'],
+            ['规则二：以不发音 e 结尾，去 e 加 -ing', '词尾有不发音的字母 e，必须去掉 e 再加 -ing', 'dance -> dancing, have -> having, make -> making, ride -> riding, smile -> smiling, leave -> leaving', '注意：若是 double e (如 see -> seeing) 则直接加 -ing'],
+            ['规则三：重读闭音节辅-元-辅，双写尾辅音', '词尾为“辅音+单个元音+单个辅音”，双写末尾辅音加 -ing', 'run -> running, swim -> swimming, sit -> sitting, shop -> shopping, stop -> stopping', '辅-元-辅结构：r(辅)u(元)n(辅) -> running；s(辅)i(元)t(辅) -> sitting'],
+            ['规则四：以 ie 结尾的动词，改 ie 为 y 加 -ing', '词尾是 ie 字母组合，将 ie 变成 y 再加 -ing', 'die -> dying (死亡), lie -> lying (躺/说谎), tie -> tying (系/绑)', '记忆口诀：ie 变身 y，跟着 ing 走'],
+          ],
+        },
+        notes: [
+          '辅-元-辅识别法则：末尾三个字母分别为辅音字母 + 单个短元音字母 + 辅音字母，且为重读音节时，必须双写最后一个字母再加 ing (run -> running, sit -> sitting, swim -> swimming)。',
+          '以 w, x, y 结尾的动词不双写 (如 show -> showing, play -> playing, fix -> fixing)。',
+        ],
+      },
+      {
+        title: 'Grammar 3: Present Continuous Tense (现在进行时全景时态公式)',
+        ruleSummary: '现在进行时表示“说话时刻正在发生或进行的动作”。核心公式：“主语 + be 动词 (am/is/are) + 动词现在分词 (v-ing)”。否定句在 be 动词后加 not；一般疑问句将 be 动词提前至句首。口诀：“进行时，很好记，be 加动词 -ing；am, is, are 看主语，否定 not 添 be 后，疑问 be 词提句首”。',
+        table: {
+          headers: ['句型类别', '主语人称', '结构公式与例句', '简略肯定 / 否定回答'],
+          rows: [
+            ['肯定句 (Positive)', '第一人称单数 (I)', 'I am running. (我正在奔跑。)', '——'],
+            ['肯定句 (Positive)', '第二人称 / 复数 (You / We / They)', 'You / We / They are reading books. (你们/我们/他们正在看书。)', '——'],
+            ['肯定句 (Positive)', '第三人称单数 (He / She / It)', 'He / She / It is eating. (他/她/它正在吃东西。)', '——'],
+            ['否定句 (Negative)', '第一人称单数 (I)', 'I am not running. (我没有在跑步。)', '——'],
+            ['否定句 (Negative)', '第二人称 / 复数 (You / We / They)', 'You / We / They aren\'t reading books. (你们/我们/他们没在看书。)', '——'],
+            ['否定句 (Negative)', '第三人称单数 (He / She / It)', 'He / She / It isn\'t eating. (他/她/它没有在吃东西。)', '——'],
+            ['一般疑问句 (Question)', '第一人称 (Am I...?)', 'Am I running? (我正在跑步吗？)', 'Yes, you are. / No, you aren\'t.'],
+            ['一般疑问句 (Question)', '第二人称 (Are you...?)', 'Are you reading books? (你正在读书吗？)', 'Yes, I am. / No, I am not.'],
+            ['一般疑问句 (Question)', '复数人称 (Are we / they...?)', 'Are we / they reading books? (我们/他们正在看书吗？)', 'Yes, we/they are. / No, we/they aren\'t.'],
+            ['一般疑问句 (Question)', '第三人称单数 (Is he / she / it...?)', 'Is he / she / it eating? (他/她/它正在吃东西吗？)', 'Yes, he/she/it is. / No, he/she/it isn\'t.'],
+          ],
+        },
+        notes: [
+          '现在进行时的标志词：now (现在), right now (立刻/此时此刻), at the moment (此刻), look! (看！), listen! (听！)。',
+          'be 动词随主语人称灵活变化：我用 am，你用 are，is 连着他/她/它；单数名词用 is，复数名词全用 are。',
+          'be 动词和动词 -ing 缺一不可！不能漏掉 be 动词 (如 I reading 错误)，也不能漏掉 -ing (如 I am read 错误)。',
+        ],
+      },
+    ],
+    speakingDialogues: [
+      {
+        title: 'Functions: Describing a Scene & What People Are Doing (情景交际：生动描述正在发生的一幕)',
+        items: [
+          { speaker: 'Alex', en: 'Look at the park! What are the children doing?', zh: '看那个公园！孩子们正在做什么？', responseEn: 'Some are riding bikes, and some are playing basketball on the playground.', responseZh: '有的正在骑自行车，有的正在操场上打篮球。' },
+          { speaker: 'Bella', en: 'What is that girl over there wearing?', zh: '那边那个女孩穿戴着什么？', responseEn: 'She is wearing a lovely pink dress, white socks and a pair of trainers.', responseZh: '她穿着一条可爱的粉色连衣裙、白袜子和一双运动鞋。' },
+          { speaker: 'Chris', en: 'Is your brother dancing to the music right now?', zh: '你弟弟现在正在随音乐跳舞吗？', responseEn: 'Yes, he is! He loves dancing and he feels super excited.', responseZh: '是的，他在跳！他超级喜欢跳舞，感觉非常兴奋。' },
+          { speaker: 'Daisy', en: 'Are they waiting for the train on the platform?', zh: '他们正在站台上等火车吗？', responseEn: 'No, they aren\'t. They are sitting on the bench and drinking fruit juice.', responseZh: '不，他们没有。他们正坐在长椅上喝果汁。' },
+          { speaker: 'Eric', en: 'Where are you right now? Can you hear me?', zh: '你现在在哪里？你能听清我说话吗？', responseEn: 'I\'m right in the middle of a cheering crowd at the concert! It is fantastic!', responseZh: '我正好在音乐会欢呼的人群正中间！真是太精彩了！' },
+        ],
+      },
+      {
+        title: 'Everyday English: Interviewing & Talking About Free Time (日常访谈：询问职业与业余喜好)',
+        items: [
+          { speaker: 'Reporter', en: 'Hello, what do you do?', zh: '你好，请问你是从事什么工作的？(问职业)', responseEn: 'I work as a DJ at the local youth club.', responseZh: '我在当地青年俱乐部担任DJ。' },
+          { speaker: 'Reporter', en: 'What do you like doing in your free time?', zh: '在你的空闲时间里，你喜欢做什么？', responseEn: 'I like finding new songs and creating cool rhythms.', responseZh: '我喜欢搜寻新歌，并制作酷炫的节奏。' },
+          { speaker: 'Reporter', en: 'Can you tell us more about this new VR headset?', zh: '你能和我们多分享一些关于这款新VR眼镜的事情吗？', responseEn: 'Sure! With this VR headset, you feel like you are right in front of the stage!', responseZh: '当然！戴上这款VR头显，你就像直接站在舞台正前方一样！' },
+          { speaker: 'Reporter', en: 'Why do young people love coming here?', zh: '为什么年轻人都喜欢来到这里？', responseEn: 'Because the music is amazing and everyone feels relaxed and happy.', responseZh: '因为这里的音乐太棒了，每个人都感到放松和快乐。' },
+        ],
+      },
+      {
+        title: 'Think Values: Music, Rhythms & Emotions (节奏、音乐与情绪表达)',
+        items: [
+          { speaker: 'Teacher', en: 'How do you feel when you listen to your favourite music?', zh: '当你听最喜欢的音乐时，你是什么感觉？', responseEn: 'I feel full of energy and my heart dances to the rhythm.', responseZh: '我感到全身充满能量，心儿仿佛跟着节奏在跳舞。' },
+          { speaker: 'Teacher', en: 'What do you do when you feel tired or sad?', zh: '当你感到疲惫或难过时，你会做什么？', responseEn: 'I put on my headphones and listen to quiet, peaceful songs.', responseZh: '我会戴上耳机，听一些安静宁和的歌曲。' },
+          { speaker: 'Student', en: 'Can music help us make good friends?', zh: '音乐能帮助我们结交好朋友吗？', responseEn: 'Yes! Singing and dancing together brings people closer.', responseZh: '是的！一起唱歌跳舞能拉近人与人之间的距离。' },
+        ],
+      },
+    ],
+    cultureSection: {
+      title: 'Culture: Music, Youth & Creative Rhythms (音乐节奏与青少年流行文化)',
+      cards: [
+        {
+          title: 'Street Dance & Hip-Hop (街舞与节奏文化)',
+          country: 'The USA & Global (源于美国，风靡全球)',
+          flag: '🇺🇸',
+          details: [
+            'Hip-hop dance and breakdancing originated in the Bronx, New York in the 1970s.',
+            'Dancers use rhythm, improvisation, and dynamic body movements to express joy and creativity.',
+          ],
+        },
+        {
+          title: 'The DJ Culture (DJ音乐混音艺术)',
+          country: 'The UK & International (英国与国际流行)',
+          flag: '🇬🇧',
+          details: [
+            'DJs select and mix recorded tracks to create an uninterrupted rhythm for parties and clubs.',
+            'From vinyl turntables to modern digital controllers, DJs keep the crowd moving and dancing.',
+          ],
+        },
+        {
+          title: 'Traditional Samba Rhythm (桑巴舞动狂欢节奏)',
+          country: 'Brazil (巴西)',
+          flag: '🇧🇷',
+          details: [
+            'Samba is a lively, rhythmic dance and musical style born in Rio de Janeiro, Brazil.',
+            'With fast drumbeats and colorful costumes, it is the beating heart of the world-famous Rio Carnival.',
+          ],
+        },
+        {
+          title: 'VR Concerts & Digital Stages (虚拟现实音乐会与未来舞台)',
+          country: 'Global Tech Culture (全球数字前沿)',
+          flag: '🌐',
+          details: [
+            'Fans put on VR headsets to join interactive live music performances from their own living rooms.',
+            'Digital stages combine 3D visuals, rhythm games, and avatar interactions into an amazing futuristic experience.',
+          ],
+        },
+      ],
+    },
+    writingGuide: {
+      title: 'Writing Mind Map: Describe a Scene (写作思维导图：描述生动场景)',
+      topic: 'Describe a Scene (场景描写写作指南)',
+      branches: [
+        {
+          label: 'Title & Setting the Scene (题目与环境开篇)',
+          icon: '☀️',
+          templates: [
+            { en: 'It is a fine, sunny day today.', zh: '今天是一个晴朗美好的日子。' },
+            { en: 'I am in the [park / school playground / garden / city centre].', zh: '我正在[公园 / 学校操场 / 花园 / 市中心]。' },
+          ],
+        },
+        {
+          label: 'What People Are Doing (人物正在进行的活动 - 现在进行时)',
+          icon: '🏃',
+          templates: [
+            { en: 'Some people are [walking dogs / playing basketball / dancing to music].', zh: '有些人正在[遛狗 / 打篮球 / 随音乐起舞]。' },
+            { en: 'Children are [running around / sitting on the grass / reading books].', zh: '孩子们正在[到处奔跑 / 坐在草地上 / 读书]。' },
+            { en: 'I am [riding a bike / flying a kite / feeding the fish].', zh: '我正在[骑自行车 / 放风筝 / 喂小鱼]。' },
+          ],
+        },
+        {
+          label: 'What People Are Wearing & Appearance (人物衣着服饰与装扮)',
+          icon: '👗',
+          templates: [
+            { en: 'He / She is wearing [a casual T-shirt and a pair of jeans / a pretty skirt and trainers].', zh: '他/她正穿着[休闲T恤和一条牛仔裤 / 漂亮的短裙和运动鞋]。' },
+            { en: 'Many people are wearing [sunglasses / warm coats / comfortable jumpers].', zh: '许多人戴着[太阳镜 / 穿着保暖外套 / 舒适的套头衫]。' },
+          ],
+        },
+        {
+          label: 'Feelings & Atmosphere (个人感受与环境评价)',
+          icon: '🌟',
+          templates: [
+            { en: 'Everyone feels [happy, relaxed, excited and full of energy].', zh: '每个人都感到[开心、放松、兴奋且充满活力]。' },
+            { en: 'The whole scene looks [wonderful / fantastic / amazing].', zh: '整个场景看起来[美妙极了 / 太棒了 / 令人叹为观止]。' },
+          ],
+        },
+      ],
+    },
+  },
 ];

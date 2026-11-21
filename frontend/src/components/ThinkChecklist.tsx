@@ -101,7 +101,7 @@ export const ThinkChecklist: React.FC<ThinkChecklistProps> = ({
                   </span>
                 </div>
                 <p className="text-3xs text-slate-400 font-mono hidden md:block">
-                  剑桥英语原版 Unit 1 ~ Unit 7 核心词汇、语法表格、情景交际与思维导图
+                  剑桥英语原版 Unit 1 ~ Unit 8 核心词汇、语法表格、情景交际与思维导图
                 </p>
               </div>
             </div>

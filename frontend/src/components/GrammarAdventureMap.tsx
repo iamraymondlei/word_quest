@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { apiService } from '../utils/apiService';
 import { GrammarPracticeView } from './GrammarPracticeView';
+import { SceneWritingWorkshop } from './SceneWritingWorkshop';
 import { GrammarCategory } from '../data/presentSimpleExercises';
+import { SCENE_WRITING_TOPICS } from '../data/sceneWritingData';
 
 interface GrammarAdventureMapProps {
   currentUser?: {
@@ -79,6 +81,7 @@ export const GrammarAdventureMap: React.FC<GrammarAdventureMapProps> = ({
   onUpdateUser,
 }) => {
   const [selectedQuizId, setSelectedQuizId] = useState<string | null>(null);
+  const [showSceneWriting, setShowSceneWriting] = useState<boolean>(false);
   const [selectedCategory, setSelectedCategory] = useState<GrammarCategory>('present_simple');
   const [progressSummary, setProgressSummary] = useState<Record<string, any>>({});
   const [isLoading, setIsLoading] = useState<boolean>(true);
@@ -102,6 +105,20 @@ export const GrammarAdventureMap: React.FC<GrammarAdventureMapProps> = ({
   useEffect(() => {
     fetchProgress();
   }, [currentUser?.id]);
+
+  // If scene writing workshop is opened
+  if (showSceneWriting) {
+    return (
+      <SceneWritingWorkshop
+        currentUser={currentUser}
+        onBack={() => {
+          setShowSceneWriting(false);
+          fetchProgress();
+        }}
+        onUpdateUser={onUpdateUser}
+      />
+    );
+  }
 
   // If a quiz card is opened, render the drill view
   if (selectedQuizId) {
@@ -164,7 +181,7 @@ export const GrammarAdventureMap: React.FC<GrammarAdventureMapProps> = ({
                 <span>✨</span>
                 <span>现在进行时</span>
                 <span className="px-1.5 py-0.2 rounded-full text-3xs bg-fuchsia-400 text-slate-950 font-black">
-                  4 专练
+                  4专练+写作
                 </span>
               </button>
 
@@ -270,6 +287,86 @@ export const GrammarAdventureMap: React.FC<GrammarAdventureMapProps> = ({
                 </div>
               );
             })}
+
+            {/* STAGE 05: 场景描写写作工坊 */}
+            {(() => {
+              const passedScenes = SCENE_WRITING_TOPICS.filter(
+                (t) => progressSummary[t.quizId]?.isPassed
+              ).length;
+              const attemptedScenes = SCENE_WRITING_TOPICS.filter(
+                (t) => Boolean(progressSummary[t.quizId])
+              ).length;
+              return (
+                <div className="md:col-span-2 group relative overflow-hidden rounded-3xl bg-gradient-to-br from-[#1E1B4B] via-[#0F172A] to-[#131B2E] border border-rose-500/40 hover:border-rose-400 transition-all duration-300 p-6 sm:p-7 shadow-xl hover:shadow-[0_0_25px_rgba(244,63,94,0.2)] flex flex-col justify-between">
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between flex-wrap gap-2">
+                      <span className="px-3 py-1 rounded-xl text-3xs font-mono font-black bg-rose-500/20 text-rose-300 border border-rose-500/30">
+                        STAGE 05 · WRITING WORKSHOP
+                      </span>
+                      {passedScenes === SCENE_WRITING_TOPICS.length ? (
+                        <span className="flex items-center gap-1 px-2.5 py-0.5 rounded-full text-2xs font-mono font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
+                          <span>🏆</span>
+                          <span>全部 3 场景已通关</span>
+                        </span>
+                      ) : passedScenes > 0 || attemptedScenes > 0 ? (
+                        <span className="px-2.5 py-0.5 rounded-full text-2xs font-mono font-bold bg-rose-500/20 text-rose-300 border border-rose-500/40">
+                          已通关 {passedScenes}/{SCENE_WRITING_TOPICS.length} 场景
+                        </span>
+                      ) : (
+                        <span className="px-2.5 py-0.5 rounded-full text-2xs font-mono text-slate-400 bg-slate-800/60 border border-slate-700">
+                          未开始 ⏳
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                      <div className="flex items-start gap-3">
+                        <div className="w-11 h-11 rounded-2xl bg-rose-500/20 border border-rose-400/40 flex items-center justify-center text-2xl shrink-0">
+                          ✍️
+                        </div>
+                        <div>
+                          <h3 className="text-lg font-black font-mono text-white group-hover:text-rose-300 transition-colors">
+                            STAGE 05：场景描写写作工坊 (Describe a Scene)
+                          </h3>
+                          <p className="text-xs text-slate-300 font-mono mt-1 leading-relaxed max-w-2xl">
+                            提供公园、操场、音乐会 3 幅互动场景大图（点击人物查看素材），按 Title → Beginning → Body → Ending 搭框架写作文，综合运用现在进行时、服饰描述、形容词与方位介词，支持全文朗读与三大要素实时自检。
+                          </p>
+                          <div className="flex flex-wrap gap-1.5 pt-2 font-mono text-3xs">
+                            <span className="px-2.5 py-1 rounded-lg bg-slate-900 border border-slate-700 text-emerald-300">
+                              🌳 公园一日
+                            </span>
+                            <span className="px-2.5 py-1 rounded-lg bg-slate-900 border border-slate-700 text-amber-300">
+                              🏀 操场欢乐时光
+                            </span>
+                            <span className="px-2.5 py-1 rounded-lg bg-slate-900 border border-slate-700 text-fuchsia-300">
+                              🎤 音乐会现场
+                            </span>
+                            <span className="px-2.5 py-1 rounded-lg bg-slate-900 border border-slate-700 text-cyan-300">
+                              ✅ 三大要素自检 + 范文对照
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex flex-col sm:items-end gap-2 shrink-0">
+                        <div className="text-3xs font-mono text-slate-400">
+                          每场景首次通关：<span className="text-amber-300 font-bold">+50 🪙</span>{' '}
+                          <span className="text-cyan-300 font-bold">+1 ⭐</span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setShowSceneWriting(true)}
+                          className="px-5 py-2.5 rounded-2xl bg-gradient-to-r from-rose-500 to-fuchsia-500 hover:from-rose-400 hover:to-fuchsia-400 text-slate-950 font-mono font-black text-xs shadow-lg shadow-rose-500/25 cursor-pointer hover:scale-105 active:scale-95 transition-all flex items-center gap-1.5"
+                        >
+                          <span>进入写作工坊</span>
+                          <span>→</span>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">

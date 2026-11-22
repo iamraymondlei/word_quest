@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useCallback } from 'react';
 import { THINK_STARTER_UNITS, ThinkUnitData } from '../data/thinkStarterData';
 import { GrammarPracticeView } from './GrammarPracticeView';
+import { SceneWritingWorkshop } from './SceneWritingWorkshop';
 
 interface ThinkChecklistProps {
   currentUser?: {
@@ -16,7 +17,7 @@ export const ThinkChecklist: React.FC<ThinkChecklistProps> = ({
   currentUser,
   onBackToStories,
 }) => {
-  const [viewMode, setViewMode] = useState<'checklist' | 'grammar'>('checklist');
+  const [viewMode, setViewMode] = useState<'checklist' | 'grammar' | 'scene_writing'>('checklist');
   const [grammarCategory, setGrammarCategory] = useState<'present_simple' | 'present_continuous'>('present_simple');
   const [selectedUnitId, setSelectedUnitId] = useState<number>(1);
   const [isSelfTestMode, setIsSelfTestMode] = useState<boolean>(false);
@@ -62,6 +63,15 @@ export const ThinkChecklist: React.FC<ThinkChecklistProps> = ({
 
   // Filtered vocabulary items if search query is entered
   const normalizedQuery = searchQuery.trim().toLowerCase();
+
+  if (viewMode === 'scene_writing') {
+    return (
+      <SceneWritingWorkshop
+        currentUser={currentUser}
+        onBack={() => setViewMode('checklist')}
+      />
+    );
+  }
 
   if (viewMode === 'grammar') {
     return (
@@ -870,6 +880,21 @@ export const ThinkChecklist: React.FC<ThinkChecklistProps> = ({
                 </div>
               ))}
             </div>
+            {/* Unit 8 Interactive Scene Writing Entry */}
+            {selectedUnitId === 8 && (
+              <div className="pt-4 border-t border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-3 print:hidden">
+                <div className="text-xs font-mono text-slate-300">
+                  ✍️ 看完导图就来练笔！包含公园、操场、音乐会 3 幅互动场景大图与三大要素自动核对：
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setViewMode('scene_writing')}
+                  className="px-5 py-2.5 rounded-2xl bg-gradient-to-r from-rose-500 to-fuchsia-500 hover:from-rose-400 hover:to-fuchsia-400 text-slate-950 font-mono font-black text-xs shadow-lg shadow-rose-500/25 whitespace-nowrap cursor-pointer hover:scale-105 active:scale-95 transition-all shrink-0"
+                >
+                  ✍️ 开始场景描写写作练习 →
+                </button>
+              </div>
+            )}
           </div>
         </section>
       </main>

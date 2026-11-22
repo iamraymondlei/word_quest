@@ -47,13 +47,38 @@ export interface SentenceTransformItem {
   explanation: string;
 }
 
+export interface PictureWritingItem {
+  id: string;
+  sceneIllustration:
+    | 'basketball'
+    | 'dancing'
+    | 'reading'
+    | 'swimming'
+    | 'riding'
+    | 'cooking'
+    | 'sleeping'
+    | 'waiting_train';
+  sceneTitle: string;
+  subjectHint: string;
+  verbHint: string;
+  timeCue?: string;
+  prompt: string;
+  answer: string;
+  acceptedAnswers: string[];
+  explanation: string;
+}
+
+export type GrammarCategory = 'present_simple' | 'present_continuous';
+
 export interface GrammarExerciseUnit {
-  id: 'unit1' | 'unit2';
+  id: string;
+  category?: GrammarCategory;
   title: string;
   subtitle: string;
   verbTransformations?: VerbSingularItem[];
   multipleChoices?: MultipleChoiceItem[];
   fillInBlanks?: FillInBlankItem[];
+  pictureWritings?: PictureWritingItem[];
   storyCloze?: {
     title: string;
     storySegments: {

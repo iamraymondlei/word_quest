@@ -2,7 +2,10 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   PRESENT_SIMPLE_EXERCISES,
   GrammarExerciseUnit,
+  GrammarCategory,
 } from '../data/presentSimpleExercises';
+import { PRESENT_CONTINUOUS_EXERCISES } from '../data/presentContinuousExercises';
+import { SceneIllustrationCard } from './SceneIllustrationCard';
 import { apiService } from '../utils/apiService';
 
 interface GrammarPracticeViewProps {
@@ -14,18 +17,30 @@ interface GrammarPracticeViewProps {
     avatar?: string;
     is_admin?: number;
   } | null;
-  initialQuizId?: 'unit1' | 'unit2';
+  category?: GrammarCategory;
+  initialQuizId?: string;
   onBack?: () => void;
   onUpdateUser?: (updatedUser: any) => void;
 }
 
 export const GrammarPracticeView: React.FC<GrammarPracticeViewProps> = ({
   currentUser,
-  initialQuizId = 'unit1',
+  category = 'present_simple',
+  initialQuizId,
   onBack,
   onUpdateUser,
 }) => {
-  const [activeUnitId, setActiveUnitId] = useState<'unit1' | 'unit2'>(initialQuizId);
+  const activeCategory: GrammarCategory = category;
+  const exercisesList = useMemo(
+    () =>
+      activeCategory === 'present_continuous'
+        ? PRESENT_CONTINUOUS_EXERCISES
+        : PRESENT_SIMPLE_EXERCISES,
+    [activeCategory]
+  );
+  const [activeUnitId, setActiveUnitId] = useState<string>(
+    initialQuizId || (activeCategory === 'present_continuous' ? 'pc_unit1' : 'unit1')
+  );
   const [showAnswers, setShowAnswers] = useState<boolean>(false);
   const [isSubmitted, setIsSubmitted] = useState<boolean>(false);
   const [isSaving, setIsSaving] = useState<boolean>(false);
@@ -80,10 +95,10 @@ export const GrammarPracticeView: React.FC<GrammarPracticeViewProps> = ({
 
   const currentUnit: GrammarExerciseUnit = useMemo(() => {
     return (
-      PRESENT_SIMPLE_EXERCISES.find((u) => u.id === activeUnitId) ||
-      PRESENT_SIMPLE_EXERCISES[0]
+      exercisesList.find((u) => u.id === activeUnitId) ||
+      exercisesList[0]
     );
-  }, [activeUnitId]);
+  }, [exercisesList, activeUnitId]);
 
   // Load previous progress on mount or unit switch
   const loadPreviousProgress = useCallback(async (unitId: string) => {
@@ -173,6 +188,11 @@ export const GrammarPracticeView: React.FC<GrammarPracticeViewProps> = ({
         if (fb.secondBlank) {
           filled[`fb2_${fb.id}`] = fb.secondBlank.answer;
         }
+      });
+    }
+    if (currentUnit.pictureWritings) {
+      currentUnit.pictureWritings.forEach((pw) => {
+        filled[`pw_${pw.id}`] = pw.answer;
       });
     }
     if (currentUnit.storyCloze) {
@@ -273,6 +293,29 @@ export const GrammarPracticeView: React.FC<GrammarPracticeViewProps> = ({
       });
     }
 
+    // 3.5 Picture Writings
+    if (currentUnit.pictureWritings) {
+      currentUnit.pictureWritings.forEach((pw) => {
+        totalQuestions++;
+        const userVal = (answers[`pw_${pw.id}`] || '').trim().toLowerCase().replace(/[.?!,，。？！]/g, '');
+        const matched = pw.acceptedAnswers.some(
+          (ans) => ans.toLowerCase().replace(/[.?!,，。？！]/g, '') === userVal
+        );
+        if (matched) {
+          correctCount++;
+        } else {
+          wrongItems.push({
+            type: 'picture',
+            id: pw.id,
+            sceneTitle: pw.sceneTitle,
+            userVal: answers[`pw_${pw.id}`] || '',
+            correctAnswer: pw.answer,
+            explanation: pw.explanation,
+          });
+        }
+      });
+    }
+
     // 4. Story Cloze
     if (currentUnit.storyCloze) {
       currentUnit.storyCloze.blanks.forEach((b) => {
@@ -333,7 +376,7 @@ export const GrammarPracticeView: React.FC<GrammarPracticeViewProps> = ({
     try {
       const result = await apiService.submitGrammarQuiz({
         userId: currentUser.id,
-        category: 'present_simple',
+        category: activeCategory,
         quizId: activeUnitId,
         score: scoreResult.percentage,
         totalQuestions: scoreResult.totalQuestions,
@@ -566,10 +609,11 @@ export const GrammarPracticeView: React.FC<GrammarPracticeViewProps> = ({
           </div>
         </div>
 
-        {/* Tab switch between 专练 1 and 专练 2 */}
-        <div className="max-w-6xl mx-auto flex items-center gap-2 mt-3 pt-2 border-t border-slate-800/80">
-          {PRESENT_SIMPLE_EXERCISES.map((u) => {
+        {/* Tab switch between exercises in current category */}
+        <div className="max-w-6xl mx-auto flex items-center gap-2 mt-3 pt-2 border-t border-slate-800/80 overflow-x-auto no-scrollbar">
+          {exercisesList.map((u, uIdx) => {
             const isActive = u.id === activeUnitId;
+            const icon = uIdx === 0 ? '🎯' : uIdx === 1 ? '🔄' : uIdx === 2 ? '🖼️' : '🚀';
             return (
               <button
                 key={u.id}
@@ -578,13 +622,13 @@ export const GrammarPracticeView: React.FC<GrammarPracticeViewProps> = ({
                   setActiveUnitId(u.id);
                   setShowAnswers(false);
                 }}
-                className={`px-4 py-1.5 rounded-xl text-xs font-mono font-bold transition-all cursor-pointer border flex items-center gap-2 ${
+                className={`px-4 py-1.5 rounded-xl text-xs font-mono font-bold transition-all cursor-pointer border flex items-center gap-2 whitespace-nowrap shrink-0 ${
                   isActive
                     ? 'bg-gradient-to-r from-amber-500/20 to-cyan-500/20 text-white border-amber-400/80 shadow-[0_0_15px_rgba(245,158,11,0.25)]'
                     : 'bg-slate-900/60 text-slate-400 border-slate-800 hover:text-slate-200 hover:border-slate-700'
                 }`}
               >
-                <span className="text-sm">{u.id === 'unit1' ? '🎯' : '🚀'}</span>
+                <span className="text-sm">{icon}</span>
                 <span>{u.title}</span>
               </button>
             );
@@ -600,10 +644,10 @@ export const GrammarPracticeView: React.FC<GrammarPracticeViewProps> = ({
             <div className="space-y-2">
               <div className="flex items-center gap-2.5">
                 <span className="px-3 py-1 rounded-full text-xs font-mono font-black bg-amber-500/20 text-amber-300 border border-amber-500/30">
-                  {currentUnit.id === 'unit1' ? 'EXERCISE 1' : 'EXERCISE 2'}
+                  EXERCISE {Math.max(1, exercisesList.findIndex((u) => u.id === currentUnit.id) + 1)}
                 </span>
                 <span className="text-2xs font-mono text-slate-400">
-                  Cambridge Grammar Quest • Present Simple
+                  Cambridge Grammar Quest • {activeCategory === 'present_continuous' ? 'Present Continuous (现在进行时)' : 'Present Simple (一般现在时)'}
                 </span>
               </div>
               <h2 className="text-2xl sm:text-3xl font-black font-mono tracking-tight text-white uppercase print:text-black">
@@ -684,13 +728,15 @@ export const GrammarPracticeView: React.FC<GrammarPracticeViewProps> = ({
         {/* ============================================================ */}
         {/* SECTION 1: 动词三单变位 (Unit 1 Only) */}
         {/* ============================================================ */}
-        {currentUnit.verbTransformations && (
+        {currentUnit.verbTransformations && currentUnit.verbTransformations.length > 0 && (
           <section className="space-y-4">
             <div className="flex items-center justify-between border-b border-slate-800 pb-2">
               <div className="flex items-center gap-2">
                 <span className="text-xl">🔤</span>
                 <h3 className="text-base sm:text-lg font-bold font-mono text-cyan-300 print:text-black">
-                  （一）写出下列动词的第三人称单数形式
+                  {activeCategory === 'present_continuous'
+                    ? '（一）写出下列动词的现在分词 (-ing) 形式'
+                    : '（一）写出下列动词的第三人称单数形式'}
                 </h3>
               </div>
               <span className="text-xs font-mono text-slate-400 print:hidden">
@@ -738,7 +784,7 @@ export const GrammarPracticeView: React.FC<GrammarPracticeViewProps> = ({
                         type="text"
                         value={userVal}
                         onChange={(e) => handleInputChange(`vt_${item.id}`, e.target.value)}
-                        placeholder="三单形式..."
+                        placeholder={activeCategory === 'present_continuous' ? '-ing 形式...' : '三单形式...'}
                         className={`w-full px-2.5 py-1.5 rounded-xl text-xs font-mono border focus:outline-none focus:ring-1 transition-all ${
                           isSubmitted
                             ? isCorrect
@@ -773,13 +819,13 @@ export const GrammarPracticeView: React.FC<GrammarPracticeViewProps> = ({
         {/* ============================================================ */}
         {/* SECTION 2: 单选题 (Unit 1 Only) */}
         {/* ============================================================ */}
-        {currentUnit.multipleChoices && (
+        {currentUnit.multipleChoices && currentUnit.multipleChoices.length > 0 && (
           <section className="space-y-4">
             <div className="flex items-center justify-between border-b border-slate-800 pb-2">
               <div className="flex items-center gap-2">
                 <span className="text-xl">🎯</span>
                 <h3 className="text-base sm:text-lg font-bold font-mono text-cyan-300 print:text-black">
-                  （二）单选
+                  单项选择
                 </h3>
               </div>
               <span className="text-xs font-mono text-slate-400 print:hidden">
@@ -877,7 +923,7 @@ export const GrammarPracticeView: React.FC<GrammarPracticeViewProps> = ({
         {/* ============================================================ */}
         {/* SECTION 3: 用动词适当形式填空 */}
         {/* ============================================================ */}
-        {currentUnit.fillInBlanks && (
+        {currentUnit.fillInBlanks && currentUnit.fillInBlanks.length > 0 && (
           <section className="space-y-4">
             <div className="flex items-center justify-between border-b border-slate-800 pb-2">
               <div className="flex items-center gap-2">
@@ -1157,9 +1203,109 @@ export const GrammarPracticeView: React.FC<GrammarPracticeViewProps> = ({
         )}
 
         {/* ============================================================ */}
+        {/* SECTION 3.5: 看图写句 (Picture Writing) */}
+        {/* ============================================================ */}
+        {currentUnit.pictureWritings && currentUnit.pictureWritings.length > 0 && (
+          <section className="space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+              <div className="flex items-center gap-2">
+                <span className="text-xl">🖼️</span>
+                <h3 className="text-base sm:text-lg font-bold font-mono text-cyan-300 print:text-black">
+                  看图写句（描述图中人物正在做的事）
+                </h3>
+              </div>
+              <span className="text-xs font-mono text-slate-400 print:hidden">
+                共 {currentUnit.pictureWritings.length} 图 • 完整造句实战
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {currentUnit.pictureWritings.map((pw, pwIdx) => {
+                const userVal = answers[`pw_${pw.id}`] || '';
+                const cleanUserVal = userVal.trim().toLowerCase().replace(/[.?!,，。？！]/g, '');
+                const isCorrect = pw.acceptedAnswers.some(
+                  (ans) => ans.toLowerCase().replace(/[.?!,，。？！]/g, '') === cleanUserVal
+                );
+
+                return (
+                  <div
+                    key={pw.id}
+                    className={`p-4 rounded-2xl border transition-all flex flex-col gap-3 ${
+                      isSubmitted
+                        ? isCorrect
+                          ? 'bg-emerald-950/20 border-emerald-500/40'
+                          : 'bg-rose-950/20 border-rose-500/40'
+                        : 'bg-[#131B2E]/70 border-[#1F2D4A]'
+                    } print:bg-white print:border-slate-300`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="px-2.5 py-0.5 rounded-lg text-2xs font-mono font-black bg-fuchsia-500/20 text-fuchsia-300 border border-fuchsia-500/30">
+                        图 {pwIdx + 1} · {pw.sceneTitle}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => speak(pw.answer)}
+                        className="text-xs text-slate-400 hover:text-cyan-300 p-1 print:hidden"
+                        title="朗读标准示范句"
+                      >
+                        {playingText === pw.answer ? '🔊' : '🔉'}
+                      </button>
+                    </div>
+
+                    <SceneIllustrationCard type={pw.sceneIllustration} title={pw.sceneTitle} />
+
+                    <div className="flex flex-wrap items-center gap-1.5 text-3xs font-mono">
+                      <span className="px-2 py-0.5 rounded bg-slate-900 border border-slate-700 text-cyan-300">
+                        👤 主语: {pw.subjectHint}
+                      </span>
+                      <span className="px-2 py-0.5 rounded bg-slate-900 border border-slate-700 text-amber-300">
+                        ⚡ 动作: {pw.verbHint}
+                      </span>
+                      {pw.timeCue && (
+                        <span className="px-2 py-0.5 rounded bg-slate-900 border border-slate-700 text-emerald-300">
+                          ⏰ {pw.timeCue}
+                        </span>
+                      )}
+                    </div>
+
+                    <p className="text-xs font-mono text-slate-300 print:text-slate-700">
+                      {pw.prompt}
+                    </p>
+
+                    <input
+                      type="text"
+                      value={userVal}
+                      onChange={(e) => handleInputChange(`pw_${pw.id}`, e.target.value)}
+                      placeholder="用现在进行时写一句完整的话..."
+                      className={`w-full px-3 py-2 rounded-xl text-xs sm:text-sm font-mono border focus:outline-none transition-all ${
+                        isSubmitted
+                          ? isCorrect
+                            ? 'bg-emerald-900/20 border-emerald-500 text-emerald-300'
+                            : 'bg-rose-900/20 border-rose-500 text-rose-300'
+                          : 'bg-slate-900/90 border-slate-700 text-slate-100 focus:border-cyan-400'
+                      } print:border-b-2 print:border-black print:rounded-none`}
+                    />
+
+                    {canViewExplanations && showAnswers && (
+                      <div className="mt-1 pt-2 border-t border-slate-800 text-xs font-mono space-y-1">
+                        <div className="flex items-center gap-2 font-bold">
+                          <span className="text-slate-400">示范标准句:</span>
+                          <span className="text-emerald-400 print:text-black">{pw.answer}</span>
+                        </div>
+                        <p className="text-slate-400 print:text-slate-600">💡 {pw.explanation}</p>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        )}
+
+        {/* ============================================================ */}
         {/* SECTION 5: 句型转换 (Sentence Transformations) */}
         {/* ============================================================ */}
-        {currentUnit.sentenceTransforms && (
+        {currentUnit.sentenceTransforms && currentUnit.sentenceTransforms.length > 0 && (
           <section className="space-y-4">
             <div className="flex items-center justify-between border-b border-slate-800 pb-2">
               <div className="flex items-center gap-2">

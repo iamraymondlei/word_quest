@@ -17,6 +17,7 @@ export const ThinkChecklist: React.FC<ThinkChecklistProps> = ({
   onBackToStories,
 }) => {
   const [viewMode, setViewMode] = useState<'checklist' | 'grammar'>('checklist');
+  const [grammarCategory, setGrammarCategory] = useState<'present_simple' | 'present_continuous'>('present_simple');
   const [selectedUnitId, setSelectedUnitId] = useState<number>(1);
   const [isSelfTestMode, setIsSelfTestMode] = useState<boolean>(false);
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -66,6 +67,8 @@ export const ThinkChecklist: React.FC<ThinkChecklistProps> = ({
     return (
       <GrammarPracticeView
         currentUser={currentUser}
+        category={grammarCategory}
+        initialQuizId={grammarCategory === 'present_continuous' ? 'pc_unit1' : 'unit1'}
         onBack={() => setViewMode('checklist')}
       />
     );
@@ -509,8 +512,45 @@ export const ThinkChecklist: React.FC<ThinkChecklistProps> = ({
               </div>
               <button
                 type="button"
-                onClick={() => setViewMode('grammar')}
+                onClick={() => {
+                  setGrammarCategory('present_simple');
+                  setViewMode('grammar');
+                }}
                 className="px-5 py-2.5 rounded-2xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 font-mono font-black text-xs shadow-lg shadow-amber-500/20 whitespace-nowrap cursor-pointer hover:scale-105 active:scale-95 transition-all shrink-0"
+              >
+                🎯 立即开启实战刷题 →
+              </button>
+            </div>
+          )}
+
+          {/* Unit 8 Special Grammar Practice Entry Banner */}
+          {selectedUnitId === 8 && (
+            <div className="bg-gradient-to-r from-fuchsia-500/15 via-purple-500/15 to-cyan-500/15 border border-fuchsia-400/40 rounded-3xl p-5 sm:p-6 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-xl print:hidden">
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 rounded-2xl bg-fuchsia-500/20 border border-fuchsia-400/40 flex items-center justify-center text-2xl shrink-0">
+                  ✨
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h4 className="font-mono font-black text-sm sm:text-base text-fuchsia-300">
+                      现在进行时（专项训练 1 ~ 4）实战题库
+                    </h4>
+                    <span className="px-2 py-0.5 rounded-full text-3xs font-mono font-bold bg-fuchsia-400 text-slate-950">
+                      配套练习
+                    </span>
+                  </div>
+                  <p className="font-mono text-2xs sm:text-xs text-slate-300 mt-1 max-w-xl">
+                    涵盖 20个动词 -ing 规则变位、肯定/否定/一般疑问句转换、8幅生动看图写句实战、公园场景篇章填空与易错辨析，支持智能判分与发音朗读。
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setGrammarCategory('present_continuous');
+                  setViewMode('grammar');
+                }}
+                className="px-5 py-2.5 rounded-2xl bg-gradient-to-r from-fuchsia-500 to-cyan-500 hover:from-fuchsia-400 hover:to-cyan-400 text-slate-950 font-mono font-black text-xs shadow-lg shadow-fuchsia-500/20 whitespace-nowrap cursor-pointer hover:scale-105 active:scale-95 transition-all shrink-0"
               >
                 🎯 立即开启实战刷题 →
               </button>

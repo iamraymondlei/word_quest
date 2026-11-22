@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { apiService } from '../utils/apiService';
 import { GrammarPracticeView } from './GrammarPracticeView';
+import { GrammarCategory } from '../data/presentSimpleExercises';
 
 interface GrammarAdventureMapProps {
   currentUser?: {
@@ -15,12 +16,70 @@ interface GrammarAdventureMapProps {
   onBackToStories?: () => void;
 }
 
+const PRESENT_CONTINUOUS_CARDS = [
+  {
+    quizId: 'pc_unit1',
+    stageLabel: 'STAGE 01',
+    icon: '🔤',
+    title: '专题专练 1：动词 -ing 变位与 be 动词基础',
+    subtitle: 'Present Participle (-ing) Rules & Be + Doing',
+    desc: '系统训练直接加、去 e、辅-元-辅双写、ie 变 y 四大 -ing 变位规律，熟练搭配 am / is / are 描述正在进行的动作。',
+    tags: [
+      { label: '🔤 20动词-ing变位', color: 'text-cyan-300' },
+      { label: '🎯 6单选题', color: 'text-purple-300' },
+      { label: '✏️ 6基础填空', color: 'text-emerald-300' },
+    ],
+    accent: 'fuchsia',
+  },
+  {
+    quizId: 'pc_unit2',
+    stageLabel: 'STAGE 02',
+    icon: '🔄',
+    title: '专题专练 2：肯定、否定与一般疑问句转换',
+    subtitle: 'Affirmative, Negative & Yes/No Questions',
+    desc: '牢记“be 后加 not 变否定、be 提前变疑问”结构，强化第一/二人称与单复数一般疑问句的简短肯定/否定回答。',
+    tags: [
+      { label: '🎯 6单选题', color: 'text-purple-300' },
+      { label: '✏️ 6否定/疑问填空', color: 'text-emerald-300' },
+      { label: '🔄 6句型转换', color: 'text-amber-300' },
+    ],
+    accent: 'cyan',
+  },
+  {
+    quizId: 'pc_unit3',
+    stageLabel: 'STAGE 03',
+    icon: '🖼️',
+    title: '专题专练 3：看图写句实战训练',
+    subtitle: 'Describe Pictures with Present Continuous',
+    desc: '结合课堂重点看图写句，观察 8 幅生活与校园场景插画，使用“主语 + be + doing”完整写出图中人物正在做的事。',
+    tags: [
+      { label: '🖼️ 8幅看图写句', color: 'text-fuchsia-300' },
+      { label: '🎯 4看图情景问答', color: 'text-purple-300' },
+    ],
+    accent: 'amber',
+  },
+  {
+    quizId: 'pc_unit4',
+    stageLabel: 'STAGE 04',
+    icon: '🚀',
+    title: '专题专练 4：情景语篇与易错点突破',
+    subtitle: 'Park Story Cloze & Tense Contrast',
+    desc: '在《A Sunny Day in the Park》语篇填空中实战运用，重点攻克一般现在时 vs 现在进行时、like doing vs be doing 易错点。',
+    tags: [
+      { label: '📖 10篇章填空', color: 'text-amber-300' },
+      { label: '🎯 5易错辨析', color: 'text-purple-300' },
+      { label: '🔄 5综合提问与改写', color: 'text-cyan-300' },
+    ],
+    accent: 'emerald',
+  },
+];
+
 export const GrammarAdventureMap: React.FC<GrammarAdventureMapProps> = ({
   currentUser,
   onUpdateUser,
 }) => {
-  const [selectedQuizId, setSelectedQuizId] = useState<'unit1' | 'unit2' | null>(null);
-  const [selectedCategory, setSelectedCategory] = useState<string>('present_simple');
+  const [selectedQuizId, setSelectedQuizId] = useState<string | null>(null);
+  const [selectedCategory, setSelectedCategory] = useState<GrammarCategory>('present_simple');
   const [progressSummary, setProgressSummary] = useState<Record<string, any>>({});
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
@@ -49,6 +108,7 @@ export const GrammarAdventureMap: React.FC<GrammarAdventureMapProps> = ({
     return (
       <GrammarPracticeView
         currentUser={currentUser}
+        category={selectedCategory}
         initialQuizId={selectedQuizId}
         onBack={() => {
           setSelectedQuizId(null);
@@ -94,11 +154,18 @@ export const GrammarAdventureMap: React.FC<GrammarAdventureMapProps> = ({
 
               <button
                 type="button"
-                disabled
-                className="px-2.5 py-1 rounded-xl text-xs font-mono text-slate-500 bg-slate-950/60 border border-slate-800/60 flex items-center gap-1.5 cursor-not-allowed opacity-60"
+                onClick={() => setSelectedCategory('present_continuous')}
+                className={`px-3 py-1 rounded-xl text-xs font-mono font-bold transition-all cursor-pointer border flex items-center gap-1.5 ${
+                  selectedCategory === 'present_continuous'
+                    ? 'bg-gradient-to-r from-fuchsia-500/20 to-cyan-500/20 text-fuchsia-300 border-fuchsia-400/80 shadow-sm'
+                    : 'bg-slate-900/80 border-slate-800 text-slate-400 hover:text-slate-200'
+                }`}
               >
-                <span>⏳</span>
+                <span>✨</span>
                 <span>现在进行时</span>
+                <span className="px-1.5 py-0.2 rounded-full text-3xs bg-fuchsia-400 text-slate-950 font-black">
+                  4 专练
+                </span>
               </button>
 
               <button
@@ -122,6 +189,87 @@ export const GrammarAdventureMap: React.FC<GrammarAdventureMapProps> = ({
           <div className="py-16 text-center text-xs font-mono text-cyan-300 animate-pulse flex items-center justify-center gap-2">
             <span className="text-xl">🌀</span>
             <span>正在同步语法关卡与战绩数据...</span>
+          </div>
+        ) : selectedCategory === 'present_continuous' ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {PRESENT_CONTINUOUS_CARDS.map((card) => {
+              const prog = progressSummary[card.quizId];
+              return (
+                <div
+                  key={card.quizId}
+                  className="group relative overflow-hidden rounded-3xl bg-gradient-to-br from-[#131B2E] via-[#0F172A] to-[#181D38] border border-[#1F2D4A] hover:border-fuchsia-400/60 transition-all duration-300 p-6 sm:p-7 shadow-xl hover:shadow-[0_0_25px_rgba(217,70,239,0.2)] flex flex-col justify-between"
+                >
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                      <span className="px-3 py-1 rounded-xl text-3xs font-mono font-black bg-fuchsia-500/20 text-fuchsia-300 border border-fuchsia-500/30">
+                        {card.stageLabel}
+                      </span>
+                      {prog?.isPassed ? (
+                        <span className="flex items-center gap-1 px-2.5 py-0.5 rounded-full text-2xs font-mono font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
+                          <span>🏆</span>
+                          <span>已通关 (最高 {prog.bestScore}%)</span>
+                        </span>
+                      ) : prog ? (
+                        <span className="px-2.5 py-0.5 rounded-full text-2xs font-mono font-bold bg-fuchsia-500/20 text-fuchsia-300 border border-fuchsia-500/40">
+                          已练 {prog.attemptsCount} 次 (最高 {prog.bestScore}%)
+                        </span>
+                      ) : (
+                        <span className="px-2.5 py-0.5 rounded-full text-2xs font-mono text-slate-400 bg-slate-800/60 border border-slate-700">
+                          未开始 ⏳
+                        </span>
+                      )}
+                    </div>
+
+                    <div>
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-10 h-10 rounded-2xl bg-fuchsia-500/20 border border-fuchsia-400/40 flex items-center justify-center text-xl shrink-0 group-hover:scale-110 transition-transform">
+                          {card.icon}
+                        </div>
+                        <div>
+                          <h3 className="text-lg font-black font-mono text-white group-hover:text-fuchsia-300 transition-colors">
+                            {card.title}
+                          </h3>
+                          <p className="text-2xs text-slate-400 font-mono mt-0.5">
+                            {card.subtitle}
+                          </p>
+                        </div>
+                      </div>
+
+                      <p className="text-xs text-slate-300 font-mono mt-3 leading-relaxed">
+                        {card.desc}
+                      </p>
+                    </div>
+
+                    <div className="flex flex-wrap gap-1.5 pt-1 font-mono text-3xs">
+                      {card.tags.map((t, idx) => (
+                        <span
+                          key={idx}
+                          className={`px-2.5 py-1 rounded-lg bg-slate-900 border border-slate-700 ${t.color}`}
+                        >
+                          {t.label}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="mt-6 pt-4 border-t border-slate-800 flex items-center justify-between gap-3">
+                    <div className="text-3xs font-mono text-slate-400">
+                      通关奖励：<span className="text-amber-300 font-bold">+50 🪙</span>{' '}
+                      <span className="text-cyan-300 font-bold">+1 ⭐</span>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => setSelectedQuizId(card.quizId)}
+                      className="px-5 py-2.5 rounded-2xl bg-gradient-to-r from-fuchsia-500 to-cyan-500 hover:from-fuchsia-400 hover:to-cyan-400 text-slate-950 font-mono font-black text-xs shadow-lg shadow-fuchsia-500/25 cursor-pointer hover:scale-105 active:scale-95 transition-all flex items-center gap-1.5"
+                    >
+                      <span>{prog ? '复习 / 重做' : '开始挑战'}</span>
+                      <span>→</span>
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
